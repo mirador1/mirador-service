@@ -28,9 +28,9 @@ Ce projet ne vise pas à démontrer un simple CRUD, mais la capacité à :
 - PostgreSQL
 - Flyway
 - Actuator
-- Micrometer + Prometheus
+- Micrometer + Prometheus - http://localhost:9090/
 - OpenTelemetry (OTLP)
-- Grafana / LGTM
+- Grafana / LGTM - http://localhost:3000/
 - Docker / Docker Compose
 - Testcontainers
 
@@ -47,7 +47,9 @@ Ce projet ne vise pas à démontrer un simple CRUD, mais la capacité à :
 
 ## 🔍 Endpoints d’exploitation
 
+A appeler en complément de la commande: `curl -s http://localhost:8080`
 - `/actuator/health`
+- `/actuator/health/liveness`
 - `/actuator/health/readiness`
 - `/actuator/prometheus`
 - `/actuator/metrics`
