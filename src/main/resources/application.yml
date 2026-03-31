@@ -30,6 +30,9 @@ management:
       show-details: always
       probes:
         enabled: true
+      group:
+        readiness:
+          include: readinessState,db,dbReachability
   tracing:
     sampling:
       probability: 1.0

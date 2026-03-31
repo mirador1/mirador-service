@@ -1,87 +1,84 @@
-# Spring 4 Demo
+# Spring Boot 4 – Service observable
 
-Mini service Spring Boot 4 / Java 25 utilisé comme démonstrateur technique orienté :
+Mini service Spring Boot 4 / Java 25 utilisé comme démonstrateur de :
 
-- structuration de socle applicatif
-- observabilité
+- structuration d’un socle applicatif
+- observabilité (métriques, logs, tracing)
 - qualité d’exploitation
-- traçabilité des requêtes
-- instrumentation métriques / traces
-- lisibilité des choix techniques
+- diagnostic rapide en cas d’incident
 
-## Ce que ce projet démontre
+---
 
-Ce projet ne cherche pas à prouver seulement la capacité à produire un CRUD.
-L’objectif est de montrer la capacité à :
+## 🎯 Objectif
 
-- reprendre un socle Spring Boot moderne
-- le rendre observable et exploitable
+Ce projet ne vise pas à démontrer un simple CRUD, mais la capacité à :
+
+- rendre un service observable
 - définir ce qu’il faut surveiller
-- fournir des points d’entrée de diagnostic rapide
-- instrumenter un service avec métriques et traces
-- rendre explicites des choix de run utiles pour un rôle de responsable technique / applicatif
+- exposer des points de diagnostic
+- structurer un environnement d’exploitation minimal
 
-## Stack
+---
+
+## 🧱 Stack
 
 - Java 25
 - Spring Boot 4
-- Spring Web MVC
-- Spring Data JPA
+- Spring Web / JPA
 - PostgreSQL
 - Flyway
-- Springdoc / OpenAPI
 - Actuator
 - Micrometer + Prometheus
 - OpenTelemetry (OTLP)
+- Grafana / LGTM
 - Docker / Docker Compose
 - Testcontainers
 
-## Endpoints métier
+---
+
+## 🚀 Endpoints métier
 
 - `GET /customers`
 - `POST /customers`
 - `GET /customers/recent`
 - `GET /customers/aggregate`
 
-## Endpoints d’exploitation
+---
 
-- `GET /actuator/health`
-- `GET /actuator/health/liveness`
-- `GET /actuator/health/readiness`
-- `GET /actuator/prometheus`
-- `GET /actuator/metrics`
+## 🔍 Endpoints d’exploitation
 
-## Choix d’observabilité
+- `/actuator/health`
+- `/actuator/health/readiness`
+- `/actuator/prometheus`
+- `/actuator/metrics`
 
-### Corrélation des requêtes
-Chaque requête HTTP reçoit un `X-Request-Id` :
-- réutilisé si fourni par le client
-- généré sinon
-- renvoyé dans la réponse
-- injecté dans les logs
+---
 
-### Métriques exposées
-Exemples :
-- `customer.created.count`
-- `customer.create.duration`
-- `customer.find_all.duration`
-- `customer.aggregate.duration`
-- `customer.recent.buffer.size`
+# 📊 Preuves d’observabilité
 
-### Tracing
-Le projet exporte les traces en OTLP.
-En local, on peut brancher un backend OTLP pour visualiser les spans.
+## Dashboard Grafana
 
-### Health checks
-Le projet expose :
-- health globale
-- liveness
-- readiness
-- un check DB simple (`select 1`)
+![Dashboard Grafana](docs/screenshots/grafana-overview.png)
 
-## Démarrage local
+Ce dashboard montre :
 
-### Base seule pour le développement local
+- débit HTTP
+- latence des endpoints
+- nombre de créations clients
+- taille du buffer en mémoire
+
+---
+
+## Exemple de métriques exposées
+
 ```bash
-./run.sh db
-mvn spring-boot:run
+curl -s http://localhost:8080/actuator/prometheus | grep customer
+
+## Scénario de diagnostic 1 — indisponibilité PostgreSQL
+
+### Mise en situation
+La base PostgreSQL est arrêtée alors que l’application continue de tourner.
+
+### Vérification
+```bash
+curl -s http://localhost:8080/actuator/health/readiness

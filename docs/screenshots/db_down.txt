@@ -1,0 +1,107 @@
+# actuator health
+{
+  "components": {
+    "db": {
+      "details": {
+        "error": "org.springframework.jdbc.CannotGetJdbcConnectionException: Failed to obtain JDBC Connection"
+      },
+      "status": "DOWN"
+    },
+    "dbReachability": {
+      "details": {
+        "error": "org.springframework.jdbc.CannotGetJdbcConnectionException: Failed to obtain JDBC Connection",
+        "database": "unreachable"
+      },
+      "status": "DOWN"
+    },
+    "diskSpace": {
+      "details": {
+        "total": 1995218165760,
+        "free": 552823463936,
+        "threshold": 10485760,
+        "path": "/Users/benoitbesson/dev/workspace-modern/spring-api/.",
+        "exists": true
+      },
+      "status": "UP"
+    },
+    "livenessState": {
+      "status": "UP"
+    },
+    "ping": {
+      "status": "UP"
+    },
+    "readinessState": {
+      "status": "UP"
+    },
+    "ssl": {
+      "details": {
+        "expiringChains": [],
+        "invalidChains": [],
+        "validChains": []
+      },
+      "status": "UP"
+    }
+  },
+  "groups": [
+    "liveness",
+    "readiness"
+  ],
+  "status": "DOWN"
+}
+
+{
+  "details": {
+    "error": "org.springframework.jdbc.CannotGetJdbcConnectionException: Failed to obtain JDBC Connection",
+    "database": "unreachable"
+  },
+  "status": "DOWN"
+}
+{
+  "status": "UP"
+}
+
+# readiness curl -s http://localhost:8080/actuator/health/readiness | jq
+{
+  "components": {
+    "db": {
+      "details": {
+        "database": "PostgreSQL",
+        "validationQuery": "isValid()"
+      },
+      "status": "UP"
+    },
+    "dbReachability": {
+      "details": {
+        "database": "reachable"
+      },
+      "status": "UP"
+    },
+    "readinessState": {
+      "status": "UP"
+    }
+  },
+  "status": "UP"
+}
+
+# curl -s http://localhost:8080/actuator/health/readiness | jq
+{
+  "components": {
+    "db": {
+      "details": {
+        "error": "org.springframework.jdbc.CannotGetJdbcConnectionException: Failed to obtain JDBC Connection"
+      },
+      "status": "DOWN"
+    },
+    "dbReachability": {
+      "details": {
+        "error": "org.springframework.jdbc.CannotGetJdbcConnectionException: Failed to obtain JDBC Connection",
+        "database": "unreachable"
+      },
+      "status": "DOWN"
+    },
+    "readinessState": {
+      "status": "UP"
+    }
+  },
+  "status": "DOWN"
+}

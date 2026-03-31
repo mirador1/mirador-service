@@ -1,1 +1,5 @@
-{"status":"UP"}
+#db readiness
+curl -s http://localhost:8080/actuator/health/readiness
+{"components":{"db":{"details":{"database":"PostgreSQL","validationQuery":"isValid()"},"status":"UP"},"dbReachability":{"details":{"database":"reachable"},"status":"UP"},"readinessState":{"status":"UP"}},"status":"UP"}%
+curl -s http://localhost:8080/actuator/health/readiness
+{"components":{"db":{"details":{"error":"org.springframework.jdbc.CannotGetJdbcConnectionException: Failed to obtain JDBC Connection"},"status":"DOWN"},"dbReachability":{"details":{"error":"org.springframework.jdbc.CannotGetJdbcConnectionException: Failed to obtain JDBC Connection","database":"unreachable"},"status":"DOWN"},"readinessState":{"status":"UP"}},"status":"DOWN"}%
