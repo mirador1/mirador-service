@@ -82,3 +82,14 @@ La base PostgreSQL est arrêtée alors que l’application continue de tourner.
 ### Vérification
 ```bash
 curl -s http://localhost:8080/actuator/health/readiness
+
+## Scénario de diagnostic 2 — latence sur `/customers/aggregate`
+
+### Objectif
+Montrer comment qualifier un problème de temps de réponse sur un endpoint spécifique à partir des métriques et du dashboard.
+
+### Mise en charge
+```bash
+for i in {1..100}; do
+  curl -s http://localhost:8080/customers/aggregate > /dev/null
+done
