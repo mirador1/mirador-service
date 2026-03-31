@@ -1,0 +1,90 @@
+# HELP customer_aggregate_active_seconds
+# TYPE customer_aggregate_active_seconds summary
+customer_aggregate_active_seconds_count{endpoint="/customers/aggregate"} 0
+customer_aggregate_active_seconds_sum{endpoint="/customers/aggregate"} 0.0
+# HELP customer_aggregate_active_seconds_max
+# TYPE customer_aggregate_active_seconds_max gauge
+customer_aggregate_active_seconds_max{endpoint="/customers/aggregate"} 0.0
+# HELP customer_aggregate_duration_seconds Duration of aggregate endpoint
+# TYPE customer_aggregate_duration_seconds histogram
+customer_aggregate_duration_seconds_bucket{le="0.001"} 0
+customer_aggregate_duration_seconds_bucket{le="0.001048576"} 0
+customer_aggregate_duration_seconds_bucket{le="0.001398101"} 0
+customer_aggregate_duration_seconds_bucket{le="0.001747626"} 0
+customer_aggregate_duration_seconds_bucket{le="0.002097151"} 0
+customer_aggregate_duration_seconds_bucket{le="0.002446676"} 0
+customer_aggregate_duration_seconds_bucket{le="0.002796201"} 0
+customer_aggregate_duration_seconds_bucket{le="0.003145726"} 0
+customer_aggregate_duration_seconds_bucket{le="0.003495251"} 0
+customer_aggregate_duration_seconds_bucket{le="0.003844776"} 0
+customer_aggregate_duration_seconds_bucket{le="0.004194304"} 0
+customer_aggregate_duration_seconds_bucket{le="0.005592405"} 0
+customer_aggregate_duration_seconds_bucket{le="0.006990506"} 0
+customer_aggregate_duration_seconds_bucket{le="0.008388607"} 0
+customer_aggregate_duration_seconds_bucket{le="0.009786708"} 0
+customer_aggregate_duration_seconds_bucket{le="0.011184809"} 0
+customer_aggregate_duration_seconds_bucket{le="0.01258291"} 0
+customer_aggregate_duration_seconds_bucket{le="0.013981011"} 0
+customer_aggregate_duration_seconds_bucket{le="0.015379112"} 0
+customer_aggregate_duration_seconds_bucket{le="0.016777216"} 0
+customer_aggregate_duration_seconds_bucket{le="0.022369621"} 0
+customer_aggregate_duration_seconds_bucket{le="0.027962026"} 0
+customer_aggregate_duration_seconds_bucket{le="0.033554431"} 0
+customer_aggregate_duration_seconds_bucket{le="0.039146836"} 0
+customer_aggregate_duration_seconds_bucket{le="0.044739241"} 0
+customer_aggregate_duration_seconds_bucket{le="0.050331646"} 0
+customer_aggregate_duration_seconds_bucket{le="0.055924051"} 0
+customer_aggregate_duration_seconds_bucket{le="0.061516456"} 0
+customer_aggregate_duration_seconds_bucket{le="0.067108864"} 0
+customer_aggregate_duration_seconds_bucket{le="0.089478485"} 0
+customer_aggregate_duration_seconds_bucket{le="0.111848106"} 0
+customer_aggregate_duration_seconds_bucket{le="0.134217727"} 0
+customer_aggregate_duration_seconds_bucket{le="0.156587348"} 0
+customer_aggregate_duration_seconds_bucket{le="0.178956969"} 0
+customer_aggregate_duration_seconds_bucket{le="0.20132659"} 154
+customer_aggregate_duration_seconds_bucket{le="0.223696211"} 349
+customer_aggregate_duration_seconds_bucket{le="0.246065832"} 351
+customer_aggregate_duration_seconds_bucket{le="0.268435456"} 351
+customer_aggregate_duration_seconds_bucket{le="0.357913941"} 351
+customer_aggregate_duration_seconds_bucket{le="0.447392426"} 351
+customer_aggregate_duration_seconds_bucket{le="0.536870911"} 351
+customer_aggregate_duration_seconds_bucket{le="0.626349396"} 351
+customer_aggregate_duration_seconds_bucket{le="0.715827881"} 351
+customer_aggregate_duration_seconds_bucket{le="0.805306366"} 351
+customer_aggregate_duration_seconds_bucket{le="0.894784851"} 351
+customer_aggregate_duration_seconds_bucket{le="0.984263336"} 351
+customer_aggregate_duration_seconds_bucket{le="1.073741824"} 351
+customer_aggregate_duration_seconds_bucket{le="1.431655765"} 351
+customer_aggregate_duration_seconds_bucket{le="1.789569706"} 351
+customer_aggregate_duration_seconds_bucket{le="2.147483647"} 351
+customer_aggregate_duration_seconds_bucket{le="2.505397588"} 351
+customer_aggregate_duration_seconds_bucket{le="2.863311529"} 351
+customer_aggregate_duration_seconds_bucket{le="3.22122547"} 351
+customer_aggregate_duration_seconds_bucket{le="3.579139411"} 351
+customer_aggregate_duration_seconds_bucket{le="3.937053352"} 351
+customer_aggregate_duration_seconds_bucket{le="4.294967296"} 351
+customer_aggregate_duration_seconds_bucket{le="5.726623061"} 351
+customer_aggregate_duration_seconds_bucket{le="7.158278826"} 351
+customer_aggregate_duration_seconds_bucket{le="8.589934591"} 351
+customer_aggregate_duration_seconds_bucket{le="10.021590356"} 351
+customer_aggregate_duration_seconds_bucket{le="11.453246121"} 351
+customer_aggregate_duration_seconds_bucket{le="12.884901886"} 351
+customer_aggregate_duration_seconds_bucket{le="14.316557651"} 351
+customer_aggregate_duration_seconds_bucket{le="15.748213416"} 351
+customer_aggregate_duration_seconds_bucket{le="17.179869184"} 351
+customer_aggregate_duration_seconds_bucket{le="22.906492245"} 351
+customer_aggregate_duration_seconds_bucket{le="28.633115306"} 351
+customer_aggregate_duration_seconds_bucket{le="30.0"} 351
+customer_aggregate_duration_seconds_bucket{le="+Inf"} 351
+customer_aggregate_duration_seconds_count 351
+customer_aggregate_duration_seconds_sum 71.183429713
+# HELP customer_aggregate_duration_seconds_max Duration of aggregate endpoint
+# TYPE customer_aggregate_duration_seconds_max gauge
+customer_aggregate_duration_seconds_max 0.0
+# HELP customer_aggregate_seconds
+# TYPE customer_aggregate_seconds summary
+customer_aggregate_seconds_count{endpoint="/customers/aggregate",error="none"} 351
+customer_aggregate_seconds_sum{endpoint="/customers/aggregate",error="none"} 71.147289721
+# HELP customer_aggregate_seconds_max
+# TYPE customer_aggregate_seconds_max gauge
+customer_aggregate_seconds_max{endpoint="/customers/aggregate",error="none"} 0.0
