@@ -28,9 +28,9 @@ Ce projet ne vise pas à démontrer un simple CRUD, mais la capacité à :
 - PostgreSQL
 - Flyway
 - Actuator
-- Micrometer + Prometheus - http://localhost:9090/
+- Micrometer + Prometheus
 - OpenTelemetry (OTLP)
-- Grafana / LGTM - http://localhost:3000/
+- Grafana / LGTM
 - Docker / Docker Compose
 - Testcontainers
 
@@ -56,11 +56,13 @@ A appeler en complément de la commande: `curl -s http://localhost:8080`
 
 ---
 
-# 📊 Preuves d’observabilité
+# 📊 Observabilité
 
 ## Dashboard Grafana
 
 ![Dashboard Grafana](docs/screenshots/grafana-overview.png)
+
+http://localhost:3000/
 
 Ce dashboard montre :
 
@@ -69,6 +71,13 @@ Ce dashboard montre :
 - nombre de créations clients
 - taille du buffer en mémoire
 
+## Prometheus
+
+http://localhost:9090/
+
+![Dashboard Grafana](docs/screenshots/prometheus-overview.png)
+
+Ici on voit la durée maximal des endpoints appelsés sur le serveur
 ---
 
 ## Exemple de métriques exposées
