@@ -1,23 +1,30 @@
-#!/bin/bash
-set -euo pipefail
+#!/usr/bin/env bash
+set -e
 
-MODE="${1:-full}"
+case "$1" in
 
-case "$MODE" in
   db)
-    echo ">>> Starting postgres only"
-    docker compose up -d postgres
+    echo "Starting PostgreSQL..."
+    docker compose up -d db
     ;;
-  full)
-    echo ">>> Starting full stack"
-    docker compose up --build
+
+  obs)
+    echo "Starting observability stack..."
+    docker compose -f docker-compose.observability.yml up -d
     ;;
-  down)
-    echo ">>> Stopping stack"
-    docker compose down
+
+  all)
+    echo "Starting everything..."
+    docker compose up -d db
+    docker compose -f docker-compose.observability.yml up -d
+    mvn spring-boot:run
     ;;
+
   *)
-    echo "Usage: ./run.sh [db|full|down]"
-    exit 1
+    echo "Usage:"
+    echo "  ./run.sh db     # start database"
+    echo "  ./run.sh obs    # start observability"
+    echo "  ./run.sh all    # start everything"
+    echo "  mvn spring-boot:run # start app"
     ;;
 esac

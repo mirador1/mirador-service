@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: springapi
+    orgId: 1
+    folder: springapi
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    options:
+      path: /var/lib/grafana/dashboards

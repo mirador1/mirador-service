@@ -1,4 +1,4 @@
-# spring-4-demo
+# Spring 4 Demo
 
 Mini service Spring Boot 4 / Java 25 utilisé comme démonstrateur technique orienté :
 
@@ -7,19 +7,19 @@ Mini service Spring Boot 4 / Java 25 utilisé comme démonstrateur technique ori
 - qualité d’exploitation
 - traçabilité des requêtes
 - instrumentation métriques / traces
-- lisibilité de choix techniques
+- lisibilité des choix techniques
 
 ## Ce que ce projet démontre
 
-Ce projet n’a pas été pensé comme un simple CRUD de démonstration.
+Ce projet ne cherche pas à prouver seulement la capacité à produire un CRUD.
 L’objectif est de montrer la capacité à :
 
 - reprendre un socle Spring Boot moderne
-- le rendre exploitable et observable
-- expliciter les choix de supervision
-- définir des points de diagnostic rapides
+- le rendre observable et exploitable
+- définir ce qu’il faut surveiller
+- fournir des points d’entrée de diagnostic rapide
 - instrumenter un service avec métriques et traces
-- fournir des artefacts utiles en contexte RUN / support / pilotage technique
+- rendre explicites des choix de run utiles pour un rôle de responsable technique / applicatif
 
 ## Stack
 
@@ -53,14 +53,14 @@ L’objectif est de montrer la capacité à :
 
 ## Choix d’observabilité
 
-### 1. Corrélation des requêtes
+### Corrélation des requêtes
 Chaque requête HTTP reçoit un `X-Request-Id` :
 - réutilisé si fourni par le client
 - généré sinon
 - renvoyé dans la réponse
 - injecté dans les logs
 
-### 2. Métriques exposées
+### Métriques exposées
 Exemples :
 - `customer.created.count`
 - `customer.create.duration`
@@ -68,11 +68,11 @@ Exemples :
 - `customer.aggregate.duration`
 - `customer.recent.buffer.size`
 
-### 3. Tracing
+### Tracing
 Le projet exporte les traces en OTLP.
 En local, on peut brancher un backend OTLP pour visualiser les spans.
 
-### 4. Health checks
+### Health checks
 Le projet expose :
 - health globale
 - liveness
@@ -81,15 +81,7 @@ Le projet expose :
 
 ## Démarrage local
 
-### Base de données
-Le projet suppose PostgreSQL local :
-
-- host: `localhost`
-- port: `5432`
-- db: `demo`
-- user: `demo`
-- password: `demo`
-
-### Lancer l’application
+### Base seule pour le développement local
 ```bash
-./mvnw spring-boot:run
+./run.sh db
+mvn spring-boot:run

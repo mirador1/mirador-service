@@ -14,14 +14,14 @@
     <artifactId>springapi</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>springapi</name>
-    <description>Demo Spring Boot project upgraded for observability and run-oriented positioning</description>
+    <description>Spring Boot demo upgraded for observability and CV positioning</description>
 
     <properties>
         <java.version>25</java.version>
     </properties>
 
     <dependencies>
-        <!-- Core app -->
+        <!-- Core -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
@@ -49,7 +49,7 @@
             <artifactId>micrometer-registry-prometheus</artifactId>
         </dependency>
 
-        <!-- Docs -->
+        <!-- API docs -->
         <dependency>
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
@@ -81,12 +81,6 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-testcontainers</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.testcontainers</groupId>
-            <artifactId>jdbc</artifactId>
-            <version>1.21.3</version>
             <scope>test</scope>
         </dependency>
         <dependency>
