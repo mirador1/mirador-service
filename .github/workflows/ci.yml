@@ -28,6 +28,3 @@ jobs:
 
       - name: Package (no tests)
         run: mvn -B -DskipTests package
-
-    # 👇 important pour éviter pollution des runs
-    retention-days: 5
