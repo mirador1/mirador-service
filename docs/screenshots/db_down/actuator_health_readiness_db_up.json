@@ -1,0 +1,21 @@
+{
+  "components": {
+    "db": {
+      "details": {
+        "database": "PostgreSQL",
+        "validationQuery": "isValid()"
+      },
+      "status": "UP"
+    },
+    "dbReachability": {
+      "details": {
+        "database": "reachable"
+      },
+      "status": "UP"
+    },
+    "readinessState": {
+      "status": "UP"
+    }
+  },
+  "status": "UP"
+}%

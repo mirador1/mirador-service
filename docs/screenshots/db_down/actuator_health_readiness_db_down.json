@@ -1,0 +1,21 @@
+{
+  "components": {
+    "db": {
+      "details": {
+        "error": "org.springframework.jdbc.CannotGetJdbcConnectionException: Failed to obtain JDBC Connection"
+      },
+      "status": "DOWN"
+    },
+    "dbReachability": {
+      "details": {
+        "error": "org.springframework.jdbc.CannotGetJdbcConnectionException: Failed to obtain JDBC Connection",
+        "database": "unreachable"
+      },
+      "status": "DOWN"
+    },
+    "readinessState": {
+      "status": "UP"
+    }
+  },
+  "status": "DOWN"
+}
