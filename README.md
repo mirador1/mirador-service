@@ -1,66 +1,95 @@
-# Spring 4 Demo
+# spring-4-demo
 
-Projet de démonstration backend Java/Spring Boot avec PostgreSQL, Docker, Swagger, CI et tests d’intégration.
+Mini service Spring Boot 4 / Java 25 utilisé comme démonstrateur technique orienté :
 
-## Objectif
+- structuration de socle applicatif
+- observabilité
+- qualité d’exploitation
+- traçabilité des requêtes
+- instrumentation métriques / traces
+- lisibilité de choix techniques
 
-Projet de remise à niveau sur un socle Spring moderne, avec une API simple de gestion de clients.
+## Ce que ce projet démontre
+
+Ce projet n’a pas été pensé comme un simple CRUD de démonstration.
+L’objectif est de montrer la capacité à :
+
+- reprendre un socle Spring Boot moderne
+- le rendre exploitable et observable
+- expliciter les choix de supervision
+- définir des points de diagnostic rapides
+- instrumenter un service avec métriques et traces
+- fournir des artefacts utiles en contexte RUN / support / pilotage technique
 
 ## Stack
 
-- Java 21 ou 25 selon branche de travail
-- Spring Boot
-- Spring Web
+- Java 25
+- Spring Boot 4
+- Spring Web MVC
 - Spring Data JPA
 - PostgreSQL
-- Maven
-- Docker
+- Flyway
+- Springdoc / OpenAPI
+- Actuator
+- Micrometer + Prometheus
+- OpenTelemetry (OTLP)
+- Docker / Docker Compose
+- Testcontainers
 
-## Lancement
+## Endpoints métier
 
-### Base seule pour le développement local
+- `GET /customers`
+- `POST /customers`
+- `GET /customers/recent`
+- `GET /customers/aggregate`
 
+## Endpoints d’exploitation
+
+- `GET /actuator/health`
+- `GET /actuator/health/liveness`
+- `GET /actuator/health/readiness`
+- `GET /actuator/prometheus`
+- `GET /actuator/metrics`
+
+## Choix d’observabilité
+
+### 1. Corrélation des requêtes
+Chaque requête HTTP reçoit un `X-Request-Id` :
+- réutilisé si fourni par le client
+- généré sinon
+- renvoyé dans la réponse
+- injecté dans les logs
+
+### 2. Métriques exposées
+Exemples :
+- `customer.created.count`
+- `customer.create.duration`
+- `customer.find_all.duration`
+- `customer.aggregate.duration`
+- `customer.recent.buffer.size`
+
+### 3. Tracing
+Le projet exporte les traces en OTLP.
+En local, on peut brancher un backend OTLP pour visualiser les spans.
+
+### 4. Health checks
+Le projet expose :
+- health globale
+- liveness
+- readiness
+- un check DB simple (`select 1`)
+
+## Démarrage local
+
+### Base de données
+Le projet suppose PostgreSQL local :
+
+- host: `localhost`
+- port: `5432`
+- db: `demo`
+- user: `demo`
+- password: `demo`
+
+### Lancer l’application
 ```bash
-./run.sh db
-mvn spring-boot:run
-```
-
-## Dockerfile
-
-Le projet utilise un Dockerfile multi-stage :
-- build Maven dans une image JDK
-- exécution dans une image JRE plus légère
-
-## Commandes utiles
-
-### Build image
-
-```bash
-./build.sh
-```
-
-
-## Endpoints
-
-### Lister les clients
-
-```bash
-curl http://localhost:8080/customers
-```
-### Ajouter des clients
-```bash
-curl -X POST http://localhost:8080/customers \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Benoit","email":"benoit@example.com"}'
-  
-curl -X POST http://localhost:8080/customers \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Alice","email":"alice@example.com"}'  
-```
-
-### Autres
-```bash
-curl http://localhost:8080/customers/recent
-curl http://localhost:8080/customers/aggregate
-http://localhost:8080/swagger-ui.html
-```
+./mvnw spring-boot:run
