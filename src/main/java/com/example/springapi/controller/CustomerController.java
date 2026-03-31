@@ -16,6 +16,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -23,6 +25,8 @@ import java.util.concurrent.TimeUnit;
 @RestController
 @RequestMapping("/customers")
 public class CustomerController {
+
+    private static final Logger log = LoggerFactory.getLogger(CustomerController.class);
 
     private final CustomerService service;
     private final RecentCustomerBuffer recentCustomerBuffer;
@@ -68,6 +72,7 @@ public class CustomerController {
 
     @PostMapping
     public CustomerDto create(@Valid @RequestBody CreateCustomerRequest request) {
+        log.info("Creating customer email={}", request.email());
         return Observation.createNotStarted("customer.create", observationRegistry)
                 .lowCardinalityKeyValue("endpoint", "/customers")
                 .observe(() -> customerCreateTimer.record(() -> {

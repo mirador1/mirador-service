@@ -33,24 +33,25 @@ management:
       group:
         readiness:
           include: readinessState,db,dbReachability
-  tracing:
-    sampling:
-      probability: 1.0
+#  tracing:
+#    sampling:
+#      probability: 1.0
   opentelemetry:
     tracing:
       export:
-        otlp:
-          endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318}
+        enabled: false
+#        otlp:
+#          endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318}
 
 logging:
-  pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} level=%-5level app=%property{spring.application.name} traceId=%X{traceId:-} spanId=%X{spanId:-} requestId=%X{requestId:-} thread=%thread logger=%logger{36} - %msg%n"
   level:
     root: INFO
     org.springframework.web: INFO
     org.hibernate.SQL: WARN
     org.hibernate.orm.jdbc.bind: WARN
-
+  structured:
+    format:
+      console: ecs
 app:
   observability:
     recent-buffer-gauge-enabled: true
