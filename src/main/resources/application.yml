@@ -43,15 +43,15 @@ management:
         # ready if app and db connexion is ok and also custom DatabaseReachabilityHealthIndicator
         readiness:
           include: readinessState,db,dbReachability
-#  tracing:
-#    sampling:
-#      probability: 1.0
+  tracing:
+    sampling:
+      probability: 1.0
   opentelemetry:
     tracing:
       export:
-        enabled: false
-#        otlp:
-#          endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318}
+        otlp:
+          endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318}
+          transport: http
 
 logging:
   level:
@@ -63,7 +63,7 @@ logging:
   structured:
     format:
       # json format
-      console: ecs
+      # console: ecs
 app:
   observability:
     # Custom for ObservabilityConfig

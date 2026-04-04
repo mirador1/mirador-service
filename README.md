@@ -61,7 +61,7 @@ A appeler en complément de la commande: `curl -s http://localhost:8080`
 
 ![Dashboard Grafana](docs/screenshots/grafana-overview.png)
 
-http://localhost:3000/
+http://localhost:3001/
 
 Ce dashboard montre :
 

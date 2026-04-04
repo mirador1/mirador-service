@@ -1,14 +1,22 @@
 services:
 
-#  lgtm:
-#    image: grafana/otel-lgtm:latest
-#    container_name: springapi-lgtm
-#    ports:
-#      - "3001:3000"
-#      - "4317:4317"
-#      - "4318:4318"
-#    environment:
-#      ENABLE_LOGS_ALL: "true"
+  lgtm:
+    image: grafana/otel-lgtm:latest
+    container_name: springapi-lgtm
+    ports:
+      - "3001:3000"
+      - "4317:4317"
+      - "4318:4318"
+    depends_on:
+      - prometheus
+    volumes:
+      # config
+      # Prometheus deja defini
+      #- ./ops/observability/grafana/provisioning/datasources/datasource-demo.yaml:/otel-lgtm/grafana/conf/provisioning/datasources/datasource-demo.yaml
+      - ./ops/observability/grafana/dashboards-lgtm/dashboard-demo-lgtm.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/dashboard-demo-lgtm.yaml
+      - ./ops/observability/grafana/dashboards/demo.json:/otel-lgtm/demo.json
+    environment:
+      ENABLE_LOGS_ALL: "true"
 
   prometheus:
     image: prom/prometheus:latest
@@ -22,7 +30,7 @@ services:
       # reference the host ip
       - "host.docker.internal:host-gateway"
     volumes:
-      #oersistent
+      # config
       - ./ops/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
 
   grafana:
@@ -33,6 +41,13 @@ services:
     depends_on:
       - prometheus
     volumes:
-      #oersistent
+      # config
       - ./ops/observability/grafana/provisioning:/etc/grafana/provisioning
       - ./ops/observability/grafana/dashboards:/var/lib/grafana/dashboards
+
+#  jaeger:
+#    image: cr.jaegertracing.io/jaegertracing/jaeger:2.17.0
+#    ports:
+#      - "16686:16686"
+#      - "4317:4317"
+#      - "4318:4318"

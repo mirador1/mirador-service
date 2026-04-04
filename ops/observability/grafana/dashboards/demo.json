@@ -1,4 +1,5 @@
 {
+  "datasource": "Prometheus",
   "annotations": { "list": [] },
   "editable": true,
   "graphTooltip": 0,
