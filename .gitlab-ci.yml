@@ -1,26 +1,31 @@
 stages:
-  - build
   - test
+  - build
 
-image: maven:3.9.14-eclipse-temurin-25
+image: maven:3.9.14-eclipse-temurin-25-noble
 
 variables:
   MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
   MAVEN_CLI_OPTS: "--batch-mode --errors --fail-at-end --show-version --no-transfer-progress"
+  DOCKER_HOST: "tcp://docker:2375"
+  DOCKER_TLS_CERTDIR: ""
 
 cache:
   paths:
     - .m2/repository
 
+test:
+  stage: test
+  services:
+    - name: docker:28-dind
+      alias: docker
+  script:
+    - mvn $MAVEN_CLI_OPTS test
+
 build:
   stage: build
   script:
-    - mvn $MAVEN_CLI_OPTS -DskipTests clean package
+    - mvn $MAVEN_CLI_OPTS -DskipTests package
   artifacts:
     paths:
       - target/*.jar
-
-test:
-  stage: test
-  script:
-    - mvn $MAVEN_CLI_OPTS test
