@@ -14,7 +14,7 @@ services:
       # Prometheus deja defini
       #- ./ops/observability/grafana/provisioning/datasources/datasource-demo.yaml:/otel-lgtm/grafana/conf/provisioning/datasources/datasource-demo.yaml
       - ./ops/observability/grafana/dashboards-lgtm/dashboard-demo-lgtm.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/dashboard-demo-lgtm.yaml
-      - ./ops/observability/grafana/dashboards/demo.json:/otel-lgtm/demo.json
+      - ./ops/observability/grafana/dashboards-lgtm/demo.json:/otel-lgtm/demo.json
     environment:
       ENABLE_LOGS_ALL: "true"
 

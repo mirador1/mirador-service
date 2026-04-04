@@ -9,7 +9,7 @@
       "title": "Hdemo.jsonTTP requests rate",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
       "targets": [
-        { "expr": "sum(rate(http_server_requests_seconds_count[1m]))", "refId": "A" }
+        { "expr": "sum(rate(http_server_requests_milliseconds_count[1m]))", "refId": "A" }
       ]
     },
     {
@@ -26,7 +26,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum(rate(customer_create_duration_seconds_bucket[5m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(customer_create_duration_milliseconds_bucket[5m])) by (le))",
           "refId": "A"
         }
       ]
@@ -37,7 +37,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum(rate(customer_aggregate_duration_seconds_bucket[5m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(customer_aggregate_duration_milliseconds_bucket[5m])) by (le))",
           "refId": "A"
         }
       ]
@@ -45,6 +45,7 @@
     {
       "type": "stat",
       "title": "Recent customer buffer size",
+
       "gridPos": { "h": 6, "w": 6, "x": 0, "y": 16 },
       "targets": [
         { "expr": "customer_recent_buffer_size", "refId": "A" }
