@@ -7,6 +7,9 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import java.util.NoSuchElementException;
+import java.util.concurrent.TimeoutException;
+
 @RestControllerAdvice
 public class ApiExceptionHandler {
 
@@ -22,6 +25,12 @@ public class ApiExceptionHandler {
             case IllegalArgumentException e ->
                     ResponseEntity.badRequest()
                             .body(new ApiError("BAD_REQUEST", e.getMessage()));
+            case NoSuchElementException e ->
+                    ResponseEntity.status(HttpStatus.NOT_FOUND)
+                            .body(new ApiError("NOT_FOUND", e.getMessage()));
+            case IllegalStateException e when e.getCause() instanceof TimeoutException ->
+                    ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT)
+                            .body(new ApiError("KAFKA_TIMEOUT", "Kafka reply timed out"));
             default ->
                     ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                             .body(new ApiError("INTERNAL_ERROR", "Erreur interne"));

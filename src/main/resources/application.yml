@@ -19,6 +19,8 @@ spring:
   flyway:
     #load flyway data on startup (create tables and data)
     enabled: true
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
 
 server:
   port: ${SERVER_PORT:8080}
@@ -68,3 +70,11 @@ app:
   observability:
     # Custom for ObservabilityConfig
     recent-buffer-gauge-enabled: true
+  kafka:
+    topics:
+      customer-created: customer.created
+      customer-request: customer.request
+      customer-reply: customer.reply
+    consumer-group-id: spring-api-group
+    reply-group-id: spring-api-reply-group
+    enrich-timeout-seconds: 5

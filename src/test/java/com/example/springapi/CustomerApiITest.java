@@ -13,9 +13,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 
-@SpringBootTest
 @AutoConfigureMockMvc
-class CustomerApiTest {
+class CustomerApiTest extends AbstractIntegrationTest {
 
     @Autowired
     MockMvc mockMvc;
