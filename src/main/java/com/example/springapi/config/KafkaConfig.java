@@ -20,8 +20,8 @@ import org.springframework.kafka.core.KafkaAdmin.NewTopics;
 import org.springframework.kafka.listener.ConcurrentMessageListenerContainer;
 import org.springframework.kafka.listener.ContainerProperties;
 import org.springframework.kafka.requestreply.ReplyingKafkaTemplate;
-import org.springframework.kafka.support.serializer.JsonDeserializer;
-import org.springframework.kafka.support.serializer.JsonSerializer;
+import org.springframework.kafka.support.serializer.JacksonJsonDeserializer;
+import org.springframework.kafka.support.serializer.JacksonJsonSerializer;
 
 import java.util.Map;
 
@@ -53,8 +53,8 @@ public class KafkaConfig {
         return new DefaultKafkaProducerFactory<>(Map.of(
                 ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers,
                 ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class,
-                ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class,
-                JsonSerializer.ADD_TYPE_INFO_HEADERS, true
+                ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JacksonJsonSerializer.class,
+                JacksonJsonSerializer.ADD_TYPE_INFO_HEADERS, true
         ));
     }
 
@@ -80,10 +80,10 @@ public class KafkaConfig {
                 ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers,
                 ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest",
                 ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class,
-                ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class,
+                ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JacksonJsonDeserializer.class,
                 // resolve target type from the __TypeId__ header set by the producer
-                JsonDeserializer.USE_TYPE_INFO_HEADERS, "true",
-                JsonDeserializer.TRUSTED_PACKAGES, "com.example.springapi.event"
+                JacksonJsonDeserializer.USE_TYPE_INFO_HEADERS, "true",
+                JacksonJsonDeserializer.TRUSTED_PACKAGES, "com.example.springapi.event"
         ));
     }
 
@@ -94,7 +94,7 @@ public class KafkaConfig {
     ReplyingKafkaTemplate<String, CustomerEnrichRequest, CustomerEnrichReply> replyingKafkaTemplate(
             ProducerFactory<String, Object> pf,
             ConcurrentMessageListenerContainer<String, CustomerEnrichReply> replyListenerContainer) {
-        // Safe cast: the JsonSerializer handles any Object type at runtime
+        // Safe cast: the JacksonJsonSerializer handles any Object type at runtime
         return new ReplyingKafkaTemplate<>(
                 (ProducerFactory<String, CustomerEnrichRequest>) (ProducerFactory<?, ?>) pf,
                 replyListenerContainer
@@ -112,7 +112,7 @@ public class KafkaConfig {
 
     private DefaultKafkaConsumerFactory<String, CustomerEnrichReply> replyConsumerFactory() {
         // false = always deserialize to CustomerEnrichReply, ignore type headers
-        var deser = new JsonDeserializer<>(CustomerEnrichReply.class, false);
+        var deser = new JacksonJsonDeserializer<>(CustomerEnrichReply.class, false);
         deser.addTrustedPackages("com.example.springapi.event");
         return new DefaultKafkaConsumerFactory<>(Map.of(
                 ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers,
