@@ -91,6 +91,24 @@ logging:
     format:
       # json format
       # console: ecs
+resilience4j:
+  circuitbreaker:
+    instances:
+      jsonplaceholder:
+        # open after 50% failures on 10 calls
+        failure-rate-threshold: 50
+        minimum-number-of-calls: 10
+        # stay open for 10s then try again
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+        sliding-window-size: 10
+  retry:
+    instances:
+      jsonplaceholder:
+        max-attempts: 3
+        wait-duration: 200ms
+        retry-exceptions:
+          - org.springframework.web.client.ResourceAccessException
 
 app:
   observability:

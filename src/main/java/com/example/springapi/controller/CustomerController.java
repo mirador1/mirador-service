@@ -1,6 +1,5 @@
 package com.example.springapi.controller;
 
-import com.example.springapi.client.JsonPlaceholderClient;
 import com.example.springapi.client.TodoItem;
 import com.example.springapi.dto.CreateCustomerRequest;
 import com.example.springapi.dto.CustomerDto;
@@ -11,6 +10,7 @@ import com.example.springapi.service.AggregationService;
 import com.example.springapi.service.BioService;
 import com.example.springapi.service.CustomerService;
 import com.example.springapi.service.RecentCustomerBuffer;
+import com.example.springapi.service.TodoService;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -48,7 +48,7 @@ public class CustomerController {
     private final AggregationService aggregationService;
     private final ObservationRegistry observationRegistry;
     private final ReplyingKafkaTemplate<String, CustomerEnrichRequest, CustomerEnrichReply> replyingKafkaTemplate;
-    private final JsonPlaceholderClient jsonPlaceholderClient;
+    private final TodoService todoService;
     private final BioService bioService;
     private final String customerRequestTopic;
     private final long enrichTimeoutSeconds;
@@ -63,7 +63,7 @@ public class CustomerController {
                               AggregationService aggregationService,
                               ObservationRegistry observationRegistry,
                               ReplyingKafkaTemplate<String, CustomerEnrichRequest, CustomerEnrichReply> replyingKafkaTemplate,
-                              JsonPlaceholderClient jsonPlaceholderClient,
+                              TodoService todoService,
                               BioService bioService,
                               @Value("${app.kafka.topics.customer-request}") String customerRequestTopic,
                               @Value("${app.kafka.enrich-timeout-seconds}") long enrichTimeoutSeconds,
@@ -73,7 +73,7 @@ public class CustomerController {
         this.aggregationService = aggregationService;
         this.observationRegistry = observationRegistry;
         this.replyingKafkaTemplate = replyingKafkaTemplate;
-        this.jsonPlaceholderClient = jsonPlaceholderClient;
+        this.todoService = todoService;
         this.bioService = bioService;
         this.customerRequestTopic = customerRequestTopic;
         this.enrichTimeoutSeconds = enrichTimeoutSeconds;
@@ -138,12 +138,12 @@ public class CustomerController {
         return java.util.Map.of("bio", bioService.generateBio(customer));
     }
 
-    // HTTP Interface — declarative RestClient proxy (Spring 6)
+    // HTTP Interface + Resilience4j — circuit breaker + retry via TodoService
     @GetMapping("/{id}/todos")
     public List<TodoItem> getTodos(@PathVariable Long id) {
         service.findById(id)
                 .orElseThrow(() -> new NoSuchElementException("Customer not found: " + id));
-        return jsonPlaceholderClient.getTodos(id);
+        return todoService.getTodos(id);
     }
 
     // Pattern 2 — synchronous Kafka request-reply
