@@ -30,6 +30,10 @@ server:
     # do not send stack trace to client (security)
     include-stacktrace: never
 
+# Virtual Threads (Project Loom) — use one carrier thread per request instead of pool threads
+# Enabled globally: Tomcat request threads, @Async, Spring Kafka listeners all run on virtual threads
+spring.threads.virtual.enabled: true
+
 management:
   endpoints:
     web:
