@@ -30,6 +30,9 @@ server:
     # do not send stack trace to client (security)
     include-stacktrace: never
 
+# RFC 9457 Problem Details — standard error response format (type, title, status, detail, instance)
+spring.mvc.problemdetails.enabled: true
+
 management:
   endpoints:
     web:
