@@ -12,6 +12,8 @@ spring:
       ddl-auto: validate
     #avoid showing SQL (verbose)
     show-sql: false
+    # disable open-in-view (anti-pattern: keeps DB session open during view rendering)
+    open-in-view: false
     properties:
       hibernate:
         #when activated, format
@@ -55,6 +57,13 @@ management:
           endpoint: http://localhost:4318/v1/traces
           transport: http
 
+springdoc:
+  # explicit config silences the "enabled by default" startup warnings
+  swagger-ui:
+    enabled: true
+  api-docs:
+    enabled: true
+
 logging:
   level:
     root: INFO
@@ -62,6 +71,8 @@ logging:
     # reduce verbosity
     org.hibernate.SQL: WARN
     org.hibernate.orm.jdbc.bind: WARN
+    # suppress transient UNKNOWN_TOPIC_OR_PARTITION during startup (topics created by KafkaAdmin concurrently)
+    org.apache.kafka.clients.NetworkClient: ERROR
   structured:
     format:
       # json format
