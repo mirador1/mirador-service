@@ -1,5 +1,7 @@
 package com.example.springapi.controller;
 
+import com.example.springapi.client.JsonPlaceholderClient;
+import com.example.springapi.client.TodoItem;
 import com.example.springapi.dto.CreateCustomerRequest;
 import com.example.springapi.dto.CustomerDto;
 import com.example.springapi.dto.EnrichedCustomerDto;
@@ -42,6 +44,7 @@ public class CustomerController {
     private final AggregationService aggregationService;
     private final ObservationRegistry observationRegistry;
     private final ReplyingKafkaTemplate<String, CustomerEnrichRequest, CustomerEnrichReply> replyingKafkaTemplate;
+    private final JsonPlaceholderClient jsonPlaceholderClient;
     private final String customerRequestTopic;
     private final long enrichTimeoutSeconds;
     private final Counter customerCreatedCounter;
@@ -55,6 +58,7 @@ public class CustomerController {
                               AggregationService aggregationService,
                               ObservationRegistry observationRegistry,
                               ReplyingKafkaTemplate<String, CustomerEnrichRequest, CustomerEnrichReply> replyingKafkaTemplate,
+                              JsonPlaceholderClient jsonPlaceholderClient,
                               @Value("${app.kafka.topics.customer-request}") String customerRequestTopic,
                               @Value("${app.kafka.enrich-timeout-seconds}") long enrichTimeoutSeconds,
                               MeterRegistry meterRegistry) {
@@ -63,6 +67,7 @@ public class CustomerController {
         this.aggregationService = aggregationService;
         this.observationRegistry = observationRegistry;
         this.replyingKafkaTemplate = replyingKafkaTemplate;
+        this.jsonPlaceholderClient = jsonPlaceholderClient;
         this.customerRequestTopic = customerRequestTopic;
         this.enrichTimeoutSeconds = enrichTimeoutSeconds;
         this.customerCreatedCounter = Counter.builder("customer.created.count")
@@ -116,6 +121,14 @@ public class CustomerController {
         return Observation.createNotStarted("customer.aggregate", observationRegistry)
                 .lowCardinalityKeyValue("endpoint", "/customers/aggregate")
                 .observe(() -> customerAggregateTimer.record(aggregationService::aggregate));
+    }
+
+    // HTTP Interface — declarative RestClient proxy (Spring 6)
+    @GetMapping("/{id}/todos")
+    public List<TodoItem> getTodos(@PathVariable Long id) {
+        service.findById(id)
+                .orElseThrow(() -> new NoSuchElementException("Customer not found: " + id));
+        return jsonPlaceholderClient.getTodos(id);
     }
 
     // Pattern 2 — synchronous Kafka request-reply
