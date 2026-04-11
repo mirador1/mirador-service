@@ -16,8 +16,11 @@ RUN java -Djarmode=tools -jar app.jar extract --layers --launcher
 # Stage 3 — runtime (minimal image)
 FROM eclipse-temurin:25-jre
 WORKDIR /app
+# Principle of least privilege: run as dedicated non-root user
+RUN groupadd --system spring && useradd --system --gid spring spring
 COPY --from=layers /app/app/dependencies/ ./
 COPY --from=layers /app/app/spring-boot-loader/ ./
 COPY --from=layers /app/app/snapshot-dependencies/ ./
 COPY --from=layers /app/app/application/ ./
+USER spring
 ENTRYPOINT ["java", "org.springframework.boot.loader.launch.JarLauncher"]
