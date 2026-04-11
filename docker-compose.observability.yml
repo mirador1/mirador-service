@@ -1,53 +1,110 @@
+# =============================================================================
+# docker-compose.observability.yml — Observability stack
+#
+# Run with: docker compose -f docker-compose.observability.yml up -d
+#
+# Two parallel observability paths are provided:
+#
+# Path 1 — LGTM all-in-one (Grafana + Loki + Tempo + Mimir)    [port 3001]
+#   grafana/otel-lgtm bundles all LGTM components in a single container.
+#   The Spring Boot app sends traces and logs via OpenTelemetry OTLP (port 4318).
+#   Grafana is pre-configured with Loki (logs) and Tempo (traces) datasources.
+#   Access: http://localhost:3001
+#
+# Path 2 — Standalone Prometheus + Grafana                      [port 3000 + 9090]
+#   Prometheus scrapes /actuator/prometheus every 15s.
+#   Grafana is provisioned with dashboards from ops/observability/grafana/.
+#   Access Grafana: http://localhost:3000
+#   Access Prometheus: http://localhost:9090
+#
+# The two paths can run concurrently. LGTM is the recommended path for full
+# distributed tracing (Tempo) and structured log correlation (Loki + traceID).
+# =============================================================================
+
 services:
 
+  # ---------------------------------------------------------------------------
+  # LGTM — Loki + Grafana + Tempo + Mimir (Prometheus-compatible)
+  #
+  # This all-in-one container from Grafana Labs packages the entire
+  # observability backend for development/demo use.
+  #
+  # Ports:
+  #   3001 (host) → 3000 (container): Grafana UI
+  #   4317: OTLP gRPC endpoint for traces and logs
+  #   4318: OTLP HTTP endpoint for traces and logs (used by Spring Boot)
+  #
+  # The app sends data via: management.opentelemetry.*.export.otlp.endpoint
+  # (set to http://localhost:4318 by default in application.yml)
+  # ---------------------------------------------------------------------------
   lgtm:
     image: grafana/otel-lgtm:latest
     container_name: springapi-lgtm
     ports:
-      - "3001:3000"
-      - "4317:4317"
-      - "4318:4318"
+      - "3001:3000"    # Grafana UI (separate port from standalone Grafana on 3000)
+      - "4317:4317"    # OTLP gRPC
+      - "4318:4318"    # OTLP HTTP — Spring Boot sends traces and logs here
     depends_on:
       - prometheus
     volumes:
-      # config
-      # Prometheus deja defini
-      #- ./ops/observability/grafana/provisioning/datasources/datasource-demo.yaml:/otel-lgtm/grafana/conf/provisioning/datasources/datasource-demo.yaml
+      # Pre-provision a Grafana dashboard into the LGTM Grafana instance
       - ./ops/observability/grafana/dashboards-lgtm/dashboard-demo-lgtm.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/dashboard-demo-lgtm.yaml
       - ./ops/observability/grafana/dashboards-lgtm/demo.json:/otel-lgtm/demo.json
     environment:
+      # Forward all application logs received via OTLP to Loki
       ENABLE_LOGS_ALL: "true"
 
+  # ---------------------------------------------------------------------------
+  # Prometheus — time-series metrics store
+  #
+  # Scrapes /actuator/prometheus on the Spring Boot application every 15s.
+  # Configured by ops/observability/prometheus.yml.
+  #
+  # extra_hosts: host.docker.internal → host-gateway
+  #   Allows Prometheus (running in Docker) to reach the Spring Boot application
+  #   running on the host machine (not in Docker) via a stable hostname.
+  # ---------------------------------------------------------------------------
   prometheus:
     image: prom/prometheus:latest
     container_name: springapi-prometheus
     command:
-      # standard path
       - --config.file=/etc/prometheus/prometheus.yml
     ports:
-      - "9090:9090"
+      - "9090:9090"    # Prometheus UI and API — http://localhost:9090
     extra_hosts:
-      # reference the host ip
+      # Make host machine accessible as "host.docker.internal" from within the container
       - "host.docker.internal:host-gateway"
     volumes:
-      # config
+      # Mount the scrape config as read-only — Prometheus does not need to write it
       - ./ops/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
 
+  # ---------------------------------------------------------------------------
+  # Grafana — visualization layer for Prometheus metrics
+  #
+  # Dashboards and datasources are provisioned at startup from the ops/ directory,
+  # so no manual setup is needed after first launch.
+  #   - Datasources: ops/observability/grafana/provisioning/datasources/
+  #   - Dashboards:  ops/observability/grafana/dashboards/
+  # Default credentials: admin/admin (Grafana default)
+  # ---------------------------------------------------------------------------
   grafana:
     image: grafana/grafana:latest
     container_name: springapi-grafana
     ports:
-      - "3000:3000"
+      - "3000:3000"    # Grafana UI — http://localhost:3000
     depends_on:
       - prometheus
     volumes:
-      # config
+      # Auto-provision datasources (Prometheus) and dashboards at startup
       - ./ops/observability/grafana/provisioning:/etc/grafana/provisioning
       - ./ops/observability/grafana/dashboards:/var/lib/grafana/dashboards
 
-#  jaeger:
-#    image: cr.jaegertracing.io/jaegertracing/jaeger:2.17.0
-#    ports:
-#      - "16686:16686"
-#      - "4317:4317"
-#      - "4318:4318"
+  # Jaeger (commented out — replaced by Tempo inside LGTM)
+  # Kept here for reference in case a standalone Jaeger instance is needed.
+  # Jaeger supports OTLP natively since v1.35.
+  #  jaeger:
+  #    image: cr.jaegertracing.io/jaegertracing/jaeger:2.17.0
+  #    ports:
+  #      - "16686:16686"  # Jaeger UI
+  #      - "4317:4317"    # OTLP gRPC (conflicts with LGTM if both run simultaneously)
+  #      - "4318:4318"    # OTLP HTTP (conflicts with LGTM if both run simultaneously)

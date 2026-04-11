@@ -1,141 +1,245 @@
+# =============================================================================
+# Spring Boot 4 — Observable Service — Main Configuration
+#
+# All sensitive values are read from environment variables with safe dev defaults.
+# In production, set: DB_URL, DB_USERNAME, DB_PASSWORD, KAFKA_BOOTSTRAP_SERVERS,
+# JWT_SECRET, OTEL_EXPORTER_OTLP_ENDPOINT, OLLAMA_BASE_URL, OLLAMA_MODEL.
+# =============================================================================
+
 spring:
   application:
+    # Service name propagated to OpenTelemetry traces and Grafana dashboards
     name: spring-4-demo
+
+  # ---------------------------------------------------------------------------
+  # Database — PostgreSQL via Spring Data JPA + Flyway
+  # ---------------------------------------------------------------------------
   datasource:
-    #demo by default
+    # Env-var override allows Docker Compose / Kubernetes to inject the real URL
     url: ${DB_URL:jdbc:postgresql://localhost:5432/demo}
     username: ${DB_USERNAME:demo}
     password: ${DB_PASSWORD:demo}
+
   jpa:
     hibernate:
-      #validate on startup
+      # "validate" — Hibernate checks that the DB schema matches entity mappings
+      # but does NOT modify it. Schema is managed exclusively by Flyway migrations.
+      # Never use "create-drop" in production: it destroys data on restart.
       ddl-auto: validate
-    #avoid showing SQL (verbose)
+    # Avoid the N+1 query log noise in development
     show-sql: false
-    # disable open-in-view (anti-pattern: keeps DB session open during view rendering)
+    # [Spring Boot] open-in-view=false prevents the anti-pattern of holding a DB
+    # connection open throughout the entire HTTP request (including view rendering).
+    # Keeping it open risks connection pool exhaustion under load.
     open-in-view: false
     properties:
       hibernate:
-        #when activated, format
         format_sql: false
+
+  # ---------------------------------------------------------------------------
+  # Flyway — database schema migration
+  # Runs on startup; applies pending V__*.sql scripts in src/main/resources/db/migration/
+  # ---------------------------------------------------------------------------
   flyway:
-    #load flyway data on startup (create tables and data)
     enabled: true
+
+  # ---------------------------------------------------------------------------
+  # Kafka — messaging backbone
+  # Used for two patterns:
+  #   - Pattern 1: fire-and-forget async events (customer.created)
+  #   - Pattern 2: synchronous request-reply (customer.request → customer.reply)
+  # ---------------------------------------------------------------------------
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+
+  # ---------------------------------------------------------------------------
+  # Spring AI — Ollama (local LLM)                              [Spring AI 1.0]
+  # Ollama must be running locally (or via Docker) before calling /customers/{id}/bio.
+  # Model is downloaded automatically by the docker-compose entrypoint.
+  # ---------------------------------------------------------------------------
   ai:
     ollama:
       base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
       chat:
         model: ${OLLAMA_MODEL:llama3.2}
         options:
+          # Higher temperature = more creative/varied responses (0.0 = deterministic)
           temperature: 0.7
 
+# =============================================================================
+# Embedded Server
+# =============================================================================
 server:
   port: ${SERVER_PORT:8080}
   error:
-    # do not send stack trace to client (security)
+    # Never send the stack trace to the client — it reveals internal structure
+    # and is a security risk (OWASP A05: Security Misconfiguration)
     include-stacktrace: never
 
-# Virtual Threads (Project Loom) — use one carrier thread per request instead of pool threads
-# Enabled globally: Tomcat request threads, @Async, Spring Kafka listeners all run on virtual threads
+# =============================================================================
+# Virtual Threads (Project Loom)                                   [Java 21+]
+# Replaces platform threads for Tomcat request processing, @Async, and Kafka
+# listeners. Each request runs on a cheap virtual thread (backed by a small
+# pool of carrier threads), dramatically improving concurrency under I/O load.
+# [Spring Boot 3.2+] spring.threads.virtual.enabled
+# =============================================================================
 spring.threads.virtual.enabled: true
 
-# RFC 9457 Problem Details — standard error response format (type, title, status, detail, instance)
+# =============================================================================
+# RFC 9457 Problem Details                                    [Spring Boot 3+]
+# Enables the standard error format for all Spring MVC exceptions:
+#   { "type": "...", "title": "...", "status": 400, "detail": "..." }
+# Custom exception mapping is in ApiExceptionHandler.
+# =============================================================================
 spring.mvc.problemdetails.enabled: true
 
+# =============================================================================
+# Actuator — operational endpoints
+# =============================================================================
 management:
   endpoints:
     web:
       exposure:
-        # exposes some management endpoints (basic)
+        # Expose: health (probes), prometheus (metrics scraping), metrics (raw),
+        #         info (build info), env (config), configprops (bean props)
+        # Do NOT expose: shutdown, threaddump, heapdump in production without auth
         include: health,info,prometheus,metrics,env,configprops
+
   endpoint:
     health:
-      # include details to health such as database
+      # Show DB details, custom indicators, etc. in the health response.
+      # In production, consider show-details: when-authorized to avoid data leakage.
       show-details: always
       probes:
-        # activate liveness and readiness proves (used by kubernetes)
+        # Activates /actuator/health/liveness and /actuator/health/readiness
+        # Used as Kubernetes liveness/readiness probe endpoints
         enabled: true
       group:
-        # ready if app and db connexion is ok and also custom DatabaseReachabilityHealthIndicator
+        # readiness = application is ready to serve traffic
+        # Includes: Spring readiness state + JDBC connection pool + custom DB check
+        # If any of these are DOWN, Kubernetes removes the pod from load-balancer rotation
         readiness:
           include: readinessState,db,dbReachability
+
+  # ---------------------------------------------------------------------------
+  # OpenTelemetry — distributed tracing + log export
+  # Traces are sent to Tempo (via LGTM stack) and logs to Loki.
+  # OTLP endpoint defaults to local LGTM container (docker-compose.observability.yml).
+  # ---------------------------------------------------------------------------
   tracing:
+    # 100% sampling — capture every trace. In production, use 0.1 (10%) to reduce overhead.
     sampling:
       probability: 1.0
+
   opentelemetry:
     resource:
       attributes:
+        # Identifies this service in Tempo/Grafana dashboards
         service.name: ${spring.application.name}
     tracing:
       export:
         otlp:
           endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318}/v1/traces
-          transport: http
+          transport: http   # HTTP/protobuf (use grpc for lower overhead in production)
     logging:
       export:
         otlp:
+          # Exports structured logs directly to Loki via the OpenTelemetry collector
           endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318}/v1/logs
           transport: http
 
+# =============================================================================
+# SpringDoc / OpenAPI / Swagger UI
+# API documentation available at: http://localhost:8080/swagger-ui.html
+# OpenAPI spec at: http://localhost:8080/v3/api-docs
+# =============================================================================
 springdoc:
-  # explicit config silences the "enabled by default" startup warnings
   swagger-ui:
     enabled: true
   api-docs:
     enabled: true
 
+# =============================================================================
+# Logging
+# =============================================================================
 logging:
   level:
     root: INFO
     org.springframework.web: INFO
-    # reduce verbosity
+    # Hibernate SQL logging is noisy — keep at WARN unless debugging queries
     org.hibernate.SQL: WARN
     org.hibernate.orm.jdbc.bind: WARN
-    # suppress transient UNKNOWN_TOPIC_OR_PARTITION during startup (topics created by KafkaAdmin concurrently)
+    # Kafka NetworkClient logs UNKNOWN_TOPIC_OR_PARTITION during startup while
+    # KafkaAdmin is creating topics — suppress to avoid misleading ERROR lines
     org.apache.kafka.clients.NetworkClient: ERROR
   structured:
     format:
-      # json format
+      # Uncomment to emit logs as ECS JSON (Elastic Common Schema) — ideal for Loki/Kibana
       # console: ecs
+
+# =============================================================================
+# Resilience4j — circuit breaker + retry for external HTTP calls
+# Applied to TodoService which calls JSONPlaceholder API.
+# Metrics are automatically exported to Micrometer.
+# =============================================================================
 resilience4j:
   circuitbreaker:
     instances:
       jsonplaceholder:
-        # open after 50% failures on 10 calls
+        # Open circuit after 50% failure rate on a sliding window of 10 calls
         failure-rate-threshold: 50
         minimum-number-of-calls: 10
-        # stay open for 10s then try again
+        # Stay OPEN for 10s, then transition to HALF_OPEN to test recovery
         wait-duration-in-open-state: 10s
+        # Allow 3 test calls in HALF_OPEN state before deciding to close or re-open
         permitted-number-of-calls-in-half-open-state: 3
         sliding-window-size: 10
   retry:
     instances:
       jsonplaceholder:
+        # Retry up to 3 times with 200ms between attempts
         max-attempts: 3
         wait-duration: 200ms
+        # Only retry on connection errors — not on 4xx responses (those are client errors)
         retry-exceptions:
           - org.springframework.web.client.ResourceAccessException
 
+# =============================================================================
+# JWT Authentication
+# Secret must be at least 32 characters for HMAC-SHA256.
+# In production, always set JWT_SECRET from a secrets manager (Vault, AWS SM, etc.)
+# The dev default is deliberately weak and should NEVER be used in production.
+# =============================================================================
 jwt:
   secret: ${JWT_SECRET:dev-secret-key-minimum-32-characters}
 
+# =============================================================================
+# Application-specific configuration
+# =============================================================================
 app:
+  # ---------------------------------------------------------------------------
+  # Rate limiting — Bucket4j token-bucket algorithm, per client IP
+  # Each IP gets its own bucket. When empty, requests receive HTTP 429 + Retry-After.
+  # ---------------------------------------------------------------------------
   rate-limit:
-    # Token-bucket rate limiter (Bucket4j) — per IP
-    # 100 requests per 60-second window by default
-    capacity: 100
-    refill-tokens: 100
-    refill-seconds: 60
+    capacity: 100         # max tokens in the bucket (burst size)
+    refill-tokens: 100    # tokens added per refill cycle
+    refill-seconds: 60    # refill cycle duration → 100 req/min per IP
+
   observability:
-    # Custom for ObservabilityConfig
+    # Controls the Gauge metric for the RecentCustomerBuffer size (ObservabilityConfig)
     recent-buffer-gauge-enabled: true
+
+  # ---------------------------------------------------------------------------
+  # Kafka topic names and consumer groups
+  # Centralised here so all topic references go through @Value injection — no
+  # hardcoded strings scattered across producers and consumers.
+  # ---------------------------------------------------------------------------
   kafka:
     topics:
-      customer-created: customer.created
-      customer-request: customer.request
-      customer-reply: customer.reply
+      customer-created: customer.created  # Pattern 1: async event
+      customer-request: customer.request  # Pattern 2: sync request
+      customer-reply: customer.reply      # Pattern 2: sync reply
     consumer-group-id: spring-api-group
     reply-group-id: spring-api-reply-group
-    enrich-timeout-seconds: 5
+    enrich-timeout-seconds: 5  # seconds to wait for Kafka reply before HTTP 504
