@@ -20,6 +20,7 @@
         <java.version>25</java.version>
         <lombok.version>1.18.44</lombok.version>
         <archunit.version>1.4.0</archunit.version>
+        <resilience4j.version>2.3.0</resilience4j.version>
         <spring-ai.version>1.0.0-M6</spring-ai.version>
         <datasource-micrometer.version>2.2.1</datasource-micrometer.version>
         <springdoc.version>3.0.2</springdoc.version>
@@ -93,6 +94,13 @@
         <dependency>
             <groupId>org.springframework.kafka</groupId>
             <artifactId>spring-kafka</artifactId>
+        </dependency>
+
+        <!-- Resilience4j — circuit breaker + retry -->
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-spring-boot3</artifactId>
+            <version>${resilience4j.version}</version>
         </dependency>
 
         <!-- Spring AI — Ollama (local LLM) -->
