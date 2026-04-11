@@ -18,6 +18,7 @@ import io.micrometer.core.instrument.Timer;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
 import jakarta.validation.Valid;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -199,6 +200,9 @@ public class CustomerController {
      * Kafka (Pattern 1 — fire-and-forget) and adds the customer to the in-memory buffer.
      * Both the Micrometer counter and timer are incremented here.
      */
+    // [Spring Security] — method-level check complements the URL rule in SecurityConfig.
+    // When a Keycloak token carries ROLE_ADMIN in realm_access.roles, this passes.
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping
     public CustomerDto create(@Valid @RequestBody CreateCustomerRequest request) {
         return Observation.createNotStarted("customer.create", observationRegistry)
