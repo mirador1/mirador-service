@@ -22,7 +22,7 @@ public class AggregationService {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Interruption", e);
         } catch (ExecutionException e) {
-            throw new IllegalStateException("Erreur d'agrégation", e);
+            throw new IllegalStateException("Aggregation failed", e);
         }
     }
 

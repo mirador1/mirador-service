@@ -21,7 +21,7 @@ public class ApiExceptionHandler {
                 var pd = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
                 pd.setType(URI.create("urn:problem:validation-error"));
                 pd.setTitle("Validation Error");
-                pd.setDetail("Requête invalide");
+                pd.setDetail("Invalid request");
                 yield pd;
             }
             case ConstraintViolationException e -> {
@@ -56,7 +56,7 @@ public class ApiExceptionHandler {
                 var pd = ProblemDetail.forStatus(HttpStatus.INTERNAL_SERVER_ERROR);
                 pd.setType(URI.create("urn:problem:internal-error"));
                 pd.setTitle("Internal Server Error");
-                pd.setDetail("Erreur interne");
+                pd.setDetail("An unexpected error occurred");
                 yield pd;
             }
         };
