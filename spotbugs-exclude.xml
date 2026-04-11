@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SpotBugs exclusion filter — intentional suppressions only.
+
+  Rule of thumb: fix real bugs, document why false positives are excluded.
+  Do NOT bulk-exclude entire categories.
+-->
+<FindBugsFilter>
+
+    <!--
+      EI_EXPOSE_REP2 — "may expose internal representation by storing a mutable object"
+
+      SpotBugs flags every Spring bean injected via constructor as "dangerous" because
+      an external caller could theoretically modify the stored reference.
+      In a Spring IoC context this is a false positive:
+        - Beans are managed singletons; no external code holds a reference after injection.
+        - Making defensive copies (new ObservationRegistry(...)) would break the framework.
+      Excluded globally for the project; revisit if non-Spring code is added.
+    -->
+    <Match>
+        <Bug code="EI2"/>
+    </Match>
+
+    <!--
+      CT_CONSTRUCTOR_THROW — "constructor throws exception, object may be partially initialized"
+
+      JwtTokenProvider's constructor calls Keys.hmacShaKeyFor() which throws if the secret
+      is too short. Spring treats this as a startup failure (fail-fast), so the partially
+      constructed object is never accessible to external code. The "Finalizer attack" vector
+      requires a subclass with a finalizer — impossible here since the class is a @Component.
+    -->
+    <Match>
+        <Class name="com.example.springapi.security.JwtTokenProvider"/>
+        <Bug pattern="CT_CONSTRUCTOR_THROW"/>
+    </Match>
+
+</FindBugsFilter>

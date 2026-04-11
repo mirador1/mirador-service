@@ -1,50 +1,201 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Pipeline overview
+#
+#   lint ──────────────────────────────────── fast checks, no compilation
+#     └─ hadolint         Dockerfile linting
+#
+#   test ─────────────────────────────────── parallel, no Docker needed
+#     ├─ unit-test        surefire (*ITest excluded) + JaCoCo unit data
+#     ├─ sast             GitLab SAST (semgrep) — source-code security scan
+#     └─ dependency_scanning  GitLab dep-scan — CVE check on Maven deps
+#
+#   integration ──────────────────────────── Docker required (Testcontainers)
+#     └─ integration-test failsafe (*ITest) + SpotBugs + JaCoCo merged coverage
+#
+#   package ──────────────────────────────── only when all gates pass
+#     ├─ build-jar        fat JAR artifact
+#     └─ docker-build     image → GitLab Container Registry (main branch + tags)
+#
+# ──────────────────────────────────────────────────────────────────────────────
+
 workflow:
   rules:
+    # Run on MR events and on the default branch; skip everything else.
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - when: never
 
 stages:
-  - verify
-  - package
+  - lint          # Static file checks — instant feedback before any compilation
+  - test          # Unit tests + security scans — fast, no Docker
+  - integration   # Testcontainers ITests + SpotBugs + coverage gate — needs Docker
+  - package       # Produce deployable artifacts — JAR + Docker image
+
+# ── shared defaults ────────────────────────────────────────────────────────────
 
 default:
   image: maven:3.9.14-eclipse-temurin-25-noble
-  interruptible: true
+  interruptible: true   # MR pipelines can be cancelled when a new commit is pushed
 
 variables:
+  # Keep the local Maven repo inside the project dir so it is cached across jobs
   MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
   MAVEN_CLI_OPTS: "--batch-mode --errors --fail-at-end --show-version --no-transfer-progress"
+  # Docker-in-dind: plain TCP, no TLS (internal GitLab runner network)
   DOCKER_HOST: "tcp://docker:2375"
   DOCKER_TLS_CERTDIR: ""
 
 cache:
+  # One cache bucket per branch — avoids cross-branch dependency pollution
   key: "$CI_COMMIT_REF_SLUG"
   paths:
     - .m2/repository
 
-verify:
-  stage: verify
-  services:
-    - name: docker:28-dind
-      alias: docker
+# ── stage: lint ───────────────────────────────────────────────────────────────
+
+# Lint the Dockerfile with Hadolint.
+# Catches common Dockerfile mistakes:
+#   DL3002 — last USER should not be root (security)
+#   DL3007 — do not use latest tag (reproducibility)
+#   DL3008 — pin apt package versions (reproducibility)
+#   SC2xxx — shell script issues inside RUN instructions (via shellcheck)
+# Uses a standalone image — no JDK or Maven needed, runs in a few seconds.
+hadolint:
+  stage: lint
+  # latest-alpine (not latest) — the default image is distroless (no sh),
+  # which GitLab CI needs to wrap the script. Alpine variant includes a shell.
+  image: hadolint/hadolint:latest-alpine
   script:
-    - mvn $MAVEN_CLI_OPTS verify
+    - hadolint Dockerfile
+
+# ── stage: test ───────────────────────────────────────────────────────────────
+
+# Unit tests only — *ITest classes excluded (they need Docker / Testcontainers).
+# JaCoCo is instrumented here via prepare-agent; the resulting jacoco.exec is
+# passed as an artifact to the integration stage so both exec files can be merged
+# for a combined unit + integration coverage report.
+unit-test:
+  stage: test
+  script:
+    - mvn $MAVEN_CLI_OPTS test
   artifacts:
     when: always
     reports:
-      junit:
-        - target/surefire-reports/*.xml
-        - target/failsafe-reports/*.xml
+      # Populates the "Tests" tab in the MR and pipeline view
+      junit: target/surefire-reports/*.xml
+    paths:
+      # Forwarded to the integration stage for merged JaCoCo coverage
+      - target/jacoco.exec
+      # Unit-test HTML coverage report (browsable in job artifacts)
+      - target/site/jacoco/
     expire_in: 1 week
 
-package:
+# GitLab SAST — static application security testing.
+# Runs semgrep rules against the source code to detect: injection flaws,
+# insecure deserialization, weak crypto, path traversal, XSS patterns, etc.
+# Results appear in Security > Vulnerability Report (blocked by MR approval rules
+# if configured). Does NOT require compiled bytecode — source-only analysis.
+# Defined by the included template; we just override the stage here.
+sast:
+  stage: test
+
+# GitLab Dependency Scanning.
+# Reads pom.xml and checks all direct + transitive Maven dependencies against
+# OSV, NVD, and GitHub Advisory databases for known CVEs.
+# Results appear in Security > Dependency List.
+# Defined by the included template; stage override keeps it parallel with unit-test.
+dependency_scanning:
+  stage: test
+
+# Pull in the GitLab-managed SAST and Dependency Scanning job definitions.
+# Placed after the overrides so our `stage:` settings take effect.
+include:
+  # Semgrep-based SAST — works on all GitLab tiers
+  - template: Security/SAST.gitlab-ci.yml
+  # Maven/Gemnasium dependency CVE scan
+  - template: Security/Dependency-Scanning.gitlab-ci.yml
+
+# ── stage: integration ────────────────────────────────────────────────────────
+
+# Integration tests (*ITest) via maven-failsafe, with Docker-in-dind for Testcontainers.
+# Testcontainers spins up real PostgreSQL 17 and Kafka containers during the test run.
+#
+# At the verify phase Maven also runs:
+#   • SpotBugs:check   — static bytecode analysis (fails on Medium+ findings)
+#   • JaCoCo:merge     — merges jacoco.exec (unit, from artifact) + jacoco-it.exec (IT)
+#   • JaCoCo:check     — fails if merged instruction coverage < 60 %
+#
+# The unit-test artifact (target/jacoco.exec) is pulled automatically via `needs`.
+integration-test:
+  stage: integration
+  needs:
+    - job: unit-test
+      artifacts: true   # Downloads target/jacoco.exec into this job's workspace
+  services:
+    # Docker daemon needed for Testcontainers — starts PostgreSQL + Kafka containers
+    - name: docker:28-dind
+      alias: docker
+  script:
+    # -Dsurefire.skip=true: unit tests already validated in the previous stage,
+    # no need to repeat them. Failsafe, SpotBugs and JaCoCo still run at verify.
+    - mvn $MAVEN_CLI_OPTS verify -Dsurefire.skip=true
+  artifacts:
+    when: always
+    reports:
+      # Populates the "Tests" tab with integration test results
+      junit: target/failsafe-reports/*.xml
+    paths:
+      - target/site/jacoco-it/     # Integration test HTML coverage report
+      - target/spotbugsXml.xml     # SpotBugs XML — parseable by GitLab Code Quality
+    expire_in: 1 week
+
+# ── stage: package ────────────────────────────────────────────────────────────
+
+# Build the executable Spring Boot fat JAR.
+# Tests are skipped here — they already passed in the test + integration stages.
+# The JAR is stored as a pipeline artifact for deployment or manual download.
+build-jar:
   stage: package
   needs:
-    - job: verify
+    - job: unit-test
+    - job: integration-test
   script:
     - mvn $MAVEN_CLI_OPTS -DskipTests package
   artifacts:
     paths:
       - target/*.jar
     expire_in: 1 week
+
+# Build the Docker image and push it to the GitLab Container Registry.
+#
+# Two tags are pushed:
+#   $CI_COMMIT_SHA      — immutable pointer to this exact commit (used for deploys)
+#   $CI_COMMIT_REF_SLUG — moving pointer (e.g. "main") for convenience
+#
+# OCI standard labels (revision + created) are injected at build time.
+#
+# Only runs on the default branch and on tags — skip on every MR to
+# avoid flooding the registry with images that are never deployed.
+docker-build:
+  stage: package
+  image: docker:28
+  needs:
+    - job: unit-test
+    - job: integration-test
+  services:
+    - name: docker:28-dind
+      alias: docker
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+  script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+    - |
+      docker build \
+        --label "org.opencontainers.image.revision=$CI_COMMIT_SHA" \
+        --label "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA" \
+        -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG" \
+        .
+    - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
+    - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG"
