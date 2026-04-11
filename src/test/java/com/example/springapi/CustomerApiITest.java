@@ -10,6 +10,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -32,6 +33,7 @@ class CustomerApiITest extends AbstractIntegrationTest {
     @Test
     void shouldCreateAndListCustomers() throws Exception {
         mockMvc.perform(post("/customers")
+                        .with(user("admin").roles("USER"))
                         .contentType(APPLICATION_JSON)
                         .content("""
                                 {
@@ -43,7 +45,7 @@ class CustomerApiITest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.name").value("Benoit"))
                 .andExpect(jsonPath("$.email").value("benoit@example.com"));
 
-        mockMvc.perform(get("/customers"))
+        mockMvc.perform(get("/customers").with(user("admin").roles("USER")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content", hasSize(1)))
                 .andExpect(jsonPath("$.content[0].name").value("Benoit"))
@@ -52,7 +54,7 @@ class CustomerApiITest extends AbstractIntegrationTest {
 
     @Test
     void shouldReturnRequestIdHeader() throws Exception {
-        mockMvc.perform(get("/customers"))
+        mockMvc.perform(get("/customers").with(user("admin").roles("USER")))
                 .andExpect(status().isOk())
                 .andExpect(header().exists("X-Request-Id"));
     }
@@ -60,9 +62,9 @@ class CustomerApiITest extends AbstractIntegrationTest {
     @Test
     void shouldPropagateIncomingRequestId() throws Exception {
         mockMvc.perform(get("/customers")
+                        .with(user("admin").roles("USER"))
                         .header("X-Request-Id", "req-123"))
                 .andExpect(status().isOk())
                 .andExpect(header().string("X-Request-Id", "req-123"));
     }
-
 }
