@@ -25,6 +25,37 @@ import org.springframework.kafka.support.serializer.JacksonJsonSerializer;
 
 import java.util.Map;
 
+/**
+ * Kafka infrastructure configuration: topics, producer, consumers, and request-reply template.
+ *
+ * <h3>Why explicit Kafka config?</h3>
+ * <p>Spring Boot auto-configures a basic {@code KafkaTemplate} and {@code KafkaListenerContainerFactory},
+ * but this project uses two distinct Kafka patterns that require custom beans:
+ * <ul>
+ *   <li><b>Pattern 1 (fire-and-forget)</b> — uses the shared {@code KafkaTemplate<String, Object>}
+ *       with Jackson JSON serialization and automatic {@code __TypeId__} type headers.</li>
+ *   <li><b>Pattern 2 (request-reply)</b> — requires a dedicated {@code ReplyingKafkaTemplate}
+ *       and a {@code ConcurrentMessageListenerContainer} listening on the reply topic.
+ *       The template adds correlation headers and blocks until the reply arrives.</li>
+ * </ul>
+ *
+ * <h3>Serialization</h3>
+ * <p>All messages are serialized with {@link org.springframework.kafka.support.serializer.JacksonJsonSerializer}
+ * and {@code ADD_TYPE_INFO_HEADERS=true}, which writes a {@code __TypeId__} header containing
+ * the Java class name. On the consumer side, {@code USE_TYPE_INFO_HEADERS=true} uses this
+ * header to deserialize to the correct Java type without needing a static type binding.
+ *
+ * <p>The reply consumer uses a type-fixed deserializer ({@code false} argument means "ignore
+ * type headers, always deserialize to the given class") because the reply topic only carries
+ * {@link com.example.springapi.event.CustomerEnrichReply} messages.
+ *
+ * <h3>Topic pre-creation</h3>
+ * <p>Topics are declared as {@code @Bean NewTopics} so that Spring Kafka creates them at startup
+ * if they don't exist. This avoids race conditions where a producer tries to send to a
+ * topic that hasn't been created yet by the broker.
+ *
+ * <p>{@code @EnableKafka} activates the {@code @KafkaListener} annotation processing.
+ */
 @Configuration
 @EnableKafka
 public class KafkaConfig {

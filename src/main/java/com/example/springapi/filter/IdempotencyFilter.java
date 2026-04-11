@@ -15,15 +15,38 @@ import java.io.IOException;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Idempotency filter for POST /customers.
+ * Servlet filter that makes {@code POST /customers} idempotent.
  *
- * If the request carries an Idempotency-Key header and that key was seen
- * before, the original response body is replayed (HTTP 200) without
- * re-executing the handler. Keys are stored in a bounded in-memory map
- * (eviction by insertion order, max 10 000 entries).
+ * <h3>Problem</h3>
+ * <p>HTTP POST is not idempotent by default. If a client retries a request after a network
+ * timeout (without knowing whether the server received the first attempt), a customer may be
+ * created twice. This filter prevents that by caching responses keyed on the caller-supplied
+ * {@code Idempotency-Key} header.
  *
- * Clients should use a UUID v4 as idempotency key:
+ * <h3>Mechanism</h3>
+ * <ol>
+ *   <li>On the first request with a given key: the filter lets the request proceed normally
+ *       via {@code chain.doFilter}, wraps the response with a {@link ContentCachingResponseWrapper}
+ *       to capture the body, then stores the body in the in-memory cache.</li>
+ *   <li>On subsequent requests with the same key: the cached body is written directly to the
+ *       response (HTTP 200) without invoking the controller — the customer is NOT created again.</li>
+ *   <li>If no {@code Idempotency-Key} header is present, the filter is bypassed entirely.</li>
+ * </ol>
+ *
+ * <h3>Scope</h3>
+ * <p>Only applies to {@code POST} requests to paths starting with {@code /customers}.
+ * All other requests are skipped via {@link #shouldNotFilter}.
+ *
+ * <h3>Cache eviction</h3>
+ * <p>The cache is a bounded {@link ConcurrentHashMap} capped at 10 000 entries. When full,
+ * the entire map is cleared (a blunt but simple eviction). For production use, replace with
+ * a Caffeine cache with TTL-based expiry to avoid replaying very old responses.
+ *
+ * <h3>Client usage</h3>
+ * <pre>
  *   Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000
+ * </pre>
+ * Clients should use a UUID v4. The same key can safely be retried any number of times.
  */
 @Component
 public class IdempotencyFilter extends OncePerRequestFilter {
