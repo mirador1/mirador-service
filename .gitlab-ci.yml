@@ -62,7 +62,9 @@ cache:
 # Uses a standalone image — no JDK or Maven needed, runs in a few seconds.
 hadolint:
   stage: lint
-  image: hadolint/hadolint:latest
+  # latest-alpine (not latest) — the default image is distroless (no sh),
+  # which GitLab CI needs to wrap the script. Alpine variant includes a shell.
+  image: hadolint/hadolint:latest-alpine
   script:
     - hadolint Dockerfile
 
