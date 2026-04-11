@@ -94,6 +94,20 @@ spring.threads.virtual.enabled: true
 spring.mvc.problemdetails.enabled: true
 
 # =============================================================================
+# API Versioning                                          [Spring 7 / Spring Boot 4]
+# Spring Framework 7 introduces native API versioning support via
+# WebMvcConfigurer.configureApiVersioning(). The strategy (header, path, query
+# param, or media-type) and default version are configured in ApiVersionConfig.
+#
+# This application uses X-API-Version header resolution with default 1.0:
+#   GET /customers                        → v1 (CustomerDto: id, name, email)
+#   GET /customers + X-API-Version: 2.0  → v2 (CustomerDtoV2: id, name, email, createdAt)
+#
+# No application.yml property is needed — the feature is enabled by implementing
+# WebMvcConfigurer#configureApiVersioning() in ApiVersionConfig.java.
+# =============================================================================
+
+# =============================================================================
 # Actuator — operational endpoints
 # =============================================================================
 management:
