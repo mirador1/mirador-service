@@ -1,55 +1,277 @@
 # =============================================================================
 # GitHub Actions — CI pipeline
 #
-# Triggers: pushes to main, all pull requests.
+# Pipeline shape (mirrors the GitLab CI structure):
 #
-# Current pipeline (single job):
-#   1. mvn verify     — unit tests + integration tests + SpotBugs + JaCoCo coverage gate
-#   2. mvn package    — build the executable JAR artifact
+#   lint ────────────────────────────── fast, no compilation
+#     └─ hadolint        Dockerfile linting
 #
-# Note: This pipeline runs all tests in a single step using the embedded H2
-# database and Testcontainers (Docker-in-GitHub-Actions). Unlike the GitLab CI,
-# unit and integration tests are NOT split into separate jobs here.
+#   test ────────────────────────────── no Docker needed
+#     └─ unit-test       surefire (*ITest excluded) + JaCoCo unit exec
 #
-# See Phase 4 of the roadmap (feature/ci-improvements) for the planned
-# improvement: staged pipeline with job-level separation, Docker build, and
-# GitHub Container Registry push.
+#   integration ─────────────────────── Docker needed (Testcontainers)
+#     └─ integration-test  failsafe (*ITest) + SpotBugs + JaCoCo merged
+#
+#   package ─────────────────────────── only when all gates pass
+#     ├─ build-jar       fat JAR artifact
+#     └─ docker-build    image → GHCR (main branch + tags only)
+#
+# Docker availability:
+#   GitHub-hosted ubuntu-latest runners include Docker, so Testcontainers
+#   works without any DinD service or special setup — unlike GitLab CI which
+#   requires `services: docker:28-dind`.
+#
+# PostgreSQL for tests:
+#   Integration tests use the Testcontainers JDBC URL
+#   `jdbc:tc:postgresql:17:///demo` (defined in src/test/resources/application.properties).
+#   Testcontainers pulls the image and starts the container automatically.
+#
+# Kafka for tests:
+#   AbstractIntegrationTest starts a KafkaContainer (Testcontainers) and registers
+#   its bootstrap-servers via @DynamicPropertySource.
 # =============================================================================
 name: CI
 
 on:
   push:
-    # Only run on the main branch to avoid redundant runs on feature branches
-    # (PRs already trigger the workflow via the pull_request event)
     branches: [ "main" ]
   pull_request:
 
+# Cancel in-flight runs for the same PR/branch when a new commit is pushed,
+# equivalent to GitLab's `interruptible: true`.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Maven cache lives in ~/.m2/repository; actions/setup-java handles it.
+env:
+  MAVEN_OPTS: "-Dmaven.repo.local=${{ github.workspace }}/.m2/repository"
+  MAVEN_ARGS: "--batch-mode --errors --fail-at-end --show-version --no-transfer-progress"
+
+# ── shared setup step (referenced inline in each job) ────────────────────────
+# GitHub Actions has no top-level `default:` image like GitLab, so each job
+# specifies `runs-on: ubuntu-latest` and calls the setup steps explicitly.
+
+# =============================================================================
+# Stage: lint
+# =============================================================================
+
 jobs:
-  build:
+
+  # ---------------------------------------------------------------------------
+  # Lint the Dockerfile with Hadolint.
+  # Catches common mistakes: root USER, unpinned base images, apt without
+  # --no-install-recommends, etc. Runs in seconds before any compilation.
+  # ---------------------------------------------------------------------------
+  hadolint:
+    name: Lint / Dockerfile
     runs-on: ubuntu-latest
-
-    permissions:
-      # Required to checkout the repository
-      contents: read
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Java
+      - name: Lint Dockerfile
+        # hadolint/hadolint-action wraps the official Hadolint binary.
+        # Uses the same rules as the GitLab job (DL3002, DL3007, DL3008, SC2xxx).
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+
+# =============================================================================
+# Stage: test (unit tests — no Docker)
+# =============================================================================
+
+  # ---------------------------------------------------------------------------
+  # Unit tests only — *ITest classes excluded via the maven-surefire-plugin
+  # `excludes` configuration in pom.xml. Runs fast without any containers.
+  #
+  # Produces two artifacts forwarded to the integration job:
+  #   target/jacoco.exec        — unit coverage data for JaCoCo merge
+  #   target/surefire-reports/  — JUnit XML for GitHub test annotations
+  # ---------------------------------------------------------------------------
+  unit-test:
+    name: Test / Unit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 25
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          # Java version: project targets Java 25 (pom.xml), runner uses 26 for forward-compat testing
-          java-version: '26'
-          # GitHub Actions cache for ~/.m2 — speeds up subsequent runs by ~2 min
+          java-version: '25'
           cache: maven
 
-      - name: Build & test
-        # verify phase runs: compile → test (surefire) → integration-test (failsafe)
-        #                   → spotbugs:check → jacoco:check (≥60% coverage gate)
-        run: mvn -B verify
+      - name: Run unit tests
+        # surefire phase only — failsafe (ITests) skipped, no Docker required
+        run: mvn $MAVEN_ARGS test
 
-      - name: Package (no tests)
-        # Produce the deployable JAR artifact after all gates pass
-        run: mvn -B -DskipTests package
+      - name: Publish unit test report
+        # Annotates PRs with per-test pass/fail details directly in the GitHub UI
+        uses: dorny/test-reporter@v2
+        if: always()
+        with:
+          name: Unit Test Results
+          path: target/surefire-reports/*.xml
+          reporter: java-junit
+          fail-on-error: false
+
+      - name: Upload JaCoCo unit exec
+        # Forwarded to integration-test job so both exec files can be merged
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-unit-exec
+          path: |
+            target/jacoco.exec
+            target/site/jacoco/
+          retention-days: 7
+
+# =============================================================================
+# Stage: integration (needs Docker for Testcontainers)
+# =============================================================================
+
+  # ---------------------------------------------------------------------------
+  # Integration tests (*ITest) via maven-failsafe.
+  # Testcontainers starts real PostgreSQL 17 and Kafka containers using the
+  # Docker daemon already present on ubuntu-latest — no DinD service required.
+  #
+  # At the verify phase Maven also runs:
+  #   • SpotBugs:check  — static bytecode analysis (Medium+ → build failure)
+  #   • JaCoCo:merge    — merges unit exec (from artifact) + IT exec
+  #   • JaCoCo:check    — fails if merged instruction coverage < 60 %
+  # ---------------------------------------------------------------------------
+  integration-test:
+    name: Test / Integration + SpotBugs + Coverage
+    runs-on: ubuntu-latest
+    needs: unit-test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      - name: Download JaCoCo unit exec
+        # Pulls the unit coverage data produced by the previous job so that
+        # the JaCoCo:merge goal can combine unit + IT coverage into one report.
+        uses: actions/download-artifact@v4
+        with:
+          name: jacoco-unit-exec
+          path: target/
+
+      - name: Run integration tests + SpotBugs + coverage gate
+        # -Dsurefire.skip=true: unit tests already passed in the previous job.
+        # failsafe, SpotBugs, and JaCoCo still run at the verify phase.
+        run: mvn $MAVEN_ARGS verify -Dsurefire.skip=true
+
+      - name: Publish integration test report
+        uses: dorny/test-reporter@v2
+        if: always()
+        with:
+          name: Integration Test Results
+          path: target/failsafe-reports/*.xml
+          reporter: java-junit
+          fail-on-error: false
+
+      - name: Upload coverage + SpotBugs reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reports-integration
+          path: |
+            target/site/jacoco-it/
+            target/spotbugsXml.xml
+          retention-days: 7
+
+# =============================================================================
+# Stage: package
+# =============================================================================
+
+  # ---------------------------------------------------------------------------
+  # Build the executable Spring Boot fat JAR.
+  # Tests are skipped — they already passed in the test + integration stages.
+  # ---------------------------------------------------------------------------
+  build-jar:
+    name: Package / JAR
+    runs-on: ubuntu-latest
+    needs: [ unit-test, integration-test ]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      - name: Build JAR
+        run: mvn $MAVEN_ARGS -DskipTests package
+
+      - name: Upload JAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: spring-api-jar
+          path: target/*.jar
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # Build the Docker image and push it to GitHub Container Registry (GHCR).
+  #
+  # Two tags are pushed — same strategy as GitLab CI:
+  #   sha-<commit>   — immutable pointer for deployments
+  #   main           — moving pointer for convenience
+  #
+  # OCI standard labels (revision + created) injected at build time.
+  #
+  # Only runs on the default branch (main) and on tags — skip on every PR to
+  # avoid flooding GHCR with images that are never deployed.
+  # ---------------------------------------------------------------------------
+  docker-build:
+    name: Package / Docker → GHCR
+    runs-on: ubuntu-latest
+    needs: [ unit-test, integration-test ]
+    # Mirror GitLab's `rules`: only on main branch or version tags
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: read
+      # Required to push images to ghcr.io/<owner>/<repo>
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          # sha-<short> tag + branch/tag name (mirrors GitLab: $CI_COMMIT_SHA + $CI_COMMIT_REF_SLUG)
+          tags: |
+            type=sha,prefix=sha-
+            type=ref,event=branch
+            type=ref,event=tag
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Layer cache: reuse layers from the last push to the same branch
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache,mode=max
