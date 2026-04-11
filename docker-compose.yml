@@ -43,6 +43,17 @@ services:
       retries: 10
       start_period: 30s
 
+  # ─── Ollama (local LLM) ──────────────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    # Pull the model on first start (llama3.2 ~2GB)
+    entrypoint: ["/bin/sh", "-c", "ollama serve & sleep 5 && ollama pull llama3.2 && wait"]
+
   app:
     build: .
     container_name: spring-app
@@ -51,6 +62,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      ollama:
+        condition: service_started
     ports:
       - "${SERVER_PORT}:8080"
     environment:
@@ -63,7 +76,9 @@ services:
       SPRING_JPA_SHOW_SQL: false
       # internal docker network address
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      OLLAMA_BASE_URL: http://ollama:11434
 
 volumes:
   # persistent
   postgres_data:
+  ollama_data:
