@@ -1,5 +1,7 @@
 package com.example.springapi;
 
+import com.example.springapi.repository.CustomerRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -14,10 +16,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 
 @AutoConfigureMockMvc
-class CustomerApiTest extends AbstractIntegrationTest {
+class CustomerApiITest extends AbstractIntegrationTest {
 
     @Autowired
     MockMvc mockMvc;
+
+    @Autowired
+    CustomerRepository customerRepository;
+
+    @BeforeEach
+    void cleanDatabase() {
+        customerRepository.deleteAll();
+    }
 
     @Test
     void shouldCreateAndListCustomers() throws Exception {
