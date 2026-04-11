@@ -35,9 +35,9 @@ class CustomerApiTest extends AbstractIntegrationTest {
 
         mockMvc.perform(get("/customers"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(1)))
-                .andExpect(jsonPath("$[0].name").value("Benoit"))
-                .andExpect(jsonPath("$[0].email").value("benoit@example.com"));
+                .andExpect(jsonPath("$.content", hasSize(1)))
+                .andExpect(jsonPath("$.content[0].name").value("Benoit"))
+                .andExpect(jsonPath("$.content[0].email").value("benoit@example.com"));
     }
 
     @Test
