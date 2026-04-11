@@ -1,6 +1,6 @@
-package com.example.springapi.repository;
+package com.example.springapi.customer;
 
-import com.example.springapi.model.Customer;
+import com.example.springapi.customer.Customer;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 /**

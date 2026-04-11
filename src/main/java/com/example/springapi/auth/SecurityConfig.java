@@ -1,6 +1,6 @@
-package com.example.springapi.config;
+package com.example.springapi.auth;
 
-import com.example.springapi.security.JwtAuthenticationFilter;
+import com.example.springapi.auth.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;

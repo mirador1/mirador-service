@@ -1,7 +1,7 @@
-package com.example.springapi.service;
+package com.example.springapi.integration;
 
-import com.example.springapi.client.JsonPlaceholderClient;
-import com.example.springapi.client.TodoItem;
+import com.example.springapi.integration.JsonPlaceholderClient;
+import com.example.springapi.integration.TodoItem;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
 import org.slf4j.Logger;

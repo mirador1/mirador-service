@@ -1,4 +1,4 @@
-package com.example.springapi.client;
+package com.example.springapi.integration;
 
 import org.springframework.web.service.annotation.GetExchange;
 import org.springframework.web.service.annotation.HttpExchange;

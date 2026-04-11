@@ -1,4 +1,4 @@
-package com.example.springapi.dto;
+package com.example.springapi.customer;
 
 /**
  * Extended customer DTO returned by the Kafka request-reply enrich endpoint.

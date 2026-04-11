@@ -1,6 +1,6 @@
-package com.example.springapi.service;
+package com.example.springapi.customer;
 
-import com.example.springapi.dto.CustomerDto;
+import com.example.springapi.customer.CustomerDto;
 import org.springframework.stereotype.Service;
 
 import java.util.LinkedList;

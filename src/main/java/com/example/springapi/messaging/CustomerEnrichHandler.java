@@ -1,7 +1,7 @@
-package com.example.springapi.kafka;
+package com.example.springapi.messaging;
 
-import com.example.springapi.event.CustomerEnrichReply;
-import com.example.springapi.event.CustomerEnrichRequest;
+import com.example.springapi.messaging.CustomerEnrichReply;
+import com.example.springapi.messaging.CustomerEnrichRequest;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;

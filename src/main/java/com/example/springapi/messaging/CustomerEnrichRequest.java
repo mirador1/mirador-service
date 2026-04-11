@@ -1,4 +1,4 @@
-package com.example.springapi.event;
+package com.example.springapi.messaging;
 
 /**
  * Kafka message sent to the {@code customer.request} topic to initiate a synchronous enrich

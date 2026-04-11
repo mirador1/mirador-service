@@ -1,4 +1,4 @@
-package com.example.springapi.client;
+package com.example.springapi.integration;
 
 /**
  * Immutable DTO representing a todo item from the JSONPlaceholder API.

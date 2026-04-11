@@ -1,6 +1,6 @@
-package com.example.springapi.service;
+package com.example.springapi.integration;
 
-import com.example.springapi.dto.CustomerDto;
+import com.example.springapi.customer.CustomerDto;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 

@@ -1,6 +1,6 @@
-package com.example.springapi.config;
+package com.example.springapi.integration;
 
-import com.example.springapi.client.JsonPlaceholderClient;
+import com.example.springapi.integration.JsonPlaceholderClient;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestClient;

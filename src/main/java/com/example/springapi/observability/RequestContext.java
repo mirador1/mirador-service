@@ -1,4 +1,4 @@
-package com.example.springapi.context;
+package com.example.springapi.observability;
 
 /**
  * Holder for request-scoped values propagated via Java 21+ {@link ScopedValue}.

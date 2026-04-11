@@ -1,4 +1,4 @@
-package com.example.springapi.config;
+package com.example.springapi.resilience;
 
 import net.javacrumbs.shedlock.core.LockProvider;
 import net.javacrumbs.shedlock.provider.jdbctemplate.JdbcTemplateLockProvider;

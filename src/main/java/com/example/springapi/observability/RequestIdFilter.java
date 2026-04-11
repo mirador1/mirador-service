@@ -1,4 +1,4 @@
-package com.example.springapi.filter;
+package com.example.springapi.observability;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;

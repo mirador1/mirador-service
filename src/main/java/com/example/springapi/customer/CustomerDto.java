@@ -1,4 +1,4 @@
-package com.example.springapi.dto;
+package com.example.springapi.customer;
 
 /**
  * Read-only DTO used to expose customer data through the REST API.

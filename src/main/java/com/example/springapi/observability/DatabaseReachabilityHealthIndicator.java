@@ -1,4 +1,4 @@
-package com.example.springapi.health;
+package com.example.springapi.observability;
 
 import org.springframework.boot.health.contributor.Health;
 import org.springframework.boot.health.contributor.HealthIndicator;

@@ -1,10 +1,10 @@
-package com.example.springapi.service;
+package com.example.springapi.customer;
 
-import com.example.springapi.dto.CreateCustomerRequest;
-import com.example.springapi.dto.CustomerDto;
-import com.example.springapi.event.CustomerCreatedEvent;
-import com.example.springapi.model.Customer;
-import com.example.springapi.repository.CustomerRepository;
+import com.example.springapi.customer.CreateCustomerRequest;
+import com.example.springapi.customer.CustomerDto;
+import com.example.springapi.messaging.CustomerCreatedEvent;
+import com.example.springapi.customer.Customer;
+import com.example.springapi.customer.CustomerRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;

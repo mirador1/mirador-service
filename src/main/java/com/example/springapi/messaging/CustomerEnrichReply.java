@@ -1,4 +1,4 @@
-package com.example.springapi.event;
+package com.example.springapi.messaging;
 
 /**
  * Kafka reply message sent back on the {@code customer.reply} topic after enrichment

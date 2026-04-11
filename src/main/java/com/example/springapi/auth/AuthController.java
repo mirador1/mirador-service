@@ -1,6 +1,6 @@
-package com.example.springapi.controller;
+package com.example.springapi.auth;
 
-import com.example.springapi.security.JwtTokenProvider;
+import com.example.springapi.auth.JwtTokenProvider;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;

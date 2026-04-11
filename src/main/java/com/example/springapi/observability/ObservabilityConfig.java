@@ -1,6 +1,6 @@
-package com.example.springapi.config;
+package com.example.springapi.observability;
 
-import com.example.springapi.service.RecentCustomerBuffer;
+import com.example.springapi.customer.RecentCustomerBuffer;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.context.annotation.Bean;

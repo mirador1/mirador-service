@@ -1,4 +1,4 @@
-package com.example.springapi.event;
+package com.example.springapi.messaging;
 
 /**
  * Kafka event published after a customer is successfully created (Pattern 1 — fire-and-forget).

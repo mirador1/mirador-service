@@ -1,4 +1,4 @@
-package com.example.springapi.filter;
+package com.example.springapi.resilience;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;

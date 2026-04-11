@@ -1,4 +1,4 @@
-package com.example.springapi.filter;
+package com.example.springapi.resilience;
 
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;

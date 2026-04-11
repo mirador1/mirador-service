@@ -1,7 +1,7 @@
-package com.example.springapi.config;
+package com.example.springapi.messaging;
 
-import com.example.springapi.event.CustomerEnrichReply;
-import com.example.springapi.event.CustomerEnrichRequest;
+import com.example.springapi.messaging.CustomerEnrichReply;
+import com.example.springapi.messaging.CustomerEnrichRequest;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
