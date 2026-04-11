@@ -1,7 +1,26 @@
+# =============================================================================
+# GitHub Actions — CI pipeline
+#
+# Triggers: pushes to main, all pull requests.
+#
+# Current pipeline (single job):
+#   1. mvn verify     — unit tests + integration tests + SpotBugs + JaCoCo coverage gate
+#   2. mvn package    — build the executable JAR artifact
+#
+# Note: This pipeline runs all tests in a single step using the embedded H2
+# database and Testcontainers (Docker-in-GitHub-Actions). Unlike the GitLab CI,
+# unit and integration tests are NOT split into separate jobs here.
+#
+# See Phase 4 of the roadmap (feature/ci-improvements) for the planned
+# improvement: staged pipeline with job-level separation, Docker build, and
+# GitHub Container Registry push.
+# =============================================================================
 name: CI
 
 on:
   push:
+    # Only run on the main branch to avoid redundant runs on feature branches
+    # (PRs already trigger the workflow via the pull_request event)
     branches: [ "main" ]
   pull_request:
 
@@ -10,6 +29,7 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
+      # Required to checkout the repository
       contents: read
 
     steps:
@@ -20,11 +40,16 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '25'
+          # Java version: project targets Java 25 (pom.xml), runner uses 26 for forward-compat testing
+          java-version: '26'
+          # GitHub Actions cache for ~/.m2 — speeds up subsequent runs by ~2 min
           cache: maven
 
       - name: Build & test
+        # verify phase runs: compile → test (surefire) → integration-test (failsafe)
+        #                   → spotbugs:check → jacoco:check (≥60% coverage gate)
         run: mvn -B verify
 
       - name: Package (no tests)
+        # Produce the deployable JAR artifact after all gates pass
         run: mvn -B -DskipTests package

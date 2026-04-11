@@ -1,22 +1,22 @@
-# Spring Boot 4 – Service observable
+# Spring Boot 4 – Observable Service
 
-Mini service Spring Boot 4 / Java 25 utilisé comme démonstrateur de :
+A minimal Spring Boot 4 / Java 25 service used as a demonstrator for:
 
-- structuration d’un socle applicatif
-- observabilité (métriques, logs, tracing)
-- qualité d’exploitation
-- diagnostic rapide en cas d’incident
+- application foundation structuring
+- observability (metrics, logs, tracing)
+- operational quality
+- fast incident diagnosis
 
 ---
 
-## 🎯 Objectif
+## 🎯 Goal
 
-Ce projet ne vise pas à démontrer un simple CRUD, mais la capacité à :
+This project is not meant to demonstrate a simple CRUD, but the ability to:
 
-- rendre un service observable
-- définir ce qu’il faut surveiller
-- exposer des points de diagnostic
-- structurer un environnement d’exploitation minimal
+- make a service observable
+- define what needs to be monitored
+- expose diagnostic endpoints
+- structure a minimal operational environment
 
 ---
 
@@ -31,25 +31,25 @@ Ce projet ne vise pas à démontrer un simple CRUD, mais la capacité à :
 - Micrometer + Prometheus
 - Grafana
 - OpenTelemetry
-- **Spring Kafka** (patterns async et synchrone request-reply)
+- **Spring Kafka** (async and synchronous request-reply patterns)
 - Docker / Docker Compose
 - Testcontainers
 
 ---
 
-## 🚀 Endpoints métier
+## 🚀 Business endpoints
 
 - `GET /customers`
 - `POST /customers`
 - `GET /customers/recent`
 - `GET /customers/aggregate`
-- `GET /customers/{id}/enrich` — request-reply Kafka synchrone
+- `GET /customers/{id}/enrich` — synchronous Kafka request-reply
 
 ---
 
-## 🔍 Endpoints d’exploitation
+## 🔍 Operational endpoints
 
-A appeler en complément de la commande: `curl -s http://localhost:8080`
+To call alongside: `curl -s http://localhost:8080`
 - `/actuator/health`
 - `/actuator/health/liveness`
 - `/actuator/health/readiness`
@@ -58,117 +58,118 @@ A appeler en complément de la commande: `curl -s http://localhost:8080`
 
 ---
 
-# 📊 Observabilité
+# 📊 Observability
 
-## Dashboard Grafana
+## Grafana Dashboard
 
-![Dashboard Grafana](docs/screenshots/grafana-overview.png)
+![Grafana Dashboard](docs/screenshots/grafana-overview.png)
 
 http://localhost:3000/
 
-Ce dashboard montre :
+This dashboard shows:
 
-- débit HTTP
-- latence des endpoints
-- nombre de créations clients
-- taille du buffer en mémoire
+- HTTP throughput
+- endpoint latency
+- number of customer creations
+- in-memory buffer size
 
 ## Prometheus
 
 http://localhost:9090/
 
-![Dashboard Grafana](docs/screenshots/prometheus-overview.png)
+![Prometheus Dashboard](docs/screenshots/prometheus-overview.png)
 
-Ici on voit la durée maximal des endpoints appelsés sur le serveur
+Maximum response time for endpoints called on the server.
+
 ---
 
-## Dashboard Grafana avec openTelemetry
+## Grafana Dashboard with OpenTelemetry
 
-![Dashboard Grafana](docs/screenshots/grafana-otel-overview.png)
+![Grafana OpenTelemetry Dashboard](docs/screenshots/grafana-otel-overview.png)
 
 http://localhost:3001/
 
-Ce dashboard montre la visu otel (Explore Tempo) avec le span BD.
+This dashboard shows the OpenTelemetry view (Explore Tempo) with the DB span.
 http://localhost:3001/explore
 
 ---
 
-## 📨 Kafka — patterns démontrés
+## 📨 Kafka — demonstrated patterns
 
-Ce projet utilise l'application comme **producteur et consommateur de ses propres messages** pour illustrer deux patterns Kafka distincts.
+This project uses the application as both **producer and consumer of its own messages** to illustrate two distinct Kafka patterns.
 
 ### Topics
 
-| Topic | Rôle |
+| Topic | Role |
 |---|---|
-| `customer.created` | Pattern async — event publié après chaque création client |
-| `customer.request` | Pattern sync — requête d'enrichissement |
-| `customer.reply` | Pattern sync — réponse d'enrichissement |
+| `customer.created` | Async pattern — event published after each customer creation |
+| `customer.request` | Sync pattern — enrichment request |
+| `customer.reply` | Sync pattern — enrichment response |
 
 ---
 
-### Pattern 1 — Asynchrone (fire-and-forget)
+### Pattern 1 — Asynchronous (fire-and-forget)
 
-`POST /customers` crée le client en base, puis publie un `CustomerCreatedEvent` sur `customer.created` **sans attendre** de réponse.
+`POST /customers` creates the customer in the database, then publishes a `CustomerCreatedEvent` on `customer.created` **without waiting** for a response.
 
-Un `@KafkaListener` dans la même app consomme l'event et logue :
+A `@KafkaListener` in the same app consumes the event and logs:
 ```
 kafka_event type=CustomerCreatedEvent id=1 name=Alice
 ```
 
-**Flux :**
+**Flow:**
 ```
-POST /customers → CustomerService → KafkaTemplate.send("customer.created") → retour 200 immédiat
+POST /customers → CustomerService → KafkaTemplate.send("customer.created") → immediate 200
                                                   ↓ (async)
                                     CustomerEventListener.onCustomerCreated()
 ```
 
-**Tester :**
+**Test:**
 ```bash
 curl -s -X POST http://localhost:8080/customers \
   -H 'Content-Type: application/json' \
   -d '{"name":"Alice","email":"alice@example.com"}'
-# Observer les logs : kafka_event type=CustomerCreatedEvent id=1 name=Alice
+# Watch the logs: kafka_event type=CustomerCreatedEvent id=1 name=Alice
 ```
 
-**Métriques :**
+**Metrics:**
 ```bash
 curl -s http://localhost:8080/actuator/metrics/kafka.customer.created.processed
 ```
 
 ---
 
-### Pattern 2 — Synchrone (Kafka request-reply)
+### Pattern 2 — Synchronous (Kafka request-reply)
 
-`GET /customers/{id}/enrich` envoie une requête Kafka et **bloque jusqu'à la réponse** (timeout : 5s).
+`GET /customers/{id}/enrich` sends a Kafka request and **blocks until the response** (timeout: 5s).
 
-La même app traite la requête via `@KafkaListener` + `@SendTo`, calcule un `displayName`, et répond sur `customer.reply`. La corrélation est gérée automatiquement par `ReplyingKafkaTemplate`.
+The same app processes the request via `@KafkaListener` + `@SendTo`, computes a `displayName`, and replies on `customer.reply`. Correlation is handled automatically by `ReplyingKafkaTemplate`.
 
-**Flux :**
+**Flow:**
 ```
 GET /customers/{id}/enrich
-  → ReplyingKafkaTemplate.sendAndReceive("customer.request")  [bloquant]
+  → ReplyingKafkaTemplate.sendAndReceive("customer.request")  [blocking]
       ↓
   CustomerEnrichHandler.handleEnrichRequest()  [@KafkaListener + @SendTo]
       ↓
-  → réponse sur "customer.reply"
-  → retour EnrichedCustomerDto { displayName: "Alice <alice@example.com>" }
+  → reply on "customer.reply"
+  → return EnrichedCustomerDto { displayName: "Alice <alice@example.com>" }
 ```
 
-**Tester (créer d'abord un client, puis enrichir) :**
+**Test (create a customer first, then enrich):**
 ```bash
-# 1. Créer un client
+# 1. Create a customer
 curl -s -X POST http://localhost:8080/customers \
   -H 'Content-Type: application/json' \
   -d '{"name":"Alice","email":"alice@example.com"}'
-# Réponse: {"id":1,"name":"Alice","email":"alice@example.com"}
+# Response: {"id":1,"name":"Alice","email":"alice@example.com"}
 
-# 2. Enrichir via Kafka request-reply
+# 2. Enrich via Kafka request-reply
 curl -s http://localhost:8080/customers/1/enrich
-# Réponse: {"id":1,"name":"Alice","email":"alice@example.com","displayName":"Alice <alice@example.com>"}
+# Response: {"id":1,"name":"Alice","email":"alice@example.com","displayName":"Alice <alice@example.com>"}
 ```
 
-**Métriques :**
+**Metrics:**
 ```bash
 curl -s http://localhost:8080/actuator/metrics/kafka.customer.enrich.handled
 curl -s http://localhost:8080/actuator/metrics/customer.enrich.duration
@@ -176,45 +177,49 @@ curl -s http://localhost:8080/actuator/metrics/customer.enrich.duration
 
 ---
 
-### Démarrer Kafka en local
+### Start Kafka locally
 
-Kafka est inclus dans `docker-compose.yml` (KRaft, sans ZooKeeper) :
+Kafka is included in `docker-compose.yml` (KRaft, no ZooKeeper):
 
 ```bash
-./run.sh all     # démarre PostgreSQL + Kafka + l'application
-# ou séparément :
+./run.sh all     # starts PostgreSQL + Kafka + the application
+# or separately:
 docker compose up -d kafka
 ```
 
-Kafka est accessible sur `localhost:9092`.
+Kafka is accessible on `localhost:9092`.
 
 ---
 
-## Exemple de métriques exposées
+## Sample exposed metrics
 
 ```bash
 curl -s http://localhost:8080/actuator/prometheus | grep customer
+```
 
-## Scénario de diagnostic 1 — indisponibilité PostgreSQL
+## Diagnostic scenario 1 — PostgreSQL unavailability
 
-### Mise en situation
-La base PostgreSQL est arrêtée alors que l’application continue de tourner.
+### Setup
+PostgreSQL is stopped while the application keeps running.
 
-### Vérification
+### Verification
 ```bash
 curl -s http://localhost:8080/actuator/health/readiness
+```
 
-## Scénario de diagnostic 2 — latence sur `/customers/aggregate`
+## Diagnostic scenario 2 — latency on `/customers/aggregate`
 
-### Objectif
-Montrer comment qualifier un problème de temps de réponse sur un endpoint spécifique à partir des métriques et du dashboard.
+### Goal
+Show how to qualify a response time problem on a specific endpoint using metrics and the dashboard.
 
-### Mise en charge
+### Load
 ```bash
 for i in {1..100}; do
   curl -s http://localhost:8080/customers/aggregate > /dev/null
 done
+```
 
-### Vérification
+### Verification
 ```bash
 curl -s http://localhost:8080/actuator/prometheus
+```

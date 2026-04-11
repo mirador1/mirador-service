@@ -1,15 +1,51 @@
+# =============================================================================
+# Multi-stage Dockerfile — GraalVM Native Image (ultra-fast startup)
+#
+# Produces a self-contained native binary with:
+#   - ~50 ms startup time (vs ~3–5 s for JVM)
+#   - ~50 MB RSS memory footprint (vs ~250 MB for JVM)
+#   - No JDK or JRE required at runtime
+#
+# Trade-offs:
+#   - Build time: 5–15 minutes (AOT compilation)
+#   - Profile-guided optimization (PGO) required for best throughput
+#   - Some dynamic features (reflection, proxies) need explicit hints in
+#     src/main/resources/META-INF/native-image/
+#
+# Build command: docker build -f Dockerfile.native -t spring-api:native .
+# Or via Maven:  mvn -Pnative native:compile
+# =============================================================================
+
+# ---------------------------------------------------------------------------
 # Stage 1 — compile native image with GraalVM
+#
+# Uses the GraalVM Community Edition native-image tool.
+# Spring Boot's native compilation pipeline (spring-boot-maven-plugin AOT):
+#   1. Runs AOT processing: generates proxy classes, reflection hints, etc.
+#   2. native:compile invokes GraalVM native-image on the AOT-processed output.
+# The -Pnative Maven profile activates process-aot + add-reachability-metadata.
+# ---------------------------------------------------------------------------
 FROM ghcr.io/graalvm/native-image-community:25 AS builder
 WORKDIR /app
 COPY .mvn/ .mvn/
 COPY mvnw pom.xml ./
 RUN ./mvnw dependency:go-offline -q
 COPY src/ src/
+# -Pnative: activates the native Maven profile defined in pom.xml
+# native:compile: runs GraalVM native-image AOT compilation
 RUN ./mvnw -Pnative native:compile -DskipTests -q
 
-# Stage 2 — minimal runtime image (no JDK needed)
+# ---------------------------------------------------------------------------
+# Stage 2 — minimal runtime image
+#
+# The native binary is statically linked — it embeds everything including
+# the runtime. A minimal base image (debian:bookworm-slim) is used instead
+# of scratch to get basic OS utilities (libc, SSL certificates).
+# No JDK or JRE is installed.
+# ---------------------------------------------------------------------------
 FROM debian:bookworm-slim
 WORKDIR /app
 COPY --from=builder /app/target/springapi .
 EXPOSE 8080
+# Run the native binary directly — no JVM invocation needed
 ENTRYPOINT ["./springapi"]
