@@ -23,6 +23,13 @@ spring:
     enabled: true
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+  ai:
+    ollama:
+      base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+      chat:
+        model: ${OLLAMA_MODEL:llama3.2}
+        options:
+          temperature: 0.7
 
 server:
   port: ${SERVER_PORT:8080}
@@ -84,6 +91,7 @@ logging:
     format:
       # json format
       # console: ecs
+
 app:
   observability:
     # Custom for ObservabilityConfig
