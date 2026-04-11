@@ -3,10 +3,14 @@ set -e
 
 case "$1" in
 
-
   db)
     echo "Starting PostgreSQL..."
     docker compose up -d db
+    ;;
+
+  kafka)
+    echo "Starting Kafka..."
+    docker compose up -d kafka
     ;;
 
   obs)
@@ -14,18 +18,31 @@ case "$1" in
     docker compose -f docker-compose.observability.yml up -d
     ;;
 
+  app)
+    echo "Starting Spring app (local)..."
+    mvn spring-boot:run
+    ;;
+
   all)
     echo "Starting everything..."
-    docker compose up -d db
+    docker compose up -d db kafka
     docker compose -f docker-compose.observability.yml up -d
     mvn spring-boot:run
     ;;
 
+  stop)
+    echo "Stopping all containers..."
+    docker compose down
+    docker compose -f docker-compose.observability.yml down
+    ;;
+
   *)
     echo "Usage:"
-    echo "  ./run.sh db     # start database"
-    echo "  ./run.sh obs    # start observability"
-    echo "  ./run.sh all    # start everything"
-    echo "  mvn spring-boot:run # start app"
+    echo "  ./run.sh db      # start database"
+    echo "  ./run.sh kafka   # start Kafka"
+    echo "  ./run.sh obs     # start observability"
+    echo "  ./run.sh app     # start Spring app (local)"
+    echo "  ./run.sh all     # start everything"
+    echo "  ./run.sh stop    # stop all containers"
     ;;
 esac

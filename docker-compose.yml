@@ -97,6 +97,17 @@ services:
       - tempo
       - loki
 
+  # ─── Ollama (local LLM) ──────────────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    # Pull the model on first start (llama3.2 ~2GB)
+    entrypoint: ["/bin/sh", "-c", "ollama serve & sleep 5 && ollama pull llama3.2 && wait"]
+
   app:
     build: .
     container_name: spring-app
@@ -106,6 +117,8 @@ services:
       kafka:
         condition: service_healthy
       otel-collector:
+        condition: service_started
+      ollama:
         condition: service_started
     ports:
       - "${SERVER_PORT}:8080"
@@ -119,8 +132,9 @@ services:
       SPRING_JPA_SHOW_SQL: false
       # internal docker network address
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      # send traces to the OTel Collector inside Docker network
-      MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
+      # send traces/logs to the OTel Collector inside Docker network
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OLLAMA_BASE_URL: http://ollama:11434
 
 volumes:
   # persistent
@@ -128,3 +142,4 @@ volumes:
   tempo_data:
   loki_data:
   grafana_data:
+  ollama_data:

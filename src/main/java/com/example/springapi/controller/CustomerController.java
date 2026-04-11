@@ -8,6 +8,7 @@ import com.example.springapi.dto.EnrichedCustomerDto;
 import com.example.springapi.event.CustomerEnrichReply;
 import com.example.springapi.event.CustomerEnrichRequest;
 import com.example.springapi.service.AggregationService;
+import com.example.springapi.service.BioService;
 import com.example.springapi.service.CustomerService;
 import com.example.springapi.service.RecentCustomerBuffer;
 import io.micrometer.core.instrument.Counter;
@@ -45,6 +46,7 @@ public class CustomerController {
     private final ObservationRegistry observationRegistry;
     private final ReplyingKafkaTemplate<String, CustomerEnrichRequest, CustomerEnrichReply> replyingKafkaTemplate;
     private final JsonPlaceholderClient jsonPlaceholderClient;
+    private final BioService bioService;
     private final String customerRequestTopic;
     private final long enrichTimeoutSeconds;
     private final Counter customerCreatedCounter;
@@ -59,6 +61,7 @@ public class CustomerController {
                               ObservationRegistry observationRegistry,
                               ReplyingKafkaTemplate<String, CustomerEnrichRequest, CustomerEnrichReply> replyingKafkaTemplate,
                               JsonPlaceholderClient jsonPlaceholderClient,
+                              BioService bioService,
                               @Value("${app.kafka.topics.customer-request}") String customerRequestTopic,
                               @Value("${app.kafka.enrich-timeout-seconds}") long enrichTimeoutSeconds,
                               MeterRegistry meterRegistry) {
@@ -68,6 +71,7 @@ public class CustomerController {
         this.observationRegistry = observationRegistry;
         this.replyingKafkaTemplate = replyingKafkaTemplate;
         this.jsonPlaceholderClient = jsonPlaceholderClient;
+        this.bioService = bioService;
         this.customerRequestTopic = customerRequestTopic;
         this.enrichTimeoutSeconds = enrichTimeoutSeconds;
         this.customerCreatedCounter = Counter.builder("customer.created.count")
@@ -121,6 +125,14 @@ public class CustomerController {
         return Observation.createNotStarted("customer.aggregate", observationRegistry)
                 .lowCardinalityKeyValue("endpoint", "/customers/aggregate")
                 .observe(() -> customerAggregateTimer.record(aggregationService::aggregate));
+    }
+
+    // Spring AI — generate a professional bio via local Ollama LLM
+    @GetMapping("/{id}/bio")
+    public java.util.Map<String, String> generateBio(@PathVariable Long id) {
+        CustomerDto customer = service.findById(id)
+                .orElseThrow(() -> new NoSuchElementException("Customer not found: " + id));
+        return java.util.Map.of("bio", bioService.generateBio(customer));
     }
 
     // HTTP Interface — declarative RestClient proxy (Spring 6)

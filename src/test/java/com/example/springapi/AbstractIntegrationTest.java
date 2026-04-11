@@ -1,12 +1,15 @@
 package com.example.springapi;
 
+import com.example.springapi.config.TestAiConfig;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.kafka.KafkaContainer;
 import org.testcontainers.utility.DockerImageName;
 
 @SpringBootTest
+@Import(TestAiConfig.class)
 public abstract class AbstractIntegrationTest {
 
     // Singleton pattern: one container for the entire test suite.
