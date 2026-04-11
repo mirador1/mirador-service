@@ -19,6 +19,7 @@
     <properties>
         <java.version>25</java.version>
         <lombok.version>1.18.44</lombok.version>
+        <archunit.version>1.4.0</archunit.version>
         <spring-ai.version>1.0.0-M6</spring-ai.version>
         <datasource-micrometer.version>2.2.1</datasource-micrometer.version>
         <springdoc.version>3.0.2</springdoc.version>
@@ -138,6 +139,12 @@
             <groupId>org.testcontainers</groupId>
             <artifactId>kafka</artifactId>
             <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.tngtech.archunit</groupId>
+            <artifactId>archunit-junit5</artifactId>
+            <version>${archunit.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
