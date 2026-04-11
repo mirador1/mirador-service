@@ -50,9 +50,14 @@ public class CustomerService {
         this.customerCreatedTopic = customerCreatedTopic;
     }
 
-    /** Returns a page of customers. Page size and sort are driven by the {@code Pageable} argument. */
+    /** Returns a page of customers (v1 shape — no createdAt). */
     public Page<CustomerDto> findAll(Pageable pageable) {
         return repository.findAll(pageable).map(this::toDto);
+    }
+
+    /** Returns a page of customers (v2 shape — includes createdAt). */
+    public Page<CustomerDtoV2> findAllV2(Pageable pageable) {
+        return repository.findAll(pageable).map(this::toDtoV2);
     }
 
     /** Returns the customer with the given ID, or {@code Optional.empty()} if not found. */
@@ -86,12 +91,22 @@ public class CustomerService {
         return dto;
     }
 
-    /** Maps a JPA entity to a DTO, preventing JPA internals from leaking into the API layer. */
+    /** Maps a JPA entity to a v1 DTO (id, name, email). */
     private CustomerDto toDto(Customer customer) {
         return new CustomerDto(
                 customer.getId(),
                 customer.getName(),
                 customer.getEmail()
+        );
+    }
+
+    /** Maps a JPA entity to a v2 DTO (id, name, email, createdAt). */
+    private CustomerDtoV2 toDtoV2(Customer customer) {
+        return new CustomerDtoV2(
+                customer.getId(),
+                customer.getName(),
+                customer.getEmail(),
+                customer.getCreatedAt()
         );
     }
 }
