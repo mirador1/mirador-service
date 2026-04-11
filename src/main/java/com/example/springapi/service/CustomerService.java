@@ -6,10 +6,11 @@ import com.example.springapi.event.CustomerCreatedEvent;
 import com.example.springapi.model.Customer;
 import com.example.springapi.repository.CustomerRepository;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 
@@ -31,11 +32,8 @@ public class CustomerService {
         this.customerCreatedTopic = customerCreatedTopic;
     }
 
-    public List<CustomerDto> findAll() {
-        return repository.findAll()
-                .stream()
-                .map(this::toDto)
-                .toList();
+    public Page<CustomerDto> findAll(Pageable pageable) {
+        return repository.findAll(pageable).map(this::toDto);
     }
 
     public Optional<CustomerDto> findById(Long id) {

@@ -22,6 +22,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.requestreply.KafkaReplyTimeoutException;
 import org.springframework.kafka.requestreply.ReplyingKafkaTemplate;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -92,10 +95,10 @@ public class CustomerController {
     }
 
     @GetMapping
-    public List<CustomerDto> getAll() {
+    public Page<CustomerDto> getAll(@PageableDefault(size = 20, sort = "id") Pageable pageable) {
         return Observation.createNotStarted("customer.find-all", observationRegistry)
                 .lowCardinalityKeyValue("endpoint", "/customers")
-                .observe(() -> customerFindAllTimer.record(service::findAll));
+                .observe(() -> customerFindAllTimer.record(() -> service.findAll(pageable)));
     }
 
     @PostMapping
