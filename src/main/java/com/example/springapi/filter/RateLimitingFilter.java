@@ -73,11 +73,11 @@ public class RateLimitingFilter extends OncePerRequestFilter {
             response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
             response.setHeader(HEADER_RETRY_AFTER, String.valueOf(retryAfterSeconds));
+            // Plain concatenation — avoids VA_FORMAT_STRING_USES_NEWLINE and keeps
+            // the JSON on one line without any trailing platform-specific line separator.
             response.getWriter().write(
-                    """
-                    {"type":"about:blank","title":"Too Many Requests","status":429,\
-                    "detail":"Rate limit exceeded. Please retry after %d seconds."}
-                    """.formatted(retryAfterSeconds).strip()
+                    "{\"type\":\"about:blank\",\"title\":\"Too Many Requests\",\"status\":429," +
+                    "\"detail\":\"Rate limit exceeded. Please retry after " + retryAfterSeconds + " seconds.\"}"
             );
         }
     }

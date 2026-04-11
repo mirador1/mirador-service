@@ -217,6 +217,174 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
+
+            <!--
+              maven-surefire-plugin — unit tests only.
+              *ITest classes are excluded here: they need Docker (Testcontainers)
+              and are handled by failsafe in the integration-test phase.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>**/*ITest.java</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+
+            <!--
+              maven-failsafe-plugin — integration tests (*ITest classes).
+              Runs in the integration-test phase, AFTER unit tests.
+              Failsafe is fault-tolerant: it always runs the verify goal to
+              report results even if some tests fail, unlike surefire which stops.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <configuration>
+                    <includes>
+                        <include>**/*ITest.java</include>
+                    </includes>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!--
+              JaCoCo — code coverage for unit + integration tests.
+
+              Strategy:
+                1. prepare-agent          → instruments JVM for surefire → jacoco.exec
+                2. prepare-agent-integration → instruments JVM for failsafe → jacoco-it.exec
+                3. report                 → HTML/XML for unit tests (target/site/jacoco)
+                4. report-integration     → HTML/XML for integration tests (target/site/jacoco-it)
+                5. merge                  → combines jacoco.exec + jacoco-it.exec into jacoco-merged.exec
+                6. check                  → fails the build if merged coverage < 60 % instructions
+
+              Why merge? unit tests alone cover only ~20 % (JwtTokenProviderTest, ArchUnit);
+              integration tests cover the full stack. Merging gives an accurate overall picture.
+            -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>prepare-agent</id>
+                        <goals><goal>prepare-agent</goal></goals>
+                    </execution>
+                    <execution>
+                        <id>prepare-agent-integration</id>
+                        <goals><goal>prepare-agent-integration</goal></goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>test</phase>
+                        <goals><goal>report</goal></goals>
+                    </execution>
+                    <execution>
+                        <id>report-integration</id>
+                        <phase>post-integration-test</phase>
+                        <goals><goal>report-integration</goal></goals>
+                    </execution>
+                    <!-- Merge unit + integration exec files into one before checking -->
+                    <execution>
+                        <id>merge</id>
+                        <phase>post-integration-test</phase>
+                        <goals><goal>merge</goal></goals>
+                        <configuration>
+                            <fileSets>
+                                <fileSet>
+                                    <directory>${project.build.directory}</directory>
+                                    <includes>
+                                        <!-- jacoco.exec (unit) + jacoco-it.exec (integration) -->
+                                        <include>jacoco*.exec</include>
+                                    </includes>
+                                </fileSet>
+                            </fileSets>
+                            <destFile>${project.build.directory}/jacoco-merged.exec</destFile>
+                        </configuration>
+                    </execution>
+                    <!-- Coverage gate: fail if instruction coverage < 60 % on merged data -->
+                    <execution>
+                        <id>check</id>
+                        <goals><goal>check</goal></goals>
+                        <configuration>
+                            <dataFile>${project.build.directory}/jacoco-merged.exec</dataFile>
+                            <rules>
+                                <rule>
+                                    <element>BUNDLE</element>
+                                    <limits>
+                                        <limit>
+                                            <counter>INSTRUCTION</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <!-- 60 %: conservative starting point, raise over time -->
+                                            <minimum>0.60</minimum>
+                                        </limit>
+                                    </limits>
+                                </rule>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!--
+              SpotBugs — static bytecode analysis.
+              Bound to the verify phase so it runs after compilation and tests.
+              Medium threshold: catches real bugs (null deref, resource leaks, bad practices)
+              without drowning in style warnings. xmlOutput lets CI parse the report.
+            -->
+            <!--
+              SpotBugs — static bytecode analysis — fails on Medium+ findings.
+              Bound to verify phase; runs after compilation and integration tests.
+              Default effort = good balance between speed and thoroughness.
+              Medium threshold = real bugs (null deref, resource leaks, bad practices),
+              not style noise.
+
+              ASM override: SpotBugs 4.8.x ships with ASM 9.7 which tops out at
+              Java 24 (class version 68). Java 25 emits class version 69, so we
+              force ASM 9.8 as a plugin dependency to unblock the analysis.
+            -->
+            <plugin>
+                <groupId>com.github.spotbugs</groupId>
+                <artifactId>spotbugs-maven-plugin</artifactId>
+                <version>4.8.6.4</version>
+                <dependencies>
+                    <!-- ASM 9.8 adds support for Java 25 bytecode (class version 69) -->
+                    <dependency>
+                        <groupId>org.ow2.asm</groupId>
+                        <artifactId>asm</artifactId>
+                        <version>9.8</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>org.ow2.asm</groupId>
+                        <artifactId>asm-commons</artifactId>
+                        <version>9.8</version>
+                    </dependency>
+                </dependencies>
+                <executions>
+                    <execution>
+                        <id>spotbugs-check</id>
+                        <phase>verify</phase>
+                        <goals><goal>check</goal></goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <effort>Default</effort>
+                    <threshold>Medium</threshold>
+                    <!-- Documented false positives (Spring DI patterns) -->
+                    <excludeFilterFile>spotbugs-exclude.xml</excludeFilterFile>
+                    <!-- XML report consumed by CI artifact / GitLab Code Quality -->
+                    <xmlOutput>true</xmlOutput>
+                </configuration>
+            </plugin>
             <!-- GraalVM Native Image — mvn -Pnative native:compile -->
             <plugin>
                 <groupId>org.graalvm.buildtools</groupId>
