@@ -99,6 +99,47 @@ services:
     entrypoint: ["/bin/sh", "-c", "ollama serve & sleep 5 && ollama pull llama3.2 && wait"]
 
   # ---------------------------------------------------------------------------
+  # Keycloak — identity provider (optional; activated by KEYCLOAK_URL env var)
+  #
+  # Provides OAuth2 / OIDC authentication alongside the built-in JWT mode.
+  # The realm "spring-api-demo" is auto-imported from ops/keycloak/realm-demo.json
+  # on first boot via --import-realm.
+  #
+  # Roles in the realm:
+  #   ROLE_USER   — read access (GET /customers)
+  #   ROLE_ADMIN  — write access (POST /customers) + read
+  #
+  # Preconfigured test users:
+  #   user / user-password   → ROLE_USER
+  #   admin / admin-password → ROLE_ADMIN
+  #
+  # Access the admin console at http://localhost:9090 (admin / admin).
+  # ---------------------------------------------------------------------------
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.2.5
+    container_name: keycloak
+    command: start-dev --import-realm
+    environment:
+      # Admin console credentials
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      # Disable HTTPS for local development
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+    ports:
+      - "9090:8080"
+    volumes:
+      # The realm-demo.json is imported once at first startup (--import-realm flag)
+      - ./ops/keycloak:/opt/keycloak/data/import
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/realms/spring-api-demo || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
   # Spring Boot application
   # Built from the Dockerfile in this directory (multi-stage, layered JAR).
   # Waits for DB (healthy) and Kafka (healthy) before starting.
@@ -115,6 +156,8 @@ services:
         condition: service_healthy     # Must be ready before app starts (Kafka topics created at startup)
       ollama:
         condition: service_started     # Best-effort: app starts even if model is still downloading
+      # Keycloak is optional — only declared if COMPOSE_PROFILES includes keycloak
+      # Use: KEYCLOAK_URL=http://keycloak:8080 docker compose --profile keycloak up
     ports:
       - "${SERVER_PORT}:8080"
     environment:
