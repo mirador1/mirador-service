@@ -1,7 +1,7 @@
 package com.example.springapi.config;
 
-import com.example.springapi.dto.CustomerDto;
-import com.example.springapi.service.BioService;
+import com.example.springapi.customer.CustomerDto;
+import com.example.springapi.integration.BioService;
 import org.mockito.Mockito;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
