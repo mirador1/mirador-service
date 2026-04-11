@@ -20,7 +20,7 @@
         <java.version>25</java.version>
         <lombok.version>1.18.44</lombok.version>
         <archunit.version>1.4.0</archunit.version>
-        <bucket4j.version>8.14.0</bucket4j.version>
+        <bucket4j.version>8.10.1</bucket4j.version>
         <resilience4j.version>2.3.0</resilience4j.version>
         <spring-ai.version>1.0.0-M6</spring-ai.version>
         <datasource-micrometer.version>2.2.1</datasource-micrometer.version>
@@ -112,8 +112,12 @@
             <scope>runtime</scope>
         </dependency>
         <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-flyway</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.flywaydb</groupId>
-            <artifactId>flyway-core</artifactId>
+            <artifactId>flyway-database-postgresql</artifactId>
         </dependency>
 
         <!-- ShedLock — distributed scheduler lock -->
@@ -200,6 +204,11 @@
             <version>${archunit.version}</version>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -276,12 +285,6 @@
             <id>spring-milestones</id>
             <name>Spring Milestones</name>
             <url>https://repo.spring.io/milestone</url>
-            <snapshots><enabled>false</enabled></snapshots>
-        </repository>
-        <repository>
-            <id>spring-releases</id>
-            <name>Spring Releases</name>
-            <url>https://repo.spring.io/release</url>
             <snapshots><enabled>false</enabled></snapshots>
         </repository>
     </repositories>
