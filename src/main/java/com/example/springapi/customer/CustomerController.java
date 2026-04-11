@@ -3,6 +3,7 @@ package com.example.springapi.customer;
 import com.example.springapi.integration.TodoItem;
 import com.example.springapi.customer.CreateCustomerRequest;
 import com.example.springapi.customer.CustomerDto;
+import com.example.springapi.customer.CustomerDtoV2;
 import com.example.springapi.customer.EnrichedCustomerDto;
 import com.example.springapi.messaging.CustomerEnrichReply;
 import com.example.springapi.messaging.CustomerEnrichRequest;
@@ -145,19 +146,47 @@ public class CustomerController {
     }
 
     /**
-     * Returns a paginated list of customers.
+     * [API v1] Returns a paginated list of customers (id, name, email).
      *
-     * <p>{@code @PageableDefault} sets the default page size and sort order when the caller
-     * omits the {@code page}, {@code size}, and {@code sort} query parameters.
-     * The Observation wraps the call so that a distributed trace span is created and
-     * exported to Tempo, allowing latency to be correlated with DB query spans from the
-     * datasource-micrometer instrumentation.
+     * <p>Matched when the client sends {@code X-API-Version: 1.0} or omits the header
+     * (default version). {@code @PageableDefault} sets page size and sort when the caller
+     * omits the {@code page}/{@code size}/{@code sort} query parameters.
+     *
+     * <p>[Spring 7 / Spring Boot 4] The {@code version} attribute on {@code @GetMapping}
+     * is a Spring Framework 7 feature — it narrows the handler mapping to requests whose
+     * resolved API version matches "1.0". Routing is performed by
+     * {@link org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping}
+     * using the {@link org.springframework.web.accept.ApiVersionStrategy} configured in
+     * {@link com.example.springapi.api.ApiVersionConfig}.
      */
-    @GetMapping
+    @GetMapping(version = "1.0")
     public Page<CustomerDto> getAll(@PageableDefault(size = 20, sort = "id") Pageable pageable) {
         return Observation.createNotStarted("customer.find-all", observationRegistry)
                 .lowCardinalityKeyValue("endpoint", "/customers")
                 .observe(() -> customerFindAllTimer.record(() -> service.findAll(pageable)));
+    }
+
+    /**
+     * [API v2] Returns a paginated list of customers including {@code createdAt} timestamp.
+     *
+     * <p>Matched when the client sends {@code X-API-Version: 2.0}.
+     * Returns {@link CustomerDtoV2} which adds the {@code createdAt} field
+     * sourced from the {@code created_at TIMESTAMPTZ} column (Flyway V3 migration).
+     *
+     * <p>The {@code version = "2.0+"} baseline syntax means "2.0 and any later version",
+     * so future v3 clients will continue to receive this response unless a v3 handler
+     * is defined. This is a key advantage of Spring 7's native versioning: baseline
+     * semantics allow forward-compatible endpoints without code duplication.
+     *
+     * <p>[Spring 7 / Spring Boot 4] Demonstrates the API versioning feature introduced in
+     * Spring Framework 7.0 ({@code @RequestMapping#version()}).
+     */
+    @GetMapping(version = "2.0+")
+    public Page<CustomerDtoV2> getAllV2(@PageableDefault(size = 20, sort = "id") Pageable pageable) {
+        return Observation.createNotStarted("customer.find-all-v2", observationRegistry)
+                .lowCardinalityKeyValue("endpoint", "/customers")
+                .lowCardinalityKeyValue("version", "2")
+                .observe(() -> customerFindAllTimer.record(() -> service.findAllV2(pageable)));
     }
 
     /**

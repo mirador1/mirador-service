@@ -1,5 +1,6 @@
 package com.example.springapi.customer;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -8,6 +9,8 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
+
+import java.time.Instant;
 
 /**
  * JPA entity representing a customer stored in the {@code customer} table.
@@ -46,4 +49,14 @@ public class Customer {
 
     private String name;
     private String email;
+
+    /**
+     * Timestamp set by the database at INSERT time (DEFAULT NOW()).
+     * Mapped as {@code Instant} (UTC) for timezone-safe handling.
+     * Exposed in the v2 API via {@link CustomerDtoV2}.
+     * [Spring Boot 4 / API versioning demo]
+     */
+    @Column(name = "created_at", nullable = false, updatable = false,
+            columnDefinition = "TIMESTAMPTZ DEFAULT NOW()")
+    private Instant createdAt;
 }
