@@ -47,7 +47,7 @@ import java.util.Map;
  *
  * <p>The reply consumer uses a type-fixed deserializer ({@code false} argument means "ignore
  * type headers, always deserialize to the given class") because the reply topic only carries
- * {@link com.example.springapi.event.CustomerEnrichReply} messages.
+ * {@link com.example.springapi.messaging.CustomerEnrichReply} messages.
  *
  * <h3>Topic pre-creation</h3>
  * <p>Topics are declared as {@code @Bean NewTopics} so that Spring Kafka creates them at startup
@@ -114,7 +114,7 @@ public class KafkaConfig {
                 ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JacksonJsonDeserializer.class,
                 // resolve target type from the __TypeId__ header set by the producer
                 JacksonJsonDeserializer.USE_TYPE_INFO_HEADERS, "true",
-                JacksonJsonDeserializer.TRUSTED_PACKAGES, "com.example.springapi.event"
+                JacksonJsonDeserializer.TRUSTED_PACKAGES, "com.example.springapi.messaging"
         ));
     }
 
@@ -144,7 +144,7 @@ public class KafkaConfig {
     private DefaultKafkaConsumerFactory<String, CustomerEnrichReply> replyConsumerFactory() {
         // false = always deserialize to CustomerEnrichReply, ignore type headers
         var deser = new JacksonJsonDeserializer<>(CustomerEnrichReply.class, false);
-        deser.addTrustedPackages("com.example.springapi.event");
+        deser.addTrustedPackages("com.example.springapi.messaging");
         return new DefaultKafkaConsumerFactory<>(Map.of(
                 ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers,
                 ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest"
