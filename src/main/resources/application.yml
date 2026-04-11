@@ -118,7 +118,16 @@ resilience4j:
         retry-exceptions:
           - org.springframework.web.client.ResourceAccessException
 
+jwt:
+  secret: ${JWT_SECRET:dev-secret-key-minimum-32-characters}
+
 app:
+  rate-limit:
+    # Token-bucket rate limiter (Bucket4j) — per IP
+    # 100 requests per 60-second window by default
+    capacity: 100
+    refill-tokens: 100
+    refill-seconds: 60
   observability:
     # Custom for ObservabilityConfig
     recent-buffer-gauge-enabled: true
