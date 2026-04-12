@@ -122,17 +122,14 @@ services:
   # Keycloak — identity provider (optional; activated by KEYCLOAK_URL env var)
   #
   # Provides OAuth2 / OIDC authentication alongside the built-in JWT mode.
-  # The realm "customer-service" is auto-imported from infra/keycloak/realm-demo.json
+  # The realm "customer-service" is auto-imported from infra/keycloak/realm-dev.json
   # on first boot via --import-realm.
   #
-  # Roles in the realm:
-  #   ROLE_USER   — read access (GET /customers)
-  #   ROLE_ADMIN  — write access (POST /customers) + read
+  # Two confidential clients use the Client Credentials grant (M2M):
+  #   api-gateway         / dev-secret          → ROLE_USER + ROLE_ADMIN
+  #   monitoring-service  / dev-secret-readonly  → ROLE_USER
   #
-  # Preconfigured test users:
-  #   user / user-password   → ROLE_USER
-  #   admin / admin-password → ROLE_ADMIN
-  #
+  # See infra/keycloak/realm.md for the full architecture and production guidance.
   # Access the admin console at http://localhost:9090 (admin / admin).
   # ---------------------------------------------------------------------------
   keycloak:
@@ -150,7 +147,7 @@ services:
     ports:
       - "9090:8080"
     volumes:
-      # The realm-demo.json is imported once at first startup (--import-realm flag)
+      # realm-dev.json (and realm-prod.json) are imported once at first startup (--import-realm flag)
       - ./infra/keycloak:/opt/keycloak/data/import
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8080/realms/customer-service || exit 1"]

@@ -1,0 +1,71 @@
+{
+  "realm": "customer-service",
+  "enabled": true,
+  "displayName": "Customer Service",
+  "sslRequired": "external",
+  "accessTokenLifespan": 300,
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "maxFailureWaitSeconds": 900,
+  "waitIncrementSeconds": 60,
+  "quickLoginCheckMilliSeconds": 1000,
+  "maxDeltaTimeSeconds": 43200,
+  "failureFactor": 10,
+
+  "clients": [
+    {
+      "clientId": "api-gateway",
+      "enabled": true,
+      "description": "Confidential client — full write access (ROLE_ADMIN). Secret must be injected via Vault / k8s secret — never hardcode.",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "REPLACE_WITH_VAULT_SECRET",
+      "serviceAccountsEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "standardFlowEnabled": false,
+      "protocol": "openid-connect",
+      "defaultClientScopes": ["openid", "roles"]
+    },
+    {
+      "clientId": "monitoring-service",
+      "enabled": true,
+      "description": "Confidential client — read-only access (ROLE_USER). Secret must be injected via Vault / k8s secret — never hardcode.",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "REPLACE_WITH_VAULT_SECRET",
+      "serviceAccountsEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "standardFlowEnabled": false,
+      "protocol": "openid-connect",
+      "defaultClientScopes": ["openid", "roles"]
+    }
+  ],
+
+  "roles": {
+    "realm": [
+      {
+        "name": "ROLE_USER",
+        "description": "Read access — GET /customers"
+      },
+      {
+        "name": "ROLE_ADMIN",
+        "description": "Write access — POST /customers (includes ROLE_USER permissions)"
+      }
+    ]
+  },
+
+  "users": [
+    {
+      "username": "service-account-api-gateway",
+      "enabled": true,
+      "serviceAccountClientId": "api-gateway",
+      "realmRoles": ["ROLE_USER", "ROLE_ADMIN"]
+    },
+    {
+      "username": "service-account-monitoring-service",
+      "enabled": true,
+      "serviceAccountClientId": "monitoring-service",
+      "realmRoles": ["ROLE_USER"]
+    }
+  ]
+}

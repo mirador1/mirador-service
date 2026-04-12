@@ -24,22 +24,23 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *
  * <h3>What is tested</h3>
  * <ul>
- *   <li>A Keycloak-issued JWT for {@code ROLE_USER} grants read access ({@code GET /customers})</li>
- *   <li>A Keycloak-issued JWT for {@code ROLE_ADMIN} grants write access ({@code POST /customers})</li>
- *   <li>A Keycloak-issued JWT for {@code ROLE_USER} is denied write access ({@code POST /customers})</li>
- *   <li>A built-in JWT (from {@code POST /auth/login}) still works alongside Keycloak tokens</li>
+ *   <li>A token issued to {@code monitoring-service} (ROLE_USER) grants read access (GET /customers)</li>
+ *   <li>A token issued to {@code monitoring-service} (ROLE_USER) is denied write access (POST /customers)</li>
+ *   <li>A token issued to {@code api-gateway} (ROLE_ADMIN) grants write access (POST /customers)</li>
+ *   <li>A built-in JWT (from POST /auth/login) still works alongside Keycloak tokens</li>
  * </ul>
+ *
+ * <h3>Token acquisition</h3>
+ * <p>Tokens are obtained via the Client Credentials grant ({@code grant_type=client_credentials}).
+ * Each client ({@code api-gateway}, {@code monitoring-service}) authenticates with its
+ * {@code client_id} and {@code client_secret}. Roles are assigned to the service account
+ * associated with each client — no human users are involved.
  *
  * <h3>Container setup</h3>
  * <p>A real Keycloak 26 instance is started via {@link KeycloakContainer} (Testcontainers).
- * The realm definition at {@code ops/keycloak/realm-demo.json} is imported at startup.
+ * The realm definition at {@code src/test/resources/realm-dev.json} is imported at startup.
  * The container's issuer URI is injected into {@code keycloak.issuer-uri} so that
  * {@link com.example.customerservice.auth.SecurityConfig} activates the OAuth2 resource server path.
- *
- * <h3>Token acquisition</h3>
- * <p>Tokens are obtained via Keycloak's Resource Owner Password Credentials (ROPC) grant
- * ({@code grant_type=password}) — suitable for testing but discouraged in production.
- * In production, use the Authorization Code + PKCE flow.
  *
  * [Spring Security / Spring Boot 4] — oauth2ResourceServer().jwt() dual-mode with custom JWT.
  * [Testcontainers] — KeycloakContainer from com.github.dasniko:testcontainers-keycloak.
@@ -50,7 +51,7 @@ class KeycloakAuthITest extends AbstractIntegrationTest {
 
     /**
      * Keycloak container shared across all tests in this class.
-     * The realm-demo.json is imported via {@code withRealmImportFile()}.
+     * The realm-dev.json is imported via {@code withRealmImportFile()}.
      *
      * <p>Using {@code @Container} at the static field level ensures the container is
      * started once per test class (rather than once per test method), which avoids
@@ -58,7 +59,7 @@ class KeycloakAuthITest extends AbstractIntegrationTest {
      */
     @Container
     static final KeycloakContainer keycloak = new KeycloakContainer("quay.io/keycloak/keycloak:26.2.5")
-            .withRealmImportFile("realm-demo.json")
+            .withRealmImportFile("realm-dev.json")
             // Disable HTTPS for local testing — Keycloak 26 requires HTTPS by default.
             // The env vars mirror the docker-compose.yml settings.
             .withEnv("KC_HTTP_ENABLED", "true")
@@ -69,10 +70,6 @@ class KeycloakAuthITest extends AbstractIntegrationTest {
      * Override {@code keycloak.issuer-uri} with the Testcontainers-assigned URL.
      * This activates the OAuth2 resource server path in
      * {@link com.example.customerservice.auth.SecurityConfig}.
-     *
-     * <p>{@code keycloak.issuer-uri} is read by SecurityConfig via
-     * {@code @Value("${keycloak.issuer-uri:}")}; when blank, the resource server is disabled.
-     * Setting it here to the container's URL enables it for these tests only.
      */
     @DynamicPropertySource
     static void keycloakProperties(DynamicPropertyRegistry registry) {
@@ -88,9 +85,8 @@ class KeycloakAuthITest extends AbstractIntegrationTest {
 
     @BeforeEach
     void obtainTokens() {
-        // Obtain tokens for the two pre-configured realm users (defined in realm-demo.json)
-        userToken = obtainKeycloakToken("user", "user-password");
-        adminToken = obtainKeycloakToken("admin", "admin-password");
+        userToken  = obtainClientToken("monitoring-service", "dev-secret-readonly");
+        adminToken = obtainClientToken("api-gateway",        "dev-secret");
     }
 
     // -------------------------------------------------------------------------
@@ -155,7 +151,6 @@ class KeycloakAuthITest extends AbstractIntegrationTest {
 
     @Test
     void builtinJwt_stillWorksAlongsideKeycloak() throws Exception {
-        // Obtain a built-in JWT (not Keycloak)
         var loginResult = mockMvc.perform(post("/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -178,13 +173,13 @@ class KeycloakAuthITest extends AbstractIntegrationTest {
     // -------------------------------------------------------------------------
 
     /**
-     * Obtains a Keycloak access token for a realm user via the Resource Owner
-     * Password Credentials (ROPC) grant.
+     * Obtains a Keycloak access token for a confidential client via the Client Credentials grant.
      *
-     * <p>The {@code customer-service} client is configured as {@code publicClient: true} and
-     * {@code directAccessGrantsEnabled: true} in realm-demo.json to allow ROPC.
+     * <p>Roles are carried in the JWT via the {@code realm_access.roles} claim, populated
+     * by the {@code roles} scope. The service account associated with each client has
+     * its realm roles assigned in {@code realm-dev.json}.
      */
-    private String obtainKeycloakToken(String username, String password) {
+    private String obtainClientToken(String clientId, String clientSecret) {
         String tokenUrl = keycloak.getAuthServerUrl()
                 + "/realms/customer-service/protocol/openid-connect/token";
 
@@ -192,10 +187,9 @@ class KeycloakAuthITest extends AbstractIntegrationTest {
         String body = restClient.post()
                 .uri(tokenUrl)
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                .body("grant_type=password"
-                        + "&client_id=customer-service"
-                        + "&username=" + username
-                        + "&password=" + password)
+                .body("grant_type=client_credentials"
+                        + "&client_id=" + clientId
+                        + "&client_secret=" + clientSecret)
                 .retrieve()
                 .body(String.class);
 

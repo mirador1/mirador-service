@@ -314,7 +314,7 @@ jwt:
 #   KEYCLOAK_URL=http://keycloak:8080
 # The issuer URI resolves to: <KEYCLOAK_URL>/realms/customer-service
 #
-# The realm is auto-imported from infra/keycloak/realm-demo.json on first start.
+# The realm is auto-imported from infra/keycloak/realm-dev.json on first start.
 # Leave KEYCLOAK_URL unset (default) to run without Keycloak.
 # =============================================================================
 keycloak:

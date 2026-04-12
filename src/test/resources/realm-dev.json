@@ -1,0 +1,64 @@
+{
+  "realm": "customer-service",
+  "enabled": true,
+  "displayName": "Customer Service (Dev)",
+  "sslRequired": "none",
+  "accessTokenLifespan": 3600,
+
+  "clients": [
+    {
+      "clientId": "api-gateway",
+      "enabled": true,
+      "description": "Confidential client — represents a caller with full write access (ROLE_ADMIN)",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "dev-secret",
+      "serviceAccountsEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "standardFlowEnabled": false,
+      "protocol": "openid-connect",
+      "defaultClientScopes": ["openid", "roles"]
+    },
+    {
+      "clientId": "monitoring-service",
+      "enabled": true,
+      "description": "Confidential client — represents a caller with read-only access (ROLE_USER)",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "dev-secret-readonly",
+      "serviceAccountsEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "standardFlowEnabled": false,
+      "protocol": "openid-connect",
+      "defaultClientScopes": ["openid", "roles"]
+    }
+  ],
+
+  "roles": {
+    "realm": [
+      {
+        "name": "ROLE_USER",
+        "description": "Read access — GET /customers"
+      },
+      {
+        "name": "ROLE_ADMIN",
+        "description": "Write access — POST /customers (includes ROLE_USER permissions)"
+      }
+    ]
+  },
+
+  "users": [
+    {
+      "username": "service-account-api-gateway",
+      "enabled": true,
+      "serviceAccountClientId": "api-gateway",
+      "realmRoles": ["ROLE_USER", "ROLE_ADMIN"]
+    },
+    {
+      "username": "service-account-monitoring-service",
+      "enabled": true,
+      "serviceAccountClientId": "monitoring-service",
+      "realmRoles": ["ROLE_USER"]
+    }
+  ]
+}
