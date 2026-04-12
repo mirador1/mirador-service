@@ -36,6 +36,16 @@ case "$1" in
     docker compose -f docker-compose.observability.yml down
     ;;
 
+  check)
+    echo "Running unit tests (fast, no Docker)..."
+    make check
+    ;;
+
+  ci)
+    echo "Running full local CI pipeline (lint + unit + integration)..."
+    make verify
+    ;;
+
   *)
     echo "Usage:"
     echo "  ./run.sh db      # start database"
@@ -44,5 +54,7 @@ case "$1" in
     echo "  ./run.sh app     # start Spring app (local)"
     echo "  ./run.sh all     # start everything"
     echo "  ./run.sh stop    # stop all containers"
+    echo "  ./run.sh check   # unit tests only (fast, no Docker)"
+    echo "  ./run.sh ci      # full pipeline: lint + unit + integration"
     ;;
 esac
