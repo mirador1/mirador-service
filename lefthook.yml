@@ -1,0 +1,23 @@
+# =============================================================================
+# lefthook.yml — Git hooks configuration
+#
+# lefthook is a fast Git hooks manager written in Go (no Node.js required).
+# Install: brew install lefthook
+# Activate: lefthook install   (wires hooks into .git/hooks/)
+# Bypass:   LEFTHOOK=0 git push   (skip hooks for emergency pushes)
+#
+# Hooks defined here:
+#   pre-push  — runs unit tests before every push; blocks if they fail.
+#               Integration tests are intentionally excluded (too slow for
+#               a pre-push gate; they run in CI after the push).
+# =============================================================================
+
+pre-push:
+  commands:
+    unit-tests:
+      # Mirrors 'make check' / 'make test': Maven Surefire, *ITest excluded, no Docker.
+      # Runs in a few seconds — fast enough to be a pre-push gate.
+      run: ./run.sh check
+      fail_text: |
+        Unit tests failed. Fix the failures before pushing.
+        To skip this hook in an emergency: LEFTHOOK=0 git push
