@@ -15,6 +15,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 
 @AutoConfigureMockMvc
 class CustomerApiITest extends AbstractIntegrationTest {
@@ -66,5 +67,60 @@ class CustomerApiITest extends AbstractIntegrationTest {
                         .header("X-Request-Id", "req-123"))
                 .andExpect(status().isOk())
                 .andExpect(header().string("X-Request-Id", "req-123"));
+    }
+
+    @Test
+    void shouldReturn400ForBlankName() throws Exception {
+        mockMvc.perform(post("/customers")
+                        .with(user("admin").roles("USER"))
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                {"name": "   ", "email": "valid@example.com"}
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void shouldReturn400ForInvalidEmail() throws Exception {
+        mockMvc.perform(post("/customers")
+                        .with(user("admin").roles("USER"))
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                {"name": "Alice", "email": "not-an-email"}
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void shouldReturn400ForMissingFields() throws Exception {
+        mockMvc.perform(post("/customers")
+                        .with(user("admin").roles("USER"))
+                        .contentType(APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void shouldRespectPageSizeParameter() throws Exception {
+        // Insert 3 customers
+        for (int i = 1; i <= 3; i++) {
+            mockMvc.perform(post("/customers")
+                            .with(user("admin").roles("USER"))
+                            .contentType(APPLICATION_JSON)
+                            .content("""
+                                    {"name": "User%d", "email": "user%d@example.com"}
+                                    """.formatted(i, i)))
+                    .andExpect(status().isOk());
+        }
+
+        // Request page 0 with size 2 — should return exactly 2 items
+        mockMvc.perform(get("/customers")
+                        .with(user("admin").roles("USER"))
+                        .param("page", "0")
+                        .param("size", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content", hasSize(2)))
+                .andExpect(jsonPath("$.totalElements").value(3))
+                .andExpect(jsonPath("$.totalPages").value(2));
     }
 }
