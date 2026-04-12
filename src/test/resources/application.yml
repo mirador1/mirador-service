@@ -1,0 +1,43 @@
+spring:
+  datasource:
+    # Testcontainers JDBC URL — the `tc:` prefix tells the Testcontainers driver to
+    # start a PostgreSQL 17 container automatically. No explicit container declaration
+    # is needed in test code; the TC driver handles lifecycle management.
+    url: jdbc:tc:postgresql:17:///demo
+    username: test
+    password: test
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    # Show SQL in test output to make query-level regressions easy to spot
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  kafka:
+    # Overridden at runtime by @DynamicPropertySource in AbstractIntegrationTest,
+    # which wires the actual Testcontainers Kafka bootstrap-servers URL.
+    # This placeholder prevents Spring from failing before the dynamic property fires.
+    bootstrap-servers: localhost:9092
+
+  autoconfigure:
+    # Spring AI Ollama auto-configuration is incompatible with Spring Boot 4
+    # (OllamaAutoConfiguration references classes not present in Boot 4 autoconfigure).
+    # BioService is replaced by a Mockito stub via TestAiConfig in integration tests.
+    exclude: org.springframework.ai.autoconfigure.ollama.OllamaAutoConfiguration
+
+logging:
+  level:
+    org.flywaydb: DEBUG
+
+app:
+  kafka:
+    # Kafka consumer group rebalance takes a few seconds on cold start in tests.
+    # 30s gives enough headroom before the request-reply pattern times out.
+    enrich-timeout-seconds: 30
