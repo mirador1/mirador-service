@@ -21,7 +21,7 @@ providers:
     orgId: 1
     folder: customerservice   # dashboard folder visible in the Grafana UI
     type: file
-    disableDeletion: false
+    disableDeletion: false  # allow manual deletion from the Grafana UI without it being re-created on next reload
     updateIntervalSeconds: 10  # hot-reload interval — changes to demo.json appear within 10 s
     options:
-      path: /otel-lgtm/demo.json
+      path: /otel-lgtm/demo.json  # absolute path inside the otel-lgtm container (see docker-compose.observability.yml volume mount)
