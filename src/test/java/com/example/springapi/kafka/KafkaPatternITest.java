@@ -39,7 +39,7 @@ class KafkaPatternITest extends AbstractIntegrationTest {
     void pattern1_createPublishesEventWithoutBlocking() throws Exception {
         // POST returns immediately — event is published async to Kafka
         mockMvc.perform(post("/customers")
-                        .with(user("admin").roles("USER"))
+                        .with(user("admin").roles("ADMIN"))
                         .contentType(APPLICATION_JSON)
                         .content("""
                                 {"name": "Alice", "email": "alice@example.com"}
@@ -52,7 +52,7 @@ class KafkaPatternITest extends AbstractIntegrationTest {
     @Test
     void enrich_nonExistentCustomer_returns404() throws Exception {
         // GET /customers/9999/enrich — customer does not exist → NoSuchElementException → 404
-        mockMvc.perform(get("/customers/9999/enrich").with(user("admin").roles("USER")))
+        mockMvc.perform(get("/customers/9999/enrich").with(user("admin").roles("ADMIN")))
                 .andExpect(status().isNotFound());
     }
 
@@ -60,7 +60,7 @@ class KafkaPatternITest extends AbstractIntegrationTest {
     void pattern2_enrichReturnsDisplayNameViaSyncKafkaReply() throws Exception {
         // Create a customer first
         MvcResult result = mockMvc.perform(post("/customers")
-                        .with(user("admin").roles("USER"))
+                        .with(user("admin").roles("ADMIN"))
                         .contentType(APPLICATION_JSON)
                         .content("""
                                 {"name": "Bob", "email": "bob@example.com"}
@@ -74,7 +74,7 @@ class KafkaPatternITest extends AbstractIntegrationTest {
         long id = idNumber.longValue();
 
         // GET /customers/{id}/enrich — synchronous round-trip through Kafka
-        mockMvc.perform(get("/customers/{id}/enrich", id).with(user("admin").roles("USER")))
+        mockMvc.perform(get("/customers/{id}/enrich", id).with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(id))
                 .andExpect(jsonPath("$.name").value("Bob"))

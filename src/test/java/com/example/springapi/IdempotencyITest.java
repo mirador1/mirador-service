@@ -34,7 +34,7 @@ class IdempotencyITest extends AbstractIntegrationTest {
 
         // First call — creates customer, captures response body
         String firstResponse = mockMvc.perform(post("/customers")
-                        .with(user("admin").roles("USER"))
+                        .with(user("admin").roles("ADMIN"))
                         .header("Idempotency-Key", key)
                         .contentType(APPLICATION_JSON)
                         .content(body))
@@ -45,7 +45,7 @@ class IdempotencyITest extends AbstractIntegrationTest {
 
         // Second call with same key — must replay identical body (no new DB row)
         mockMvc.perform(post("/customers")
-                        .with(user("admin").roles("USER"))
+                        .with(user("admin").roles("ADMIN"))
                         .header("Idempotency-Key", key)
                         .contentType(APPLICATION_JSON)
                         .content(body))
@@ -61,13 +61,13 @@ class IdempotencyITest extends AbstractIntegrationTest {
 
         // Two calls without Idempotency-Key — both should succeed and create separate customers
         mockMvc.perform(post("/customers")
-                        .with(user("admin").roles("USER"))
+                        .with(user("admin").roles("ADMIN"))
                         .contentType(APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk());
 
         mockMvc.perform(post("/customers")
-                        .with(user("admin").roles("USER"))
+                        .with(user("admin").roles("ADMIN"))
                         .contentType(APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk());
@@ -88,7 +88,7 @@ class IdempotencyITest extends AbstractIntegrationTest {
                 """;
 
         String responseA = mockMvc.perform(post("/customers")
-                        .with(user("admin").roles("USER"))
+                        .with(user("admin").roles("ADMIN"))
                         .header("Idempotency-Key", keyA)
                         .contentType(APPLICATION_JSON)
                         .content(bodyA))
@@ -97,7 +97,7 @@ class IdempotencyITest extends AbstractIntegrationTest {
                 .andReturn().getResponse().getContentAsString();
 
         String responseB = mockMvc.perform(post("/customers")
-                        .with(user("admin").roles("USER"))
+                        .with(user("admin").roles("ADMIN"))
                         .header("Idempotency-Key", keyB)
                         .contentType(APPLICATION_JSON)
                         .content(bodyB))
@@ -107,7 +107,7 @@ class IdempotencyITest extends AbstractIntegrationTest {
 
         // Replaying keyA still returns the original KeyA response
         mockMvc.perform(post("/customers")
-                        .with(user("admin").roles("USER"))
+                        .with(user("admin").roles("ADMIN"))
                         .header("Idempotency-Key", keyA)
                         .contentType(APPLICATION_JSON)
                         .content(bodyA))
@@ -116,7 +116,7 @@ class IdempotencyITest extends AbstractIntegrationTest {
 
         // Replaying keyB still returns the original KeyB response
         mockMvc.perform(post("/customers")
-                        .with(user("admin").roles("USER"))
+                        .with(user("admin").roles("ADMIN"))
                         .header("Idempotency-Key", keyB)
                         .contentType(APPLICATION_JSON)
                         .content(bodyB))
