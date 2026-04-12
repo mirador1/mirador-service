@@ -1,2 +1,14 @@
+# =============================================================================
+# .gitattributes — per-path Git attributes
+#
+# Controls line endings (eol) and diff behaviour for specific file types.
+# Normalising line endings prevents spurious diffs when the repo is cloned
+# on Windows (CRLF) and Linux/macOS (LF) machines.
+# =============================================================================
+
+# Maven wrapper shell script — must use LF on all platforms so it is executable
+# on Linux/macOS without modification after checkout on Windows.
 /mvnw text eol=lf
+
+# Windows batch script — must use CRLF so cmd.exe can parse it correctly.
 *.cmd text eol=crlf

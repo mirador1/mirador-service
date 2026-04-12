@@ -75,6 +75,54 @@ spring:
           # Higher temperature = more creative/varied responses (0.0 = deterministic)
           temperature: 0.7
 
+  # ---------------------------------------------------------------------------
+  # Virtual Threads (Project Loom)                                  [Java 21+]
+  # Replaces platform threads for Tomcat request processing, @Async, and Kafka
+  # listeners. Each request runs on a cheap virtual thread (backed by a small
+  # pool of carrier threads), dramatically improving concurrency under I/O load.
+  # [Spring Boot 3.2+]
+  # ---------------------------------------------------------------------------
+  threads:
+    virtual:
+      enabled: true
+
+  mvc:
+    # -------------------------------------------------------------------------
+    # RFC 9457 Problem Details                                  [Spring Boot 3+]
+    # Enables the standard error format for all Spring MVC exceptions:
+    #   { "type": "...", "title": "...", "status": 400, "detail": "..." }
+    # Custom exception mapping is in ApiExceptionHandler.
+    # -------------------------------------------------------------------------
+    problemdetails:
+      enabled: true
+
+    # -------------------------------------------------------------------------
+    # API Versioning                                      [Spring Boot 4 / Spring 7]
+    #
+    # Spring Boot 4 exposes spring.mvc.apiversion.* properties that replace the
+    # WebMvcConfigurer#configureApiVersioning() Java config bean.
+    #
+    # Strategy: version resolved from the X-API-Version request header.
+    # Default: requests without the header are treated as version 1.0.
+    #
+    #   GET /customers                         → v1 (CustomerDto: id, name, email)
+    #   GET /customers + X-API-Version: 2.0   → v2 (CustomerDtoV2: + createdAt)
+    #
+    # Other available strategies (mutually exclusive — pick one):
+    #   use.query-parameter: v          → GET /customers?v=2.0
+    #   use.path-segment: 0             → GET /2.0/customers
+    #   use.media-type-parameter:       → Accept: application/json;version=2.0
+    #
+    # Other options:
+    #   required: true   — reject requests without a version header (HTTP 400)
+    #   supported:       — explicit allowlist; unknown versions get HTTP 400
+    #   detect-supported — auto-populate the allowlist from @RequestMapping(version=)
+    # -------------------------------------------------------------------------
+    apiversion:
+      use:
+        header: X-API-Version
+      default: "1.0"
+
 # =============================================================================
 # Embedded Server
 # =============================================================================
@@ -85,49 +133,6 @@ server:
     # and is a security risk (OWASP A05: Security Misconfiguration)
     include-stacktrace: never
 
-# =============================================================================
-# Virtual Threads (Project Loom)                                   [Java 21+]
-# Replaces platform threads for Tomcat request processing, @Async, and Kafka
-# listeners. Each request runs on a cheap virtual thread (backed by a small
-# pool of carrier threads), dramatically improving concurrency under I/O load.
-# [Spring Boot 3.2+] spring.threads.virtual.enabled
-# =============================================================================
-spring.threads.virtual.enabled: true
-
-# =============================================================================
-# RFC 9457 Problem Details                                    [Spring Boot 3+]
-# Enables the standard error format for all Spring MVC exceptions:
-#   { "type": "...", "title": "...", "status": 400, "detail": "..." }
-# Custom exception mapping is in ApiExceptionHandler.
-# =============================================================================
-spring.mvc.problemdetails.enabled: true
-
-# =============================================================================
-# API Versioning                                          [Spring Boot 4 / Spring 7]
-#
-# Spring Boot 4 exposes spring.mvc.apiversion.* properties that auto-configure
-# Spring Framework 7's native versioning support without requiring a custom
-# WebMvcConfigurer bean.
-#
-# Strategy: resolve the version from the X-API-Version request header.
-# Default: requests that omit the header are treated as version 1.0.
-#
-#   GET /customers                         → v1 (CustomerDto: id, name, email)
-#   GET /customers + X-API-Version: 2.0   → v2 (CustomerDtoV2: + createdAt)
-#
-# Available use strategies (mutually exclusive — pick one):
-#   use.header: X-API-Version       ← this project
-#   use.query-parameter: v          → GET /customers?v=2.0
-#   use.path-segment: 0             → GET /2.0/customers
-#   use.media-type-parameter:       → Accept: application/json;version=2.0
-#
-# Other options:
-#   required: true   — reject requests without a version header (HTTP 400)
-#   supported:       — explicit allowlist; unknown versions get HTTP 400
-#   detect-supported — auto-populate the allowlist from @RequestMapping(version=)
-# =============================================================================
-spring.mvc.apiversion.use.header: X-API-Version
-spring.mvc.apiversion.default: "1.0"
 
 # =============================================================================
 # Actuator — operational endpoints
