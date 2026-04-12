@@ -158,7 +158,7 @@ public class CustomerController {
      * resolved API version matches "1.0". Routing is performed by
      * {@link org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping}
      * using the {@link org.springframework.web.accept.ApiVersionStrategy} configured in
-     * {@link com.example.springapi.api.ApiVersionConfig}.
+     * {@code spring.mvc.apiversion.*} in {@code application.yml}.
      */
     @GetMapping(version = "1.0")
     public Page<CustomerDto> getAll(@PageableDefault(size = 20, sort = "id") Pageable pageable) {

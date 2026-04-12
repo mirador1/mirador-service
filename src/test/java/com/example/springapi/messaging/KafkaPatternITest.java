@@ -1,4 +1,4 @@
-package com.example.springapi.kafka;
+package com.example.springapi.messaging;
 
 import com.example.springapi.AbstractIntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
