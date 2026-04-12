@@ -37,6 +37,88 @@ This project is not meant to demonstrate a simple CRUD, but the ability to:
 
 ---
 
+## 🗂️ Code organisation
+
+The source tree mirrors the application's functional perimeters. Each package is cohesive and standalone — no cross-cutting grab-bags.
+
+```
+com.example.springapi
+├── api/            ApiError, ApiExceptionHandler          — RFC 9457 error responses
+├── auth/           JwtTokenProvider, JwtAuthenticationFilter,
+│                   SecurityConfig, AuthController         — JWT auth + Spring Security
+├── customer/       Customer, CustomerRepository,
+│                   CustomerService, CustomerController,
+│                   CustomerDto, CustomerDtoV2,            — core domain (model, persistence,
+│                   CreateCustomerRequest, EnrichedCustomerDto,  service, API versioning)
+│                   AggregationService, RecentCustomerBuffer,
+│                   CustomerStatsScheduler
+├── integration/    BioService, HttpClientConfig,
+│                   JsonPlaceholderClient, TodoService,
+│                   TodoItem                               — external HTTP calls (HTTP Interface + Spring AI)
+├── messaging/      KafkaConfig, CustomerCreatedEvent,
+│                   CustomerEnrichRequest, CustomerEnrichReply,
+│                   CustomerEnrichHandler, CustomerEventListener — Kafka fire-and-forget + request-reply
+├── observability/  ObservabilityConfig, DatabaseReachabilityHealthIndicator,
+│                   RequestIdFilter, RequestContext,
+│                   TraceService                           — health, tracing, metrics, request ID
+├── resilience/     IdempotencyFilter, RateLimitingFilter,
+│                   ShedLockConfig                         — rate limiting, idempotency, distributed lock
+└── SpringApiApplication.java                             — entry point
+```
+
+**Test tree** mirrors the same hierarchy:
+
+```
+src/test/java/com/example/springapi
+├── AbstractIntegrationTest.java   — shared Testcontainers base (PostgreSQL + Kafka)
+├── ArchitectureTest.java          — ArchUnit architectural constraints
+├── SpringApiApplicationITest.java — smoke test (context loads)
+├── config/TestAiConfig.java       — mock Spring AI bean for integration tests
+├── auth/       AuthITest, JwtTokenProviderTest
+├── customer/   CustomerApiITest, CustomerRestClientITest,
+│               AggregationServiceTest, RecentCustomerBufferTest
+├── messaging/  KafkaPatternITest
+└── resilience/ IdempotencyITest, RateLimitingITest
+```
+
+---
+
+## ✅ Mechanisms demonstrated
+
+| Area | Mechanism | Where |
+|---|---|---|
+| **Language** | Java 21+ virtual threads (`spring.threads.virtual.enabled`) | `application.yml` |
+| **Language** | Java 21+ `ScopedValue` for request-ID propagation | `observability/RequestContext`, `RequestIdFilter` |
+| **Language** | Java 16+ Records for DTOs | `CustomerDto`, `CreateCustomerRequest`, `EnrichedCustomerDto` |
+| **API** | Spring Boot 4 `spring.mvc.apiversion.*` — header-based versioning | `application.yml`, `CustomerController`, `CustomerDtoV2` |
+| **API** | RFC 9457 Problem Details | `api/ApiExceptionHandler`, `spring.mvc.problemdetails.enabled` |
+| **Security** | JWT Bearer token authentication (JJWT) | `auth/` package |
+| **Security** | Spring Security role-based access (`ROLE_ADMIN` / `ROLE_USER`) | `auth/SecurityConfig` |
+| **Security** | Keycloak OAuth2 resource server integration | `auth/SecurityConfig`, `docker-compose.yml` |
+| **Resilience** | Bucket4j token-bucket rate limiting (per IP, 100 req/min) | `resilience/RateLimitingFilter` |
+| **Resilience** | Idempotency header (`Idempotency-Key`) with bounded LRU cache | `resilience/IdempotencyFilter` |
+| **Resilience** | Resilience4j circuit breaker + retry on external HTTP calls | `integration/TodoService`, `BioService` |
+| **Resilience** | ShedLock distributed scheduler lock (JDBC provider) | `resilience/ShedLockConfig`, `customer/CustomerStatsScheduler` |
+| **Messaging** | Kafka fire-and-forget async event publish | `messaging/CustomerEventListener` |
+| **Messaging** | Kafka synchronous request-reply (`ReplyingKafkaTemplate`) | `messaging/CustomerEnrichHandler` |
+| **Integration** | HTTP Interface (`@HttpExchange`) for external REST calls | `integration/JsonPlaceholderClient` |
+| **Integration** | Spring AI ChatClient with Ollama (local LLM) + circuit breaker | `integration/BioService` |
+| **Observability** | Micrometer + Prometheus metrics scraping | `observability/ObservabilityConfig` |
+| **Observability** | OpenTelemetry trace export to Tempo | `application.yml` (OTLP config) |
+| **Observability** | OpenTelemetry structured log export to Loki | `application.yml` (OTLP config) |
+| **Observability** | JDBC DataSource instrumentation (datasource-micrometer) | `pom.xml` |
+| **Observability** | Custom health indicator + liveness/readiness probes | `observability/DatabaseReachabilityHealthIndicator` |
+| **Data** | Flyway schema migrations | `db/migration/V1__*.sql`, `V2__*.sql` |
+| **Testing** | Testcontainers (PostgreSQL + Kafka) integration tests | `AbstractIntegrationTest` |
+| **Testing** | Spring Boot 4 `RestTestClient` MockMvc DSL | `customer/CustomerRestClientITest` |
+| **Testing** | ArchUnit architectural constraint tests | `ArchitectureTest` |
+| **Testing** | JaCoCo merged unit + integration coverage gate (≥ 60 %) | `pom.xml` |
+| **Build** | SpotBugs static bytecode analysis (Medium threshold) | `pom.xml`, `spotbugs-exclude.xml` |
+| **Build** | GraalVM native image support (`-Pnative`) | `pom.xml` native profile, `Dockerfile.native` |
+| **Build** | Docker layered JAR optimisation | `Dockerfile` |
+
+---
+
 ## 🚀 Business endpoints
 
 - `GET /customers`

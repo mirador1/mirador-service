@@ -1,4 +1,4 @@
-package com.example.springapi;
+package com.example.springapi.resilience;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

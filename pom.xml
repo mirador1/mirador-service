@@ -17,6 +17,20 @@
     <description>Spring Boot demo upgraded for observability and CV positioning</description>
 
     <properties>
+        <!--
+          Versions not managed by the Spring Boot BOM are pinned here so they are
+          visible in one place and can be updated without hunting through <dependency> blocks.
+
+          spring-ai:              milestone release — not yet in the BOM, must be declared explicitly.
+          springdoc:              independently versioned; tracks Spring Boot but is not part of the BOM.
+          resilience4j:           spring-boot3 artifact is not covered by the Spring Boot BOM.
+          bucket4j:               in-memory token-bucket; no Spring Boot BOM entry.
+          archunit:               test-only static analysis; independently versioned.
+          datasource-micrometer:  JDBC observation bridge; not in the BOM.
+          jjwt:                   split into three artifacts (api / impl / jackson) — see dependency block.
+          shedlock:               split into two artifacts (spring / provider) — see dependency block.
+          testcontainers:         BOM entry exists but pinned here to guarantee kafka module alignment.
+        -->
         <java.version>25</java.version>
         <lombok.version>1.18.44</lombok.version>
         <archunit.version>1.4.0</archunit.version>
@@ -71,7 +85,14 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
-        <!-- Security -->
+        <!--
+          Security — Spring Security + JWT (JJWT split-JAR pattern)
+          JJWT uses a three-artifact design to keep compile-time surface minimal:
+            jjwt-api     → compile-time API (interfaces, builder methods) — required at compile scope
+            jjwt-impl    → runtime implementation of the API — runtime only, never leak to consumers
+            jjwt-jackson → Jackson-based JSON serializer for JWT claims — runtime only
+          Keeping impl and jackson at runtime scope prevents accidental dependency on internals.
+        -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-security</artifactId>
@@ -100,18 +121,26 @@
             <version>${jjwt.version}</version>
             <scope>runtime</scope>
         </dependency>
-        <!-- JPA -->
+
+        <!-- JPA — Spring Data JPA + Hibernate ORM, schema managed by Flyway -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-jpa</artifactId>
         </dependency>
-        <!-- HTTP request input validation -->
+        <!-- HTTP request input validation — @Valid / @NotBlank / @Email on DTOs -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
-        <!-- Observability -->
+        <!--
+          Observability stack — four complementary artifacts:
+            actuator              → /actuator/health, /actuator/prometheus, etc.
+            micrometer-prometheus → Prometheus registry: scrape at /actuator/prometheus
+            opentelemetry         → OTLP trace + log export to Tempo / Loki via OTEL collector
+            datasource-micrometer → instruments JDBC DataSource with Micrometer Observations
+                                    (query count, latency histograms, slow-query detection)
+        -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
@@ -130,14 +159,18 @@
             <version>${datasource-micrometer.version}</version>
         </dependency>
 
-        <!-- API docs -->
+        <!-- API docs — SpringDoc generates OpenAPI 3 spec + Swagger UI at /swagger-ui.html -->
         <dependency>
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
             <version>${springdoc.version}</version>
         </dependency>
 
-        <!-- DB -->
+        <!--
+          DB — PostgreSQL driver (runtime only) + Flyway migration engine.
+          flyway-database-postgresql adds the PostgreSQL-specific dialect support
+          required by Flyway 10+ (the generic flyway-core no longer bundles DB drivers).
+        -->
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
@@ -152,7 +185,13 @@
             <artifactId>flyway-database-postgresql</artifactId>
         </dependency>
 
-        <!-- ShedLock — distributed scheduler lock -->
+        <!--
+          ShedLock — distributed scheduler lock (prevents concurrent cron execution in clusters).
+          Two-artifact split:
+            shedlock-spring                → Spring @SchedulerLock annotation support + AOP aspect
+            shedlock-provider-jdbc-template → JDBC backend that uses the shedlock DB table
+                                             (created by V2__create_shedlock_table.sql)
+        -->
         <dependency>
             <groupId>net.javacrumbs.shedlock</groupId>
             <artifactId>shedlock-spring</artifactId>
@@ -164,34 +203,49 @@
             <version>${shedlock.version}</version>
         </dependency>
 
-        <!-- Kafka -->
+        <!-- Kafka — Spring Kafka for producer/consumer + request-reply pattern -->
         <dependency>
             <groupId>org.springframework.kafka</groupId>
             <artifactId>spring-kafka</artifactId>
         </dependency>
 
-        <!-- Bucket4j — in-memory token bucket rate limiting -->
+        <!-- Bucket4j — in-memory token-bucket rate limiting (100 req/min per IP) -->
         <dependency>
             <groupId>com.bucket4j</groupId>
             <artifactId>bucket4j-core</artifactId>
             <version>${bucket4j.version}</version>
         </dependency>
 
-        <!-- Resilience4j — circuit breaker + retry -->
+        <!--
+          Resilience4j — circuit breaker + retry for external HTTP calls.
+          Uses the spring-boot3 artifact (not spring-boot2) for Spring Boot 3/4 auto-configuration.
+          Provides @CircuitBreaker, @Retry, @TimeLimiter annotations via AOP.
+        -->
         <dependency>
             <groupId>io.github.resilience4j</groupId>
             <artifactId>resilience4j-spring-boot3</artifactId>
             <version>${resilience4j.version}</version>
         </dependency>
 
-        <!-- Spring AI — Ollama (local LLM) -->
+        <!-- Spring AI — Ollama starter for local LLM inference (llama3.2 model) -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-ollama-spring-boot-starter</artifactId>
             <version>${spring-ai.version}</version>
         </dependency>
 
-        <!-- Tests -->
+        <!--
+          Tests — split into unit (surefire) and integration (failsafe) phases.
+            spring-boot-starter-test     → JUnit 5, Mockito, AssertJ, Spring test support
+            spring-boot-webmvc-test      → RestTestClient (Spring Boot 4 MockMvc DSL)
+            spring-boot-testcontainers   → @ServiceConnection auto-wiring for Testcontainers
+            junit-jupiter                → Testcontainers JUnit 5 extension (@Testcontainers)
+            postgresql (TC)              → PostgreSQL Testcontainer
+            spring-kafka-test            → EmbeddedKafkaBroker for unit tests
+            kafka (TC)                   → Kafka Testcontainer for integration tests
+            archunit-junit5              → architectural constraint tests (disabled on Java 25)
+            spring-security-test         → SecurityMockMvcRequestPostProcessors.user(...)
+        -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
@@ -253,15 +307,23 @@
 
     <build>
         <plugins>
+            <!--
+              spring-boot-maven-plugin — packages the application as an executable layered JAR.
+              Layered JARs split content into: dependencies / spring-boot-loader / snapshot-dependencies
+              / application. Docker can cache the stable layers (deps) and only rebuild the
+              application layer on code changes. Also supports AOT processing for GraalVM native images.
+              Usage: mvn spring-boot:run  |  mvn package → target/springapi-0.0.1-SNAPSHOT.jar
+            -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
 
             <!--
-              maven-surefire-plugin — unit tests only.
-              *ITest classes are excluded here: they need Docker (Testcontainers)
-              and are handled by failsafe in the integration-test phase.
+              maven-surefire-plugin — unit tests only (fast, no Docker required).
+              *ITest classes are excluded here: they need a running Docker daemon
+              (Testcontainers) and are handled by failsafe in the integration-test phase.
+              Convention: unit tests → *Test.java, integration tests → *ITest.java.
             -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -274,10 +336,11 @@
             </plugin>
 
             <!--
-              maven-failsafe-plugin — integration tests (*ITest classes).
-              Runs in the integration-test phase, AFTER unit tests.
-              Failsafe is fault-tolerant: it always runs the verify goal to
-              report results even if some tests fail, unlike surefire which stops.
+              maven-failsafe-plugin — integration tests (*ITest classes, require Docker).
+              Runs in the integration-test phase, AFTER surefire unit tests.
+              Failsafe is fault-tolerant: it always runs the verify goal to report results
+              even if some tests fail, unlike surefire which stops immediately on failure.
+              This ensures JaCoCo artifacts are always produced for coverage reporting.
             -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -300,16 +363,17 @@
             <!--
               JaCoCo — code coverage for unit + integration tests.
 
-              Strategy:
-                1. prepare-agent          → instruments JVM for surefire → jacoco.exec
+              Strategy (6 executions):
+                1. prepare-agent             → instruments JVM for surefire → jacoco.exec
                 2. prepare-agent-integration → instruments JVM for failsafe → jacoco-it.exec
-                3. report                 → HTML/XML for unit tests (target/site/jacoco)
-                4. report-integration     → HTML/XML for integration tests (target/site/jacoco-it)
-                5. merge                  → combines jacoco.exec + jacoco-it.exec into jacoco-merged.exec
-                6. check                  → fails the build if merged coverage < 60 % instructions
+                3. report                    → HTML/XML report for unit tests (target/site/jacoco)
+                4. report-integration        → HTML/XML report for ITests (target/site/jacoco-it)
+                5. merge                     → combines jacoco.exec + jacoco-it.exec → jacoco-merged.exec
+                6. check                     → fails build if merged instruction coverage < 60 %
 
-              Why merge? unit tests alone cover only ~20 % (JwtTokenProviderTest, ArchUnit);
-              integration tests cover the full stack. Merging gives an accurate overall picture.
+              Why merge? Unit tests alone cover ~20 % (JwtTokenProviderTest + ArchUnit skips);
+              integration tests cover the full Spring context stack. Merging gives an accurate
+              combined coverage figure for the quality gate.
             -->
             <plugin>
                 <groupId>org.jacoco</groupId>
@@ -376,21 +440,17 @@
             </plugin>
 
             <!--
-              SpotBugs — static bytecode analysis.
-              Bound to the verify phase so it runs after compilation and tests.
-              Medium threshold: catches real bugs (null deref, resource leaks, bad practices)
-              without drowning in style warnings. xmlOutput lets CI parse the report.
-            -->
-            <!--
               SpotBugs — static bytecode analysis — fails on Medium+ findings.
-              Bound to verify phase; runs after compilation and integration tests.
+              Bound to the verify phase so it runs after compilation and tests.
               Default effort = good balance between speed and thoroughness.
-              Medium threshold = real bugs (null deref, resource leaks, bad practices),
-              not style noise.
+              Medium threshold = catches real bugs (null deref, resource leaks, bad practices)
+              without drowning in style noise.
 
-              ASM override: SpotBugs 4.8.x ships with ASM 9.7 which tops out at
-              Java 24 (class version 68). Java 25 emits class version 69, so we
-              force ASM 9.8 as a plugin dependency to unblock the analysis.
+              ASM override: SpotBugs 4.8.x ships with ASM 9.7 which tops out at Java 24
+              (class file major version 68). Java 25 emits class version 69, so we force
+              ASM 9.8 as a plugin dependency to unblock bytecode analysis.
+              Note: ArchUnit 1.4.0 has a separate hardcoded version check that also blocks
+              Java 25 — see ArchitectureTest for details and the @DisabledIfSystemProperty workaround.
             -->
             <plugin>
                 <groupId>com.github.spotbugs</groupId>
@@ -419,23 +479,35 @@
                 <configuration>
                     <effort>Default</effort>
                     <threshold>Medium</threshold>
-                    <!-- Documented false positives (Spring DI patterns) -->
+                    <!-- Documented false positives for Spring DI patterns — see spotbugs-exclude.xml -->
                     <excludeFilterFile>spotbugs-exclude.xml</excludeFilterFile>
                     <!-- XML report consumed by CI artifact / GitLab Code Quality -->
                     <xmlOutput>true</xmlOutput>
                 </configuration>
             </plugin>
-            <!-- GraalVM Native Image — mvn -Pnative native:compile -->
+
+            <!--
+              GraalVM Native Image plugin — compiles the application to a standalone native binary.
+              Activated via the "native" profile: mvn -Pnative native:compile
+              Produces a self-contained executable with ~10ms startup time (vs ~3s JVM).
+              Requires GraalVM JDK 25 or the native-image tool on PATH.
+            -->
             <plugin>
                 <groupId>org.graalvm.buildtools</groupId>
                 <artifactId>native-maven-plugin</artifactId>
             </plugin>
+
+            <!--
+              maven-compiler-plugin — Java 25 source/target compatibility.
+              annotationProcessorPaths must be declared explicitly in Java 25: the implicit
+              annotation processor discovery path was tightened, and Lombok requires an
+              explicit entry here to generate builders and other boilerplate during compilation.
+            -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <configuration>
                     <release>${java.version}</release>
-                    # explitely required for java 25
                     <annotationProcessorPaths>
                         <path>
                             <groupId>org.projectlombok</groupId>
@@ -449,6 +521,14 @@
     </build>
 
     <profiles>
+        <!--
+          native profile — compiles the application to a GraalVM native image.
+          Usage: mvn -Pnative native:compile
+          This profile adds two extra steps:
+            process-aot → Spring AOT processes beans at build time (removes reflection overhead)
+            add-reachability-metadata → registers hints for reflection/serialization/proxy usage
+          The resulting binary does not require a JVM to run.
+        -->
         <profile>
             <id>native</id>
             <build>
@@ -483,12 +563,17 @@
     </profiles>
 
     <repositories>
+        <!-- Maven Central — primary artifact repository for all standard dependencies -->
         <repository>
             <id>central</id>
             <name>Maven Central</name>
             <url>https://repo1.maven.org/maven2</url>
             <snapshots><enabled>false</enabled></snapshots>
         </repository>
+        <!--
+          Spring Milestones — required for Spring AI milestone releases (1.0.0-M6).
+          Remove once Spring AI 1.0 GA is published to Maven Central.
+        -->
         <repository>
             <id>spring-milestones</id>
             <name>Spring Milestones</name>
