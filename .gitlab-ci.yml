@@ -38,22 +38,22 @@ stages:
 # ── shared defaults ────────────────────────────────────────────────────────────
 
 default:
-  image: maven:3.9.14-eclipse-temurin-25-noble
+  image: maven:3.9.14-eclipse-temurin-25-noble   # JDK 25 + Maven 3.9 — mirrors the pom.xml java.version
   interruptible: true   # MR pipelines can be cancelled when a new commit is pushed
 
 variables:
   # Keep the local Maven repo inside the project dir so it is cached across jobs
   MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
   MAVEN_CLI_OPTS: "--batch-mode --errors --fail-at-end --show-version --no-transfer-progress"
-  # Docker-in-dind: plain TCP, no TLS (internal GitLab runner network)
+  # Docker-in-dind: plain TCP, no TLS (safe because it is only reachable within the GitLab runner network)
   DOCKER_HOST: "tcp://docker:2375"
-  DOCKER_TLS_CERTDIR: ""
+  DOCKER_TLS_CERTDIR: ""    # empty string disables TLS certificate generation in the DinD service
 
 cache:
   # One cache bucket per branch — avoids cross-branch dependency pollution
-  key: "$CI_COMMIT_REF_SLUG"
+  key: "$CI_COMMIT_REF_SLUG"    # e.g. "main", "dev", "feature-xyz"
   paths:
-    - .m2/repository
+    - .m2/repository    # Maven local repository — shared across all jobs in the same branch pipeline
 
 # ── stage: lint ───────────────────────────────────────────────────────────────
 
@@ -91,16 +91,13 @@ unit-test:
   script:
     - mvn $MAVEN_CLI_OPTS test
   artifacts:
-    when: always
+    when: always    # upload even on test failure so the JUnit report is always available for diagnosis
     reports:
-      # Populates the "Tests" tab in the MR and pipeline view
-      junit: target/surefire-reports/*.xml
+      junit: target/surefire-reports/*.xml    # populates the "Tests" tab in the MR and pipeline view
     paths:
-      # Forwarded to the integration stage for merged JaCoCo coverage
-      - target/jacoco.exec
-      # Unit-test HTML coverage report (browsable in job artifacts)
-      - target/site/jacoco/
-    expire_in: 1 week
+      - target/jacoco.exec       # binary coverage data — forwarded to integration-test for JaCoCo merge
+      - target/site/jacoco/      # HTML unit coverage report (browsable in the job artifacts panel)
+    expire_in: 1 week    # short-lived: only needed until the integration job completes and the MR is merged
 
 # GitLab SAST — static application security testing.
 # Runs semgrep rules against the source code to detect: injection flaws,
@@ -168,23 +165,21 @@ integration-test:
     - when: on_success
   needs:
     - job: unit-test
-      artifacts: true   # Downloads target/jacoco.exec into this job's workspace
+      artifacts: true   # downloads target/jacoco.exec so JaCoCo:merge can combine unit + IT coverage
   services:
-    # Docker daemon needed for Testcontainers — starts PostgreSQL + Kafka containers
-    - name: docker:28-dind
-      alias: docker
+    - name: docker:28-dind    # Docker daemon required by Testcontainers (unlike GitHub-hosted runners, GitLab runners don't include Docker)
+      alias: docker            # alias used by DOCKER_HOST=tcp://docker:2375 above
   script:
     # -Dsurefire.skip=true: unit tests already validated in the previous stage,
     # no need to repeat them. Failsafe, SpotBugs and JaCoCo still run at verify.
     - mvn $MAVEN_CLI_OPTS verify -Dsurefire.skip=true
   artifacts:
-    when: always
+    when: always    # upload even on test failure so the JUnit + SpotBugs reports are always available
     reports:
-      # Populates the "Tests" tab with integration test results
-      junit: target/failsafe-reports/*.xml
+      junit: target/failsafe-reports/*.xml    # populates the "Tests" tab with integration test results
     paths:
-      - target/site/jacoco-it/     # Integration test HTML coverage report
-      - target/spotbugsXml.xml     # SpotBugs XML — parseable by GitLab Code Quality
+      - target/site/jacoco-it/     # HTML integration coverage report (browsable in the job artifacts panel)
+      - target/spotbugsXml.xml     # SpotBugs XML — parseable by GitLab Code Quality widget
     expire_in: 1 week
 
 # ── stage: package ────────────────────────────────────────────────────────────
@@ -199,14 +194,14 @@ build-jar:
       when: never
     - when: on_success
   needs:
-    - job: unit-test
+    - job: unit-test        # both test gates must pass before producing the artifact
     - job: integration-test
   script:
-    - mvn $MAVEN_CLI_OPTS -DskipTests package
+    - mvn $MAVEN_CLI_OPTS -DskipTests package    # tests already passed — skip to save time
   artifacts:
     paths:
-      - target/*.jar
-    expire_in: 1 week
+      - target/*.jar    # Spring Boot fat JAR (includes embedded Tomcat + all dependencies)
+    expire_in: 1 week   # short-lived: for manual download or downstream deploy jobs
 
 # Build the Docker image and push it to the GitLab Container Registry.
 #
@@ -220,9 +215,9 @@ build-jar:
 # avoid flooding the registry with images that are never deployed.
 docker-build:
   stage: package
-  image: docker:28
+  image: docker:28    # standalone Docker client — the DinD service provides the daemon
   needs:
-    - job: unit-test
+    - job: unit-test        # both test gates must pass before producing the image
     - job: integration-test
   services:
     - name: docker:28-dind
@@ -230,16 +225,16 @@ docker-build:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH    # push to registry on main
+    - if: $CI_COMMIT_TAG                             # push to registry on version tags (e.g. v1.2.0)
   script:
     - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
     - |
       docker build \
         --label "org.opencontainers.image.revision=$CI_COMMIT_SHA" \
         --label "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-        -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA" \
-        -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG" \
+        -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA" \      # immutable pointer — used for deployments
+        -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG" \ # moving pointer (e.g. "main") — for convenience
         .
     - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
     - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG"
