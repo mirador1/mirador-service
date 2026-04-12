@@ -1,4 +1,5 @@
-package com.example.springapi;
+package com.example.springapi.customer;
+import com.example.springapi.AbstractIntegrationTest;
 
 import com.example.springapi.customer.CustomerRepository;
 import org.junit.jupiter.api.BeforeEach;

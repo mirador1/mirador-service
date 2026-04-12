@@ -1,4 +1,5 @@
-package com.example.springapi;
+package com.example.springapi.customer;
+import com.example.springapi.AbstractIntegrationTest;
 
 import com.example.springapi.customer.CustomerRepository;
 import com.jayway.jsonpath.JsonPath;
@@ -27,7 +28,7 @@ import org.springframework.web.client.ApiVersionInserter;
  *       failure messages than Hamcrest matchers.</li>
  *   <li><b>First-class API versioning</b> — {@code .apiVersion("2.0")} sets the configured
  *       version header/param ({@code X-API-Version} here) without knowing the header name.
- *       See {@link com.example.springapi.api.ApiVersionConfig}.</li>
+ *       See {@code spring.mvc.apiversion.*} in {@code application.yml}.</li>
  *   <li><b>{@code .mutate()}</b> — fork a client with different defaults (e.g. a different
  *       auth token) without rebuilding the full context.</li>
  * </ul>
@@ -73,7 +74,7 @@ class CustomerRestClientITest extends AbstractIntegrationTest {
         // Wrap the auto-configured MockMvc in RestTestClient.
         // ApiVersionInserter.useHeader("X-API-Version") tells the client how to
         // serialise .apiVersion("2.0") calls — mirrors the server-side configuration
-        // in ApiVersionConfig which reads the version from that same header.
+        // in {@code spring.mvc.apiversion.use.header} which reads the version from that same header.
         restClient = RestTestClient
                 .bindTo(mockMvc)
                 .apiVersionInserter(ApiVersionInserter.useHeader("X-API-Version"))
@@ -158,7 +159,7 @@ class CustomerRestClientITest extends AbstractIntegrationTest {
 
     /**
      * GET /customers with no API version → v1 response (no {@code createdAt} field).
-     * The default version is 1.0 (configured in {@link com.example.springapi.api.ApiVersionConfig}).
+     * The default version is 1.0 (configured in {@code spring.mvc.apiversion.*} in {@code application.yml}).
      */
     @Test
     void shouldReturnV1ShapeByDefault() {

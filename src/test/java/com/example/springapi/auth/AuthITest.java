@@ -1,4 +1,5 @@
-package com.example.springapi;
+package com.example.springapi.auth;
+import com.example.springapi.AbstractIntegrationTest;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

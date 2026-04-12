@@ -1,4 +1,4 @@
-package com.example.springapi.security;
+package com.example.springapi.auth;
 
 import com.example.springapi.auth.JwtTokenProvider;
 import io.jsonwebtoken.Jwts;

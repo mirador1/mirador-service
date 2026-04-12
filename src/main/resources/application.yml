@@ -94,18 +94,31 @@ spring.threads.virtual.enabled: true
 spring.mvc.problemdetails.enabled: true
 
 # =============================================================================
-# API Versioning                                          [Spring 7 / Spring Boot 4]
-# Spring Framework 7 introduces native API versioning support via
-# WebMvcConfigurer.configureApiVersioning(). The strategy (header, path, query
-# param, or media-type) and default version are configured in ApiVersionConfig.
+# API Versioning                                          [Spring Boot 4 / Spring 7]
 #
-# This application uses X-API-Version header resolution with default 1.0:
-#   GET /customers                        → v1 (CustomerDto: id, name, email)
-#   GET /customers + X-API-Version: 2.0  → v2 (CustomerDtoV2: id, name, email, createdAt)
+# Spring Boot 4 exposes spring.mvc.apiversion.* properties that auto-configure
+# Spring Framework 7's native versioning support without requiring a custom
+# WebMvcConfigurer bean.
 #
-# No application.yml property is needed — the feature is enabled by implementing
-# WebMvcConfigurer#configureApiVersioning() in ApiVersionConfig.java.
+# Strategy: resolve the version from the X-API-Version request header.
+# Default: requests that omit the header are treated as version 1.0.
+#
+#   GET /customers                         → v1 (CustomerDto: id, name, email)
+#   GET /customers + X-API-Version: 2.0   → v2 (CustomerDtoV2: + createdAt)
+#
+# Available use strategies (mutually exclusive — pick one):
+#   use.header: X-API-Version       ← this project
+#   use.query-parameter: v          → GET /customers?v=2.0
+#   use.path-segment: 0             → GET /2.0/customers
+#   use.media-type-parameter:       → Accept: application/json;version=2.0
+#
+# Other options:
+#   required: true   — reject requests without a version header (HTTP 400)
+#   supported:       — explicit allowlist; unknown versions get HTTP 400
+#   detect-supported — auto-populate the allowlist from @RequestMapping(version=)
 # =============================================================================
+spring.mvc.apiversion.use.header: X-API-Version
+spring.mvc.apiversion.default: "1.0"
 
 # =============================================================================
 # Actuator — operational endpoints
