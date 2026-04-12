@@ -73,7 +73,16 @@ public class RequestIdFilter extends OncePerRequestFilter {
 
         long start = System.nanoTime();
         try {
-            filterChain.doFilter(request, response);
+            // Bind REQUEST_ID for the duration of the filter chain so any code in this request
+            // scope can read RequestContext.REQUEST_ID.get() and receive the actual ID.  [Java 21+]
+            ScopedValue.where(RequestContext.REQUEST_ID, requestId).call(() -> {
+                filterChain.doFilter(request, response);
+                return null;
+            });
+        } catch (ServletException | IOException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalStateException("Unexpected exception in scoped filter chain", e);
         } finally {
             long durationMs = (System.nanoTime() - start) / 1_000_000;
             // Structured access log — key=value format for easy Loki / LogQL parsing

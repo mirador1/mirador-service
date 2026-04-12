@@ -23,12 +23,14 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
  *   resilience/  — rate limiting, idempotency, ShedLock
  *   api/         — error model and global exception handler
  *
- * NOTE: ArchUnit 1.4.x uses ASM which does not yet support Java 25 bytecode
- * (class file version 69). These tests are skipped on Java 25+ and will be
- * re-enabled once ArchUnit ships an ASM version with Java 25 support.
+ * NOTE: ArchUnit 1.4.x has a hardcoded version check in ClassFileProcessor that rejects
+ * Java 25 bytecode (class file major version 69) with an IllegalArgumentException, regardless
+ * of ASM version. These tests are skipped on Java 25+ and will be re-enabled once ArchUnit
+ * ships a version that raises this limit (tracked upstream in the ArchUnit GitHub issues).
+ * The dependencyManagement section in pom.xml already forces ASM 9.8 as a prerequisite.
  */
 @DisabledIfSystemProperty(named = "java.version", matches = "2[5-9].*",
-        disabledReason = "ArchUnit ASM does not support Java 25 bytecode yet")
+        disabledReason = "ArchUnit 1.4.x ClassFileProcessor rejects Java 25 bytecode (class version 69)")
 class ArchitectureTest {
 
     static JavaClasses classes;

@@ -12,7 +12,9 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.util.ContentCachingResponseWrapper;
 
 import java.io.IOException;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * Servlet filter that makes {@code POST /customers} idempotent.
@@ -38,9 +40,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * All other requests are skipped via {@link #shouldNotFilter}.
  *
  * <h3>Cache eviction</h3>
- * <p>The cache is a bounded {@link ConcurrentHashMap} capped at 10 000 entries. When full,
- * the entire map is cleared (a blunt but simple eviction). For production use, replace with
- * a Caffeine cache with TTL-based expiry to avoid replaying very old responses.
+ * <p>The cache is a bounded {@link LinkedHashMap} (insertion-order) capped at 10 000 entries.
+ * When the cap is reached, the oldest-inserted entry is evicted automatically via
+ * {@code removeEldestEntry} — no bulk clear, so most cached responses survive. The map is
+ * wrapped with {@link Collections#synchronizedMap} for thread-safety.
  *
  * <h3>Client usage</h3>
  * <pre>
@@ -55,8 +58,16 @@ public class IdempotencyFilter extends OncePerRequestFilter {
     static final String HEADER = "Idempotency-Key";
     private static final int MAX_ENTRIES = 10_000;
 
-    // Simple bounded map: evict oldest when full
-    private final ConcurrentHashMap<String, String> cache = new ConcurrentHashMap<>(MAX_ENTRIES);
+    // Insertion-order bounded map: removes the oldest entry when MAX_ENTRIES is exceeded.
+    // Wrapped with synchronizedMap because LinkedHashMap is not thread-safe.
+    @SuppressWarnings("serial")
+    private final Map<String, String> cache = Collections.synchronizedMap(
+            new LinkedHashMap<>(MAX_ENTRIES, 0.75f, false) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, String> eldest) {
+                    return size() > MAX_ENTRIES;
+                }
+            });
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
@@ -89,9 +100,7 @@ public class IdempotencyFilter extends OncePerRequestFilter {
 
         String body = new String(wrapper.getContentAsByteArray(), wrapper.getCharacterEncoding());
         if (wrapper.getStatus() == HttpServletResponse.SC_OK && !body.isBlank()) {
-            if (cache.size() >= MAX_ENTRIES) {
-                cache.clear(); // simple eviction — replace with Caffeine for production
-            }
+            // LinkedHashMap.removeEldestEntry() evicts the oldest entry automatically when full
             cache.put(key, body);
             log.info("idempotency_store key={}", key);
         }

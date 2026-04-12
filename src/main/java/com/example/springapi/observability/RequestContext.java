@@ -14,8 +14,8 @@ package com.example.springapi.observability;
  * </ul>
  *
  * <h3>Usage in this project</h3>
- * <p>{@link #REQUEST_ID} is bound by {@link com.example.springapi.filter.RequestIdFilter}
- * for each incoming HTTP request and consumed by {@link com.example.springapi.service.TraceService}
+ * <p>{@link #REQUEST_ID} is bound by {@link com.example.springapi.observability.RequestIdFilter}
+ * for each incoming HTTP request and consumed by {@link com.example.springapi.observability.TraceService}
  * wherever the request ID is needed outside the filter chain.
  *
  * <p>Note: The filter currently uses SLF4J {@code MDC} as the primary propagation mechanism
@@ -30,7 +30,7 @@ public final class RequestContext {
 
     /**
      * ScopedValue carrying the current HTTP request ID.
-     * Bound by {@link com.example.springapi.filter.RequestIdFilter} at the start of each request.
+     * Bound by {@link com.example.springapi.observability.RequestIdFilter} at the start of each request.
      * Accessible anywhere within the same scope via {@code RequestContext.REQUEST_ID.get()}.
      */
     public static final ScopedValue<String> REQUEST_ID = ScopedValue.newInstance(); // [Java 21+] ScopedValue replaces ThreadLocal
