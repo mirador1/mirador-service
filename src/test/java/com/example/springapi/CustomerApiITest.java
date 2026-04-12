@@ -34,7 +34,7 @@ class CustomerApiITest extends AbstractIntegrationTest {
     @Test
     void shouldCreateAndListCustomers() throws Exception {
         mockMvc.perform(post("/customers")
-                        .with(user("admin").roles("USER"))
+                        .with(user("admin").roles("ADMIN"))
                         .contentType(APPLICATION_JSON)
                         .content("""
                                 {
@@ -46,7 +46,7 @@ class CustomerApiITest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.name").value("Benoit"))
                 .andExpect(jsonPath("$.email").value("benoit@example.com"));
 
-        mockMvc.perform(get("/customers").with(user("admin").roles("USER")))
+        mockMvc.perform(get("/customers").with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content", hasSize(1)))
                 .andExpect(jsonPath("$.content[0].name").value("Benoit"))
@@ -55,7 +55,7 @@ class CustomerApiITest extends AbstractIntegrationTest {
 
     @Test
     void shouldReturnRequestIdHeader() throws Exception {
-        mockMvc.perform(get("/customers").with(user("admin").roles("USER")))
+        mockMvc.perform(get("/customers").with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk())
                 .andExpect(header().exists("X-Request-Id"));
     }
@@ -63,7 +63,7 @@ class CustomerApiITest extends AbstractIntegrationTest {
     @Test
     void shouldPropagateIncomingRequestId() throws Exception {
         mockMvc.perform(get("/customers")
-                        .with(user("admin").roles("USER"))
+                        .with(user("admin").roles("ADMIN"))
                         .header("X-Request-Id", "req-123"))
                 .andExpect(status().isOk())
                 .andExpect(header().string("X-Request-Id", "req-123"));
@@ -72,7 +72,7 @@ class CustomerApiITest extends AbstractIntegrationTest {
     @Test
     void shouldReturn400ForBlankName() throws Exception {
         mockMvc.perform(post("/customers")
-                        .with(user("admin").roles("USER"))
+                        .with(user("admin").roles("ADMIN"))
                         .contentType(APPLICATION_JSON)
                         .content("""
                                 {"name": "   ", "email": "valid@example.com"}
@@ -83,7 +83,7 @@ class CustomerApiITest extends AbstractIntegrationTest {
     @Test
     void shouldReturn400ForInvalidEmail() throws Exception {
         mockMvc.perform(post("/customers")
-                        .with(user("admin").roles("USER"))
+                        .with(user("admin").roles("ADMIN"))
                         .contentType(APPLICATION_JSON)
                         .content("""
                                 {"name": "Alice", "email": "not-an-email"}
@@ -94,7 +94,7 @@ class CustomerApiITest extends AbstractIntegrationTest {
     @Test
     void shouldReturn400ForMissingFields() throws Exception {
         mockMvc.perform(post("/customers")
-                        .with(user("admin").roles("USER"))
+                        .with(user("admin").roles("ADMIN"))
                         .contentType(APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isBadRequest());
@@ -105,7 +105,7 @@ class CustomerApiITest extends AbstractIntegrationTest {
         // Insert 3 customers
         for (int i = 1; i <= 3; i++) {
             mockMvc.perform(post("/customers")
-                            .with(user("admin").roles("USER"))
+                            .with(user("admin").roles("ADMIN"))
                             .contentType(APPLICATION_JSON)
                             .content("""
                                     {"name": "User%d", "email": "user%d@example.com"}
@@ -115,7 +115,7 @@ class CustomerApiITest extends AbstractIntegrationTest {
 
         // Request page 0 with size 2 — should return exactly 2 items
         mockMvc.perform(get("/customers")
-                        .with(user("admin").roles("USER"))
+                        .with(user("admin").roles("ADMIN"))
                         .param("page", "0")
                         .param("size", "2"))
                 .andExpect(status().isOk())

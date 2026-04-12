@@ -238,6 +238,22 @@ jwt:
   secret: ${JWT_SECRET:dev-secret-key-minimum-32-characters}
 
 # =============================================================================
+# Keycloak — OAuth2 resource server (optional)
+#
+# When KEYCLOAK_URL is set, the app validates JWTs issued by Keycloak in
+# addition to its own JWTs (POST /auth/login mode).
+#
+# Set KEYCLOAK_URL to the Keycloak base URL, e.g.:
+#   KEYCLOAK_URL=http://keycloak:8080
+# The issuer URI resolves to: <KEYCLOAK_URL>/realms/spring-api-demo
+#
+# The realm is auto-imported from ops/keycloak/realm-demo.json on first start.
+# Leave KEYCLOAK_URL unset (default) to run without Keycloak.
+# =============================================================================
+keycloak:
+  issuer-uri: ${KEYCLOAK_URL:}/realms/spring-api-demo
+
+# =============================================================================
 # Application-specific configuration
 # =============================================================================
 app:

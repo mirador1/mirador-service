@@ -76,6 +76,13 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-security</artifactId>
         </dependency>
+        <!-- OAuth2 resource server — validates JWT tokens issued by Keycloak (or any OIDC provider).
+             When KEYCLOAK_URL is set, the app accepts Keycloak JWTs in addition to its own.
+             spring-security-oauth2-jose pulls in nimbus-jose-jwt for JWKS validation. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+        </dependency>
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt-api</artifactId>
@@ -232,6 +239,14 @@
         <dependency>
             <groupId>org.springframework.security</groupId>
             <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Testcontainers Keycloak module — spins up a real Keycloak instance for ITests.
+             Uses the official quay.io/keycloak/keycloak image with a pre-imported realm. -->
+        <dependency>
+            <groupId>com.github.dasniko</groupId>
+            <artifactId>testcontainers-keycloak</artifactId>
+            <version>3.5.0</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
