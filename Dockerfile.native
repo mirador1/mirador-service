@@ -45,7 +45,16 @@ RUN ./mvnw -Pnative native:compile -DskipTests -q
 # ---------------------------------------------------------------------------
 FROM debian:bookworm-slim
 WORKDIR /app
-COPY --from=builder /app/target/springapi .
+
+# Security: run as a dedicated non-root system user — same pattern as the JVM Dockerfile.
+RUN groupadd --system spring && useradd --system --gid spring spring
+
+# The native binary is named after the Maven artifactId (customer-service).
+# It embeds everything: no JVM, no libstdc++, no external runtime dependencies.
+COPY --from=builder /app/target/customer-service .
+
+USER spring
+
 EXPOSE 8080
 # Run the native binary directly — no JVM invocation needed
-ENTRYPOINT ["./springapi"]
+ENTRYPOINT ["./customer-service"]
