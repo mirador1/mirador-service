@@ -8,7 +8,7 @@ import java.time.Instant;
  *
  * <p>This record is returned by {@code GET /customers} when the client sends
  * {@code X-API-Version: 2.0} (configured via Spring Framework 7's native API
- * versioning support — see {@code ApiVersionConfig}).
+ * versioning support — see {@code spring.mvc.apiversion.*} in application.yml).
  *
  * <p>The {@code createdAt} field maps to the {@code created_at TIMESTAMPTZ} column
  * added in Flyway migration {@code V3__add_customer_createdat.sql}.
