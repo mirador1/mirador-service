@@ -70,4 +70,23 @@ class AuthITest extends AbstractIntegrationTest {
                         .header("Authorization", "Bearer eyJhbGciOiJIUzI1NiJ9.tampered.sig"))
                 .andExpect(status().isUnauthorized());
     }
+
+    @Test
+    void login_withMissingPassword_returns4xx() throws Exception {
+        // Missing required field — Bean Validation should reject or AuthController should return 401
+        mockMvc.perform(post("/auth/login")
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                {"username":"admin"}
+                                """))
+                .andExpect(status().is4xxClientError());
+    }
+
+    @Test
+    void login_withEmptyBody_returns4xx() throws Exception {
+        mockMvc.perform(post("/auth/login")
+                        .contentType(APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().is4xxClientError());
+    }
 }
