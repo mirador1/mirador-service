@@ -315,12 +315,20 @@ com.example.springapi
 
 ## CI/CD
 
-| Pipeline | Trigger | Jobs |
-|----------|---------|------|
-| **GitLab CI** | MR push + main push | hadolint → unit tests + SAST → integration tests + SpotBugs + JaCoCo → JAR + Docker image |
-| **GitHub Actions** | Push + PR | Same stages |
+The project runs the same pipeline on two platforms simultaneously.
 
-Scheduled (daily, GitLab): GraalVM native image — only when `Dockerfile.native`, `pom.xml` or `src/` changed.
+**Why both?**
+GitLab CI is the primary pipeline — it has SAST, dependency scanning, and the scheduled GraalVM
+native build. GitHub Actions provides public visibility: anyone browsing the GitHub mirror sees
+green checks, test results, and a published Docker image without needing access to the GitLab
+instance. The two pipelines are kept intentionally in sync; divergence would defeat the purpose.
+
+| Pipeline | Config | Trigger | Jobs |
+|----------|--------|---------|------|
+| **GitLab CI** | `.gitlab-ci.yml` | MR push + main push | hadolint → unit tests + SAST + dependency scan → integration tests + SpotBugs + JaCoCo → JAR + Docker image |
+| **GitHub Actions** | `.github/workflows/ci.yml` | Push + PR | Same stages — mirrors the GitLab pipeline |
+
+Scheduled (daily, both platforms): GraalVM native image — only when `Dockerfile.native`, `pom.xml` or `src/` changed (5–15 min, skipped otherwise).
 
 ```bash
 ./run.sh verify   # local equivalent of the full CI pipeline
