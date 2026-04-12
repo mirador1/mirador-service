@@ -1,4 +1,10 @@
 spring:
+  mvc:
+    apiversion:
+      use:
+        header: X-API-Version
+      default: "1.0"
+
   datasource:
     # Testcontainers JDBC URL — the `tc:` prefix tells the Testcontainers driver to
     # start a PostgreSQL 17 container automatically. No explicit container declaration
@@ -38,6 +44,12 @@ logging:
 
 app:
   kafka:
+    topics:
+      customer-created: customer.created
+      customer-request: customer.request
+      customer-reply: customer.reply
+    consumer-group-id: spring-api-group
+    reply-group-id: spring-api-reply-group
     # Kafka consumer group rebalance takes a few seconds on cold start in tests.
     # 30s gives enough headroom before the request-reply pattern times out.
     enrich-timeout-seconds: 30
