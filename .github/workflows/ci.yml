@@ -1,20 +1,15 @@
 # =============================================================================
-# GitHub Actions — CI pipeline
+# GitHub Actions — CI pipeline — two lanes:
 #
-# Pipeline shape (mirrors the GitLab CI structure):
+# REGULAR pipeline (every push + PR) — fast lane:
+#   lint          hadolint Dockerfile linting
+#   test          unit-test (surefire) + JaCoCo unit exec
+#   integration   failsafe (*ITest) + SpotBugs + JaCoCo merged coverage
+#   package       build-jar + docker-build (main/tags only)
 #
-#   lint ────────────────────────────── fast, no compilation
-#     └─ hadolint        Dockerfile linting
-#
-#   test ────────────────────────────── no Docker needed
-#     └─ unit-test       surefire (*ITest excluded) + JaCoCo unit exec
-#
-#   integration ─────────────────────── Docker needed (Testcontainers)
-#     └─ integration-test  failsafe (*ITest) + SpotBugs + JaCoCo merged
-#
-#   package ─────────────────────────── only when all gates pass
-#     ├─ build-jar       fat JAR artifact
-#     └─ docker-build    image → GHCR (main branch + tags only)
+# SCHEDULED pipeline (daily at 03:00 UTC, main branch only) — slow lane:
+#   native        build-native — GraalVM AOT native image (5-15 min)
+#                 only runs if Dockerfile.native, pom.xml, or src/ changed
 #
 # Docker availability:
 #   GitHub-hosted ubuntu-latest runners include Docker, so Testcontainers
@@ -36,6 +31,13 @@ on:
   push:
     branches: [ "main" ]
   pull_request:
+  # Daily native build — runs at 03:00 UTC to avoid peak-hour billing usage.
+  # Gated by paths-filter: skips the GraalVM compile if no relevant files changed.
+  schedule:
+    - cron: '0 3 * * *'
+  # Manual trigger: useful for forcing a native rebuild after a non-source change
+  # (e.g. base image upgrade in Dockerfile.native) without waiting for the schedule.
+  workflow_dispatch:
 
 # Cancel in-flight runs for the same PR/branch when a new commit is pushed,
 # equivalent to GitLab's `interruptible: true`.
@@ -66,6 +68,8 @@ jobs:
   hadolint:
     name: Lint / Dockerfile
     runs-on: ubuntu-latest
+    # Skip on scheduled and manual runs — only the native build job runs then
+    if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -92,6 +96,7 @@ jobs:
   unit-test:
     name: Test / Unit
     runs-on: ubuntu-latest
+    if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -144,6 +149,7 @@ jobs:
   integration-test:
     name: Test / Integration + SpotBugs + Coverage
     runs-on: ubuntu-latest
+    if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
     needs: unit-test
     steps:
       - name: Checkout
@@ -199,6 +205,7 @@ jobs:
   build-jar:
     name: Package / JAR
     runs-on: ubuntu-latest
+    if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
     needs: [ unit-test, integration-test ]
     steps:
       - name: Checkout
@@ -237,8 +244,10 @@ jobs:
     name: Package / Docker → GHCR
     runs-on: ubuntu-latest
     needs: [ unit-test, integration-test ]
-    # Mirror GitLab's `rules`: only on main branch or version tags
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+    # Only on main branch or version tags, and never on scheduled/manual runs
+    if: |
+      (github.event_name != 'schedule' && github.event_name != 'workflow_dispatch') &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
     permissions:
       contents: read
       # Required to push images to ghcr.io/<owner>/<repo>
@@ -275,3 +284,94 @@ jobs:
           # Layer cache: reuse layers from the last push to the same branch
           cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache
           cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache,mode=max
+
+# =============================================================================
+# Stage: native (scheduled daily + manual trigger only)
+# =============================================================================
+
+  # ---------------------------------------------------------------------------
+  # Build a GraalVM native image and push it to GHCR.
+  #
+  # Why run on schedule and not on every main push?
+  #   AOT compilation takes 5-15 minutes of CPU. Running it on every commit
+  #   wastes CI time and GitHub Actions minutes. The daily schedule on main is
+  #   sufficient — native images are deployment artefacts, not code-review gates.
+  #
+  # Change detection:
+  #   dorny/paths-filter compares HEAD to the previous commit on main.
+  #   If none of Dockerfile.native / pom.xml / src/** changed, the job is skipped.
+  #   This means: on days with no code changes the job exits in ~10 seconds.
+  #
+  # Tags pushed (same pattern as JVM Docker image):
+  #   native-sha-<short>   — immutable pointer for deployments
+  #   native-main          — moving pointer for convenience
+  #
+  # [GraalVM Community 25 / Spring Boot 4 AOT]
+  # ---------------------------------------------------------------------------
+  build-native:
+    name: Native / GraalVM -> GHCR
+    runs-on: ubuntu-latest
+    # Runs only on: schedule (daily 03:00 UTC) and workflow_dispatch (manual)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Fetch last 2 commits so paths-filter can compare HEAD~1..HEAD
+          fetch-depth: 2
+
+      # Check if native-relevant files changed since the previous commit.
+      # On the daily schedule this covers "any change since yesterday's build".
+      # outputs.native == 'true' → at least one watched file changed.
+      - name: Check for native-relevant changes
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            native:
+              - 'Dockerfile.native'
+              - 'pom.xml'
+              - 'src/**'
+
+      - name: Log in to GHCR
+        # Only authenticate when we're actually going to build — saves a round-trip on skips
+        if: steps.filter.outputs.native == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata for native image
+        id: meta
+        if: steps.filter.outputs.native == 'true'
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          # Prefix all native tags with "native-" to distinguish from JVM images
+          tags: |
+            type=sha,prefix=native-sha-
+            type=ref,event=branch,prefix=native-
+
+      - name: Build and push GraalVM native image
+        # Skip entirely when no relevant file changed — saves 5-15 minutes of CPU
+        if: steps.filter.outputs.native == 'true'
+        uses: docker/build-push-action@v6
+        timeout-minutes: 30
+        with:
+          context: .
+          file: Dockerfile.native
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Native image layers are almost entirely unique per build — cache still helps
+          # for the Maven download layer (Stage 1) and the base image (Stage 2).
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:native-buildcache
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:native-buildcache,mode=max
+
+      - name: Skip notification
+        if: steps.filter.outputs.native == 'false'
+        run: echo "No native-relevant files changed — skipping GraalVM build."

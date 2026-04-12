@@ -229,6 +229,23 @@ public class CustomerController {
     }
 
     /**
+     * Returns a lightweight summary page (id + name only) using a Spring Data interface projection.
+     *
+     * <p>Spring Data JPA generates {@code SELECT id, name FROM customer} instead of
+     * {@code SELECT *}. This avoids transferring unused columns (email, created_at) from
+     * the database to the application for read-heavy list views.
+     *
+     * <p>The {@link CustomerSummary} interface projection is resolved by Spring Data JPA
+     * without any DTO mapper — each getter is backed directly by the query result column.
+     *
+     * [Spring Data JPA — interface projection]
+     */
+    @GetMapping("/summary")
+    public Page<CustomerSummary> getSummary(@PageableDefault(size = 20, sort = "id") Pageable pageable) {
+        return service.findAllSummaries(pageable);
+    }
+
+    /**
      * Demonstrates structured concurrency using Java virtual threads.
      *
      * <p>Two independent data-loading tasks run in parallel on a virtual-thread executor.

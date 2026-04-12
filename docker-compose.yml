@@ -2,10 +2,12 @@
 # docker-compose.yml — Full local development stack
 #
 # Services:
-#   db      — PostgreSQL 17 (primary data store, schema managed by Flyway)
-#   kafka   — Apache Kafka in KRaft mode (no ZooKeeper required)
-#   ollama  — Local LLM runtime for Spring AI bio generation
-#   app     — Spring Boot application (built from Dockerfile)
+#   db       — PostgreSQL 17 (primary data store, schema managed by Flyway)
+#   kafka    — Apache Kafka in KRaft mode (no ZooKeeper required)
+#   redis    — Redis 7 for RecentCustomerBuffer distributed caching
+#   ollama   — Local LLM runtime for Spring AI bio generation
+#   keycloak — Optional OAuth2 identity provider
+#   app      — Spring Boot application (built from Dockerfile)
 #
 # Usage:
 #   docker compose up -d          start all services
@@ -82,6 +84,24 @@ services:
       start_period: 30s    # Give KRaft time to elect a leader before health checks start
 
   # ---------------------------------------------------------------------------
+  # Redis 7 — distributed cache for RecentCustomerBuffer
+  # Replaces the in-process LinkedList so the buffer survives pod restarts and
+  # is shared across all application replicas (stateless horizontal scaling).
+  # Uses Redis LIST operations: LPUSH + LTRIM to maintain a capped 10-entry ring.
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7
+    container_name: redis-demo
+    ports:
+      - "6379:6379"
+    healthcheck:
+      # redis-cli PING returns PONG when the server is accepting connections
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
   # Ollama — local LLM runtime for Spring AI (GET /customers/{id}/bio)
   # Downloads the llama3.2 model (~2 GB) on the first start.
   # Subsequent starts reuse the cached model from the ollama_data volume.
@@ -142,7 +162,7 @@ services:
   # ---------------------------------------------------------------------------
   # Spring Boot application
   # Built from the Dockerfile in this directory (multi-stage, layered JAR).
-  # Waits for DB (healthy) and Kafka (healthy) before starting.
+  # Waits for DB (healthy), Kafka (healthy), and Redis (healthy) before starting.
   # Ollama is optional — condition: service_started (not healthy) since the model
   # download can take minutes and we don't want to block app startup.
   # ---------------------------------------------------------------------------
@@ -154,6 +174,8 @@ services:
         condition: service_healthy     # Must be ready before app starts (Flyway migrations run at startup)
       kafka:
         condition: service_healthy     # Must be ready before app starts (Kafka topics created at startup)
+      redis:
+        condition: service_healthy     # Must be ready before app starts (RecentCustomerBuffer uses Redis)
       ollama:
         condition: service_started     # Best-effort: app starts even if model is still downloading
       # Keycloak is optional — only declared if COMPOSE_PROFILES includes keycloak
@@ -170,6 +192,8 @@ services:
       # Use the internal Kafka listener (29092), not the host-accessible one (9092)
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       OLLAMA_BASE_URL: http://ollama:11434
+      # Redis host for the RecentCustomerBuffer (uses the service name in Docker network)
+      SPRING_DATA_REDIS_HOST: redis
 
 volumes:
   # Named volumes persist across "docker compose down" (use "docker compose down -v" to delete)

@@ -14,7 +14,7 @@
     <artifactId>springapi</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>springapi</name>
-    <description>Spring Boot demo upgraded for observability and CV positioning</description>
+    <description>Spring Boot 4 reference application — observability, security, messaging, resilience</description>
 
     <properties>
         <!--
@@ -209,6 +209,17 @@
             <artifactId>spring-kafka</artifactId>
         </dependency>
 
+        <!--
+          Redis — Spring Data Redis for distributed caching.
+          Replaces the in-memory RecentCustomerBuffer with a Redis LIST (LPUSH + LTRIM + LRANGE),
+          which survives pod restarts and is shared across all replicas.
+          Lettuce is the default (non-blocking) Redis client included transitively.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
         <!-- Bucket4j — in-memory token-bucket rate limiting (100 req/min per IP) -->
         <dependency>
             <groupId>com.bucket4j</groupId>
@@ -378,6 +389,10 @@
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
+                <!-- Explicit version required: Maven warns when a plugin in <build><plugins> has
+                     no version, even when the parent's pluginManagement already resolves it.
+                     Version inherited from spring-boot-starter-parent pluginManagement. -->
+                <version>0.8.14</version>
                 <executions>
                     <execution>
                         <id>prepare-agent</id>

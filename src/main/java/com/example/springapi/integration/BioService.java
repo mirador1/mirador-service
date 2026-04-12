@@ -1,6 +1,7 @@
 package com.example.springapi.integration;
 
 import com.example.springapi.customer.CustomerDto;
+import io.github.resilience4j.bulkhead.annotation.Bulkhead;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,6 +32,8 @@ public class BioService {
     private static final Logger log = LoggerFactory.getLogger(BioService.class);
     // Resilience4j instance name — must match keys in application.yml under resilience4j.*
     private static final String CIRCUIT_BREAKER_NAME = "ollama";
+    // Bulkhead name — must match resilience4j.bulkhead.instances.ollama in application.yml
+    private static final String BULKHEAD_NAME = "ollama";
 
     private final ChatClient chatClient;
 
@@ -55,6 +58,17 @@ public class BioService {
      * @param customer the customer whose name and email are passed to the prompt
      * @return the raw text content from the model response, or a fallback message if the circuit is open
      */
+    /**
+     * Semaphore bulkhead: caps concurrent LLM calls to {@code max-concurrent-calls}.
+     * If all permits are taken and a new call arrives, it fails immediately (wait = 0ms).
+     * This prevents a slow Ollama from exhausting the virtual-thread carrier pool under load.
+     *
+     * <p>Applied before the circuit breaker in the Resilience4j decorator chain:
+     * bulkhead rejection → fallback; circuit open → fallback; call succeeds → result.
+     *
+     * [Resilience4j Bulkhead — semaphore type]
+     */
+    @Bulkhead(name = BULKHEAD_NAME, fallbackMethod = "fallbackBio")
     @CircuitBreaker(name = CIRCUIT_BREAKER_NAME, fallbackMethod = "fallbackBio")
     public String generateBio(CustomerDto customer) {
         return chatClient.prompt()

@@ -1,6 +1,8 @@
 package com.example.springapi.customer;
 
 import com.example.springapi.customer.Customer;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 /**
@@ -23,4 +25,15 @@ import org.springframework.data.jpa.repository.JpaRepository;
  * HTTP request span.
  */
 public interface CustomerRepository extends JpaRepository<Customer, Long> {
+
+    /**
+     * Returns a page of {@link CustomerSummary} projections (id + name only).
+     *
+     * <p>Spring Data JPA generates {@code SELECT id, name FROM customer} — no full entity
+     * graph is loaded. The method name {@code findAllProjectedBy} is a Spring Data convention
+     * for "find all rows, projected to the return type".
+     *
+     * [Spring Data JPA — interface projection]
+     */
+    Page<CustomerSummary> findAllProjectedBy(Pageable pageable);
 }

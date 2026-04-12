@@ -6,6 +6,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.net.URI;
 import java.util.NoSuchElementException;
@@ -79,6 +80,13 @@ public class ApiExceptionHandler {
                 yield pd;
             }
             case NoSuchElementException e -> {
+                var pd = ProblemDetail.forStatus(HttpStatus.NOT_FOUND);
+                pd.setType(URI.create("urn:problem:not-found"));
+                pd.setTitle("Not Found");
+                pd.setDetail(e.getMessage());
+                yield pd;
+            }
+            case NoResourceFoundException e -> {
                 var pd = ProblemDetail.forStatus(HttpStatus.NOT_FOUND);
                 pd.setType(URI.create("urn:problem:not-found"));
                 pd.setTitle("Not Found");

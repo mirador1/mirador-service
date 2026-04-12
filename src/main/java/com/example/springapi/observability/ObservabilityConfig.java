@@ -43,7 +43,8 @@ public class ObservabilityConfig {
     Gauge recentCustomerBufferGauge(MeterRegistry registry, RecentCustomerBuffer recentCustomerBuffer) {
         return Gauge.builder("customer.recent.buffer.size", recentCustomerBuffer, buffer -> {
                     try {
-                        return buffer.getRecent().size();
+                        // Redis LLEN is O(1) — cheaper than fetching all entries and counting
+                        return (double) buffer.size();
                     } catch (Exception ex) {
                         return 0;
                     }

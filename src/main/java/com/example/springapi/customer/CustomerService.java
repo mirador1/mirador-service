@@ -3,12 +3,12 @@ package com.example.springapi.customer;
 import com.example.springapi.customer.CreateCustomerRequest;
 import com.example.springapi.customer.CustomerDto;
 import com.example.springapi.messaging.CustomerCreatedEvent;
+import com.example.springapi.messaging.CustomerEventPublisher;
 import com.example.springapi.customer.Customer;
 import com.example.springapi.customer.CustomerRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.NoSuchElementException;
@@ -36,17 +36,18 @@ public class CustomerService {
 
     private final CustomerRepository repository;
     private final RecentCustomerBuffer recentCustomerBuffer;
-    private final KafkaTemplate<String, Object> kafkaTemplate;
+    // Resilient publisher: retries with exponential backoff instead of plain fire-and-forget
+    private final CustomerEventPublisher eventPublisher;
     // Topic name injected from application.yml: app.kafka.topics.customer-created
     private final String customerCreatedTopic;
 
     public CustomerService(CustomerRepository repository,
                            RecentCustomerBuffer recentCustomerBuffer,
-                           KafkaTemplate<String, Object> kafkaTemplate,
+                           CustomerEventPublisher eventPublisher,
                            @Value("${app.kafka.topics.customer-created}") String customerCreatedTopic) {
         this.repository = repository;
         this.recentCustomerBuffer = recentCustomerBuffer;
-        this.kafkaTemplate = kafkaTemplate;
+        this.eventPublisher = eventPublisher;
         this.customerCreatedTopic = customerCreatedTopic;
     }
 
@@ -58,6 +59,15 @@ public class CustomerService {
     /** Returns a page of customers (v2 shape — includes createdAt). */
     public Page<CustomerDtoV2> findAllV2(Pageable pageable) {
         return repository.findAll(pageable).map(this::toDtoV2);
+    }
+
+    /**
+     * Returns a page of lightweight projections (id + name only — no SELECT *).
+     * Demonstrates Spring Data JPA interface projections for query optimisation.
+     * [Spring Data JPA — interface projection]
+     */
+    public Page<CustomerSummary> findAllSummaries(Pageable pageable) {
+        return repository.findAllProjectedBy(pageable);
     }
 
     /** Returns the customer with the given ID, or {@code Optional.empty()} if not found. */
@@ -83,8 +93,10 @@ public class CustomerService {
         CustomerDto dto = toDto(saved);
         recentCustomerBuffer.add(dto);
 
-        // Pattern 1 — async: publish event, do not wait for consumer
-        kafkaTemplate.send(customerCreatedTopic,
+        // Pattern 1 — publish event with resilient retry (exponential backoff + jitter)
+        // CustomerEventPublisher.publish blocks until broker ack, retrying on transient failures.
+        // The HTTP response still returns after this call — retries complete within the request.
+        eventPublisher.publish(customerCreatedTopic,
                 String.valueOf(saved.getId()),
                 new CustomerCreatedEvent(saved.getId(), saved.getName(), saved.getEmail()));
 

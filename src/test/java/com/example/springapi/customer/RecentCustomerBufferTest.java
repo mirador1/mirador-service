@@ -1,115 +1,122 @@
 package com.example.springapi.customer;
 
+import tools.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.redis.core.ListOperations;
+import org.springframework.data.redis.core.StringRedisTemplate;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * Unit tests for {@link RecentCustomerBuffer} — no Spring context needed.
  *
- * Tests cover:
+ * <p>Redis operations are mocked with Mockito so the tests run without a real
+ * Redis instance. Integration-level tests (with a real Redis container) are
+ * covered by the {@code ITest} suite via {@link com.example.springapi.AbstractIntegrationTest}.
+ *
+ * <p>Tests verify:
  * <ul>
- *   <li>Size boundary: buffer never exceeds 10 entries; oldest is evicted on overflow.</li>
- *   <li>Ordering: most recently added customer is always at index 0.</li>
- *   <li>Thread-safety: concurrent adds from multiple threads must not lose updates
- *       or corrupt the internal list.</li>
+ *   <li>add() calls LPUSH then LTRIM in order (order matters for correctness).</li>
+ *   <li>getRecent() calls LRANGE and deserializes the JSON payloads.</li>
+ *   <li>getRecent() filters out malformed JSON entries (null after deserialize).</li>
+ *   <li>size() delegates to LLEN via {@code opsForList().size()}.</li>
  * </ul>
  */
+@ExtendWith(MockitoExtension.class)
 class RecentCustomerBufferTest {
 
-    private final RecentCustomerBuffer buffer = new RecentCustomerBuffer();
+    @Mock
+    StringRedisTemplate redisTemplate;
+
+    @Mock
+    ListOperations<String, String> listOps;
+
+    RecentCustomerBuffer buffer;
+    ObjectMapper objectMapper = new ObjectMapper();
+
+    @BeforeEach
+    void setUp() {
+        when(redisTemplate.opsForList()).thenReturn(listOps);
+        buffer = new RecentCustomerBuffer(redisTemplate, objectMapper);
+    }
 
     private static CustomerDto dto(long id) {
         return new CustomerDto(id, "Name" + id, "user" + id + "@example.com");
     }
 
     @Test
-    void add_singleEntry_returnsSingletonList() {
-        buffer.add(dto(1));
+    void add_callsLeftPushThenTrim_inOrder() throws Exception {
+        CustomerDto d = dto(1);
+        String expectedJson = objectMapper.writeValueAsString(d);
 
-        assertThat(buffer.getRecent()).hasSize(1);
-        assertThat(buffer.getRecent().get(0).id()).isEqualTo(1);
+        buffer.add(d);
+
+        // LPUSH then LTRIM — order is critical; swapping them would lose the new entry
+        InOrder order = inOrder(listOps);
+        order.verify(listOps).leftPush(eq(RecentCustomerBuffer.KEY), eq(expectedJson));
+        order.verify(listOps).trim(eq(RecentCustomerBuffer.KEY), eq(0L), eq(9L));
     }
 
     @Test
-    void add_tenEntries_fillsBufferExactly() {
-        for (int i = 1; i <= 10; i++) {
-            buffer.add(dto(i));
-        }
-
-        assertThat(buffer.getRecent()).hasSize(10);
-    }
-
-    @Test
-    void add_eleventhEntry_evictsOldestAndCapsAtTen() {
-        for (int i = 1; i <= 11; i++) {
-            buffer.add(dto(i));
-        }
-
-        List<CustomerDto> recent = buffer.getRecent();
-        assertThat(recent).hasSize(10);
-        // Most recent (11) is at index 0; oldest surviving (2) is at index 9
-        assertThat(recent.get(0).id()).isEqualTo(11);
-        assertThat(recent.get(9).id()).isEqualTo(2);
-        // Customer 1 (the oldest) must have been evicted
-        assertThat(recent).noneMatch(c -> c.id() == 1);
-    }
-
-    @Test
-    void getRecent_returnsImmutableSnapshot() {
-        buffer.add(dto(1));
-
-        List<CustomerDto> snapshot = buffer.getRecent();
-        // Mutations to the returned list must not affect internal buffer state
-        assertThat(snapshot).hasSize(1);
-        // List.copyOf result is unmodifiable — verify by catching UnsupportedOperationException
-        org.junit.jupiter.api.Assertions.assertThrows(UnsupportedOperationException.class,
-                () -> snapshot.add(dto(99)));
-    }
-
-    @Test
-    void concurrentAdds_doNotCorruptBuffer() throws InterruptedException {
-        int threads = 20;
-        int addsPerThread = 5;
-        CountDownLatch ready = new CountDownLatch(threads);
-        CountDownLatch start = new CountDownLatch(1);
-        CountDownLatch done = new CountDownLatch(threads);
-
-        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            for (int t = 0; t < threads; t++) {
-                final int base = t * addsPerThread;
-                executor.submit(() -> {
-                    ready.countDown();
-                    try {
-                        start.await();
-                        for (int i = 0; i < addsPerThread; i++) {
-                            buffer.add(dto(base + i + 1));
-                        }
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    } finally {
-                        done.countDown();
-                    }
-                    return null;
-                });
-            }
-
-            ready.await(5, TimeUnit.SECONDS);
-            start.countDown(); // release all threads simultaneously
-            done.await(10, TimeUnit.SECONDS);
-        }
+    void getRecent_deserializesJsonEntries() throws Exception {
+        CustomerDto d1 = dto(1);
+        CustomerDto d2 = dto(2);
+        List<String> jsons = List.of(
+                objectMapper.writeValueAsString(d1),
+                objectMapper.writeValueAsString(d2));
+        when(listOps.range(eq(RecentCustomerBuffer.KEY), eq(0L), eq(9L))).thenReturn(jsons);
 
         List<CustomerDto> result = buffer.getRecent();
-        // After 100 concurrent adds, size must be exactly 10 (capped)
-        assertThat(result).hasSize(10);
-        // All entries must have positive IDs (no nulls or zero sentinel values)
-        assertThat(result).allMatch(c -> c.id() > 0);
+
+        assertThat(result).hasSize(2);
+        assertThat(result.get(0).id()).isEqualTo(1);
+        assertThat(result.get(1).id()).isEqualTo(2);
+    }
+
+    @Test
+    void getRecent_filtersOutMalformedEntries() {
+        when(listOps.range(anyString(), anyLong(), anyLong()))
+                .thenReturn(List.of("not-valid-json", "{\"id\":2,\"name\":\"Bob\",\"email\":\"b@x.com\"}"));
+
+        List<CustomerDto> result = buffer.getRecent();
+
+        // Malformed JSON is silently dropped; valid entry is returned
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).id()).isEqualTo(2);
+    }
+
+    @Test
+    void getRecent_returnsEmptyList_whenRedisReturnsNull() {
+        when(listOps.range(anyString(), anyLong(), anyLong())).thenReturn(null);
+
+        assertThat(buffer.getRecent()).isEmpty();
+    }
+
+    @Test
+    void size_delegatesToLlen() {
+        when(listOps.size(RecentCustomerBuffer.KEY)).thenReturn(7L);
+
+        assertThat(buffer.size()).isEqualTo(7L);
+        verify(listOps).size(RecentCustomerBuffer.KEY);
+    }
+
+    @Test
+    void size_returnsZero_whenRedisReturnsNull() {
+        when(listOps.size(anyString())).thenReturn(null);
+
+        assertThat(buffer.size()).isEqualTo(0L);
     }
 }

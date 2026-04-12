@@ -53,6 +53,15 @@ spring:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
 
   # ---------------------------------------------------------------------------
+  # Redis — distributed cache for RecentCustomerBuffer
+  # LPUSH + LTRIM keeps a capped ring of the last 10 customers (stateless / multi-pod safe).
+  # ---------------------------------------------------------------------------
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+  # ---------------------------------------------------------------------------
   # Spring AI — Ollama (local LLM)                              [Spring AI 1.0]
   # Ollama must be running locally (or via Docker) before calling /customers/{id}/bio.
   # Model is downloaded automatically by the docker-compose entrypoint.
@@ -175,6 +184,19 @@ management:
           endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318}/v1/logs
           transport: http
 
+  # Exemplars: links Prometheus metric data points to specific Tempo trace IDs.
+  # In Grafana, clicking a metric spike jumps straight to the matching trace.
+  # Requires Prometheus to be started with --enable-feature=exemplar-storage
+  # (see docker-compose.observability.yml prometheus command override).
+  # Micrometer auto-configures exemplar sampling when micrometer-tracing is on
+  # the classpath and tracing.sampling.probability > 0 — no extra bean needed.
+  metrics:
+    distribution:
+      percentiles-histogram:
+        # Enable histogram buckets for HTTP server requests — required for exemplars
+        # to be attached to histogram data points by the Micrometer/OTel bridge.
+        http.server.requests: true
+
 # =============================================================================
 # SpringDoc / OpenAPI / Swagger UI
 # API documentation available at: http://localhost:8080/swagger-ui.html
@@ -231,6 +253,19 @@ resilience4j:
         wait-duration-in-open-state: 30s
         permitted-number-of-calls-in-half-open-state: 2
         sliding-window-size: 5
+  # ---------------------------------------------------------------------------
+  # Bulkhead — semaphore-based concurrency cap on slow/expensive operations
+  # Prevents thread exhaustion when the Ollama LLM is slow under load.
+  # max-concurrent-calls: only N calls allowed in parallel; extras wait up to max-wait-duration.
+  # max-wait-duration: 0 = fail immediately if no slot is available (avoids queue buildup).
+  # [Resilience4j semaphore bulkhead]
+  # ---------------------------------------------------------------------------
+  bulkhead:
+    instances:
+      ollama:
+        max-concurrent-calls: 5     # cap LLM concurrency — prevents thread exhaustion
+        max-wait-duration: 0ms      # fail fast if no slot; avoids piling up slow threads
+
   retry:
     instances:
       jsonplaceholder:
@@ -240,6 +275,20 @@ resilience4j:
         # Only retry on connection errors — not on 4xx responses (those are client errors)
         retry-exceptions:
           - org.springframework.web.client.ResourceAccessException
+      # ---------------------------------------------------------------------------
+      # Retry for Kafka publish — exponential backoff with jitter
+      # When the broker is temporarily overloaded, retrying immediately just makes it worse.
+      # Exponential backoff: 200ms → 400ms → 800ms. Jitter spreads retries across pods.
+      # [Resilience4j retry + exponential backoff]
+      # ---------------------------------------------------------------------------
+      kafkaPublish:
+        max-attempts: 4
+        wait-duration: 200ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2.0    # 200ms → 400ms → 800ms → ~1600ms
+        randomized-wait-factor: 0.5            # ±50% jitter to spread concurrent retries
+        retry-exceptions:
+          - java.lang.IllegalStateException    # thrown by CustomerEventPublisher on timeout/error
 
 # =============================================================================
 # JWT Authentication

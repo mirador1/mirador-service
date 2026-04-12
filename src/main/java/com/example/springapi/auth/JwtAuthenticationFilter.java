@@ -1,5 +1,8 @@
 package com.example.springapi.auth;
 
+import io.micrometer.tracing.BaggageInScope;
+import io.micrometer.tracing.Span;
+import io.micrometer.tracing.Tracer;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -67,10 +70,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Nullable
     private final JwtDecoder keycloakJwtDecoder;
 
+    /**
+     * Micrometer Tracing abstraction for span tags and W3C Baggage propagation.
+     * Auto-configured by Spring Boot when {@code micrometer-tracing-bridge-otel} is on the classpath.
+     * [OpenTelemetry / Micrometer Tracing — baggage propagation]
+     */
+    private final Tracer tracer;
+
     public JwtAuthenticationFilter(JwtTokenProvider jwtTokenProvider,
-                                    @Nullable JwtDecoder keycloakJwtDecoder) {
+                                    @Nullable JwtDecoder keycloakJwtDecoder,
+                                    Tracer tracer) {
         this.jwtTokenProvider = jwtTokenProvider;
         this.keycloakJwtDecoder = keycloakJwtDecoder;
+        this.tracer = tracer;
     }
 
     @Override
@@ -90,7 +102,26 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 authenticateKeycloak(token);
             }
         }
-        // Always continue — authorization is enforced by Spring Security rules downstream
+
+        // After authentication: tag the current OTel span with the username and propagate
+        // it downstream via W3C Baggage so all child spans (DB, Kafka, HTTP) carry the identity.
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.isAuthenticated()) {
+            String name = auth.getName();
+            // Tag the current span so the username appears in Zipkin/Grafana Tempo trace details
+            Span current = tracer.currentSpan();
+            if (current != null) {
+                current.tag("user.name", name);
+            }
+            // BaggageInScope propagates "user.name" as a W3C baggage entry across service boundaries.
+            // try-with-resources guarantees the scope is closed after the entire filter chain completes.
+            // [OpenTelemetry / Micrometer Tracing — baggage propagation]
+            try (BaggageInScope ignored = tracer.createBaggageInScope("user.name", name)) {
+                filterChain.doFilter(request, response);
+            }
+            return;
+        }
+        // Unauthenticated requests continue without baggage
         filterChain.doFilter(request, response);
     }
 
