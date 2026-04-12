@@ -181,8 +181,8 @@ services:
     ports:
       - "${SERVER_PORT}:8080"
     environment:
-      # Use the internal Docker network hostname "postgres" (not localhost)
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${DB_NAME}
+      # Use the internal Docker network hostname "db" (the Compose service name, not localhost)
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${DB_NAME}
       SPRING_DATASOURCE_USERNAME: ${DB_USER}
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
       SPRING_JPA_HIBERNATE_DDL_AUTO: validate

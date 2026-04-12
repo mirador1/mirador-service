@@ -16,8 +16,8 @@ spring:
   # ---------------------------------------------------------------------------
   datasource:
     # Env-var override allows Docker Compose / Kubernetes to inject the real URL
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/demo}
-    username: ${DB_USERNAME:demo}
+    url: ${DB_URL:jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:customer-service}}
+    username: ${DB_USER:demo}
     password: ${DB_PASSWORD:demo}
 
   jpa:
