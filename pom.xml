@@ -30,6 +30,31 @@
         <shedlock.version>6.0.2</shedlock.version>
     </properties>
 
+    <!--
+      Force ASM 9.8 for ArchUnit.
+      ArchUnit 1.4.x ships with ASM 9.7 which does not support Java 25 bytecode (class version 69).
+      ASM 9.8 adds Java 25 support. This override propagates to ArchUnit's transitive dependency.
+    -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.ow2.asm</groupId>
+                <artifactId>asm</artifactId>
+                <version>9.8</version>
+            </dependency>
+            <dependency>
+                <groupId>org.ow2.asm</groupId>
+                <artifactId>asm-commons</artifactId>
+                <version>9.8</version>
+            </dependency>
+            <dependency>
+                <groupId>org.ow2.asm</groupId>
+                <artifactId>asm-tree</artifactId>
+                <version>9.8</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
     <dependencies>
 
         <!-- Language -->

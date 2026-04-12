@@ -208,6 +208,16 @@ resilience4j:
         # Allow 3 test calls in HALF_OPEN state before deciding to close or re-open
         permitted-number-of-calls-in-half-open-state: 3
         sliding-window-size: 10
+      # Circuit breaker for the Ollama LLM endpoint (BioService).
+      # Ollama can be slow or unavailable (e.g., model not loaded, GPU busy).
+      # The circuit opens after 50% failures on a 5-call window and stays open for 30s.
+      # Calls during the open state receive a graceful "Bio temporarily unavailable." response.
+      ollama:
+        failure-rate-threshold: 50
+        minimum-number-of-calls: 5
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 2
+        sliding-window-size: 5
   retry:
     instances:
       jsonplaceholder:

@@ -1,6 +1,9 @@
 package com.example.springapi.integration;
 
 import com.example.springapi.customer.CustomerDto;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 
@@ -25,6 +28,10 @@ import org.springframework.stereotype.Service;
 @Service
 public class BioService {
 
+    private static final Logger log = LoggerFactory.getLogger(BioService.class);
+    // Resilience4j instance name — must match keys in application.yml under resilience4j.*
+    private static final String CIRCUIT_BREAKER_NAME = "ollama";
+
     private final ChatClient chatClient;
 
     /**
@@ -41,9 +48,14 @@ public class BioService {
     /**
      * Calls the LLM to generate a 2-sentence bio for the given customer.
      *
+     * <p>Protected by a Resilience4j circuit breaker: if Ollama is down or slow, the circuit
+     * opens after exceeding the failure-rate threshold and subsequent calls are short-circuited
+     * to {@link #fallbackBio} immediately, preventing thread exhaustion while Ollama recovers.
+     *
      * @param customer the customer whose name and email are passed to the prompt
-     * @return the raw text content from the model response
+     * @return the raw text content from the model response, or a fallback message if the circuit is open
      */
+    @CircuitBreaker(name = CIRCUIT_BREAKER_NAME, fallbackMethod = "fallbackBio")
     public String generateBio(CustomerDto customer) {
         return chatClient.prompt()
                 .user(u -> u.text(
@@ -53,5 +65,14 @@ public class BioService {
                         .param("email", customer.email()))
                 .call()
                 .content();
+    }
+
+    /**
+     * Fallback invoked when the circuit is open or the Ollama call fails.
+     * The method signature must match {@link #generateBio} with an additional {@code Throwable} parameter.
+     */
+    String fallbackBio(CustomerDto customer, Throwable t) {
+        log.warn("bio_fallback name={} cause={}", customer.name(), t.getMessage());
+        return "Bio temporarily unavailable.";
     }
 }
