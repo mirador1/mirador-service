@@ -11,9 +11,9 @@
     </parent>
 
     <groupId>com.example</groupId>
-    <artifactId>springapi</artifactId>
+    <artifactId>customer-service</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>springapi</name>
+    <name>customer-service</name>
     <description>Spring Boot 4 reference application — observability, security, messaging, resilience</description>
 
     <properties>
@@ -323,7 +323,7 @@
               Layered JARs split content into: dependencies / spring-boot-loader / snapshot-dependencies
               / application. Docker can cache the stable layers (deps) and only rebuild the
               application layer on code changes. Also supports AOT processing for GraalVM native images.
-              Usage: mvn spring-boot:run  |  mvn package → target/springapi-0.0.1-SNAPSHOT.jar
+              Usage: mvn spring-boot:run  |  mvn package → target/customerservice-0.0.1-SNAPSHOT.jar
             -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>

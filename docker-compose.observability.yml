@@ -13,7 +13,7 @@
 #
 # Path 2 — Standalone Prometheus + Grafana                      [port 3000 + 9090]
 #   Prometheus scrapes /actuator/prometheus every 15s.
-#   Grafana is provisioned with dashboards from ops/observability/grafana/.
+#   Grafana is provisioned with dashboards from infra/observability/grafana/.
 #   Access Grafana: http://localhost:3000
 #   Access Prometheus: http://localhost:9090
 #
@@ -39,7 +39,7 @@ services:
   # ---------------------------------------------------------------------------
   lgtm:
     image: grafana/otel-lgtm:latest
-    container_name: springapi-lgtm
+    container_name: customerservice-lgtm
     ports:
       - "3001:3000"    # Grafana UI (separate port from standalone Grafana on 3000)
       - "4317:4317"    # OTLP gRPC
@@ -48,8 +48,8 @@ services:
       - prometheus
     volumes:
       # Pre-provision a Grafana dashboard into the LGTM Grafana instance
-      - ./ops/observability/grafana/dashboards-lgtm/dashboard-demo-lgtm.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/dashboard-demo-lgtm.yaml
-      - ./ops/observability/grafana/dashboards-lgtm/demo.json:/otel-lgtm/demo.json
+      - ./infra/observability/grafana/dashboards-lgtm/dashboard-demo-lgtm.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/dashboard-demo-lgtm.yaml
+      - ./infra/observability/grafana/dashboards-lgtm/demo.json:/otel-lgtm/demo.json
     environment:
       # Forward all application logs received via OTLP to Loki
       ENABLE_LOGS_ALL: "true"
@@ -58,7 +58,7 @@ services:
   # Prometheus — time-series metrics store
   #
   # Scrapes /actuator/prometheus on the Spring Boot application every 15s.
-  # Configured by ops/observability/prometheus.yml.
+  # Configured by infra/observability/prometheus.yml.
   #
   # extra_hosts: host.docker.internal → host-gateway
   #   Allows Prometheus (running in Docker) to reach the Spring Boot application
@@ -66,7 +66,7 @@ services:
   # ---------------------------------------------------------------------------
   prometheus:
     image: prom/prometheus:latest
-    container_name: springapi-prometheus
+    container_name: customerservice-prometheus
     command:
       - --config.file=/etc/prometheus/prometheus.yml
     ports:
@@ -76,28 +76,28 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       # Mount the scrape config as read-only — Prometheus does not need to write it
-      - ./ops/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
 
   # ---------------------------------------------------------------------------
   # Grafana — visualization layer for Prometheus metrics
   #
-  # Dashboards and datasources are provisioned at startup from the ops/ directory,
+  # Dashboards and datasources are provisioned at startup from the infra/ directory,
   # so no manual setup is needed after first launch.
-  #   - Datasources: ops/observability/grafana/provisioning/datasources/
-  #   - Dashboards:  ops/observability/grafana/dashboards/
+  #   - Datasources: infra/observability/grafana/provisioning/datasources/
+  #   - Dashboards:  infra/observability/grafana/dashboards/
   # Default credentials: admin/admin (Grafana default)
   # ---------------------------------------------------------------------------
   grafana:
     image: grafana/grafana:latest
-    container_name: springapi-grafana
+    container_name: customerservice-grafana
     ports:
       - "3000:3000"    # Grafana UI — http://localhost:3000
     depends_on:
       - prometheus
     volumes:
       # Auto-provision datasources (Prometheus) and dashboards at startup
-      - ./ops/observability/grafana/provisioning:/etc/grafana/provisioning
-      - ./ops/observability/grafana/dashboards:/var/lib/grafana/dashboards
+      - ./infra/observability/grafana/provisioning:/etc/grafana/provisioning
+      - ./infra/observability/grafana/dashboards:/var/lib/grafana/dashboards
 
   # Jaeger (commented out — replaced by Tempo inside LGTM)
   # Kept here for reference in case a standalone Jaeger instance is needed.

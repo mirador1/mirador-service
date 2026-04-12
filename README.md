@@ -206,7 +206,7 @@ curl -s http://localhost:8080/actuator/prometheus | grep 'http_server_requests\|
 
 1. `POST /customers` with `Authorization: Bearer $TOKEN`
 2. Open http://localhost:3001 → Explore → Tempo
-3. Search by service `spring-4-demo`, operation `POST /customers`
+3. Search by service `customer-service`, operation `POST /customers`
 4. The trace shows: HTTP handler span → DB insert span → Kafka publish span
 
 ---
@@ -289,7 +289,7 @@ Pre-push hook (via lefthook) runs unit tests automatically before every `git pus
 ## Code organisation
 
 ```
-com.example.springapi
+com.example.customerservice
 ├── api/            ApiError, ApiExceptionHandler          — RFC 9457 error responses
 ├── auth/           JwtTokenProvider, JwtAuthenticationFilter,
 │                   SecurityConfig, AuthController         — JWT auth + Spring Security
@@ -308,7 +308,7 @@ com.example.springapi
 │                   TraceService                           — health, tracing, metrics, request ID
 ├── resilience/     IdempotencyFilter, RateLimitingFilter,
 │                   ShedLockConfig                         — rate limiting, idempotency, distributed lock
-└── SpringApiApplication.java
+└── CustomerServiceApplication.java
 ```
 
 ---

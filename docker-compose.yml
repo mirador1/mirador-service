@@ -122,7 +122,7 @@ services:
   # Keycloak — identity provider (optional; activated by KEYCLOAK_URL env var)
   #
   # Provides OAuth2 / OIDC authentication alongside the built-in JWT mode.
-  # The realm "spring-api-demo" is auto-imported from ops/keycloak/realm-demo.json
+  # The realm "customer-service" is auto-imported from infra/keycloak/realm-demo.json
   # on first boot via --import-realm.
   #
   # Roles in the realm:
@@ -151,9 +151,9 @@ services:
       - "9090:8080"
     volumes:
       # The realm-demo.json is imported once at first startup (--import-realm flag)
-      - ./ops/keycloak:/opt/keycloak/data/import
+      - ./infra/keycloak:/opt/keycloak/data/import
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8080/realms/spring-api-demo || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/realms/customer-service || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 10

@@ -9,7 +9,7 @@
 spring:
   application:
     # Service name propagated to OpenTelemetry traces and Grafana dashboards
-    name: spring-4-demo
+    name: customer-service
 
   # ---------------------------------------------------------------------------
   # Database — PostgreSQL via Spring Data JPA + Flyway
@@ -312,13 +312,13 @@ jwt:
 #
 # Set KEYCLOAK_URL to the Keycloak base URL, e.g.:
 #   KEYCLOAK_URL=http://keycloak:8080
-# The issuer URI resolves to: <KEYCLOAK_URL>/realms/spring-api-demo
+# The issuer URI resolves to: <KEYCLOAK_URL>/realms/customer-service
 #
-# The realm is auto-imported from ops/keycloak/realm-demo.json on first start.
+# The realm is auto-imported from infra/keycloak/realm-demo.json on first start.
 # Leave KEYCLOAK_URL unset (default) to run without Keycloak.
 # =============================================================================
 keycloak:
-  issuer-uri: ${KEYCLOAK_URL:}/realms/spring-api-demo
+  issuer-uri: ${KEYCLOAK_URL:}/realms/customer-service
 
 # =============================================================================
 # Application-specific configuration
@@ -347,6 +347,6 @@ app:
       customer-created: customer.created  # Pattern 1: async event
       customer-request: customer.request  # Pattern 2: sync request
       customer-reply: customer.reply      # Pattern 2: sync reply
-    consumer-group-id: spring-api-group
-    reply-group-id: spring-api-reply-group
+    consumer-group-id: customer-service-group
+    reply-group-id: customer-service-reply-group
     enrich-timeout-seconds: 5  # seconds to wait for Kafka reply before HTTP 504

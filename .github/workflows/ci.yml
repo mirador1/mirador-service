@@ -52,7 +52,7 @@ env:
 
 # ── shared setup step (referenced inline in each job) ────────────────────────
 # GitHub Actions has no top-level `default:` image like GitLab, so each job
-# specifies `runs-on: ubuntu-latest` and calls the setup steps explicitly.
+# specifies `runs-on: ubuntu-24.04` and calls the setup steps explicitly.
 
 # =============================================================================
 # Stage: lint
@@ -67,8 +67,11 @@ jobs:
   # ---------------------------------------------------------------------------
   hadolint:
     name: Lint / Dockerfile
-    runs-on: ubuntu-latest
-    # Skip on scheduled and manual runs — only the native build job runs then
+    runs-on: ubuntu-24.04
+    # Skip on scheduled and manual runs — those triggers are reserved exclusively
+    # for the GraalVM native build (slow lane). The Dockerfile was already linted
+    # when the code landed on main via the regular pipeline, so re-linting unchanged
+    # code adds no value.
     if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
     steps:
       - name: Checkout
@@ -76,7 +79,11 @@ jobs:
 
       - name: Lint Dockerfile
         # hadolint/hadolint-action wraps the official Hadolint binary.
-        # Uses the same rules as the GitLab job (DL3002, DL3007, DL3008, SC2xxx).
+        # Uses the same rules as the GitLab job:
+        #   DL3002 — last USER must not be root (security)
+        #   DL3007 — do not use latest tag for base image (reproducibility)
+        #   DL3008 — pin apt package versions (reproducibility)
+        #   SC2xxx — ShellCheck rules applied to RUN instructions (shell bugs)
         uses: hadolint/hadolint-action@v3.1.0
         with:
           dockerfile: Dockerfile
@@ -95,7 +102,10 @@ jobs:
   # ---------------------------------------------------------------------------
   unit-test:
     name: Test / Unit
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    # Skip on scheduled and manual runs — those triggers are reserved exclusively
+    # for the GraalVM native build (slow lane). The code was already tested
+    # when it landed on main via the regular pipeline, so re-running adds no value.
     if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
     steps:
       - name: Checkout
@@ -106,7 +116,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '25'
-          cache: maven
+          cache: maven    # caches ~/.m2/repository between runs keyed on pom.xml hash
 
       - name: Run unit tests
         # surefire phase only — failsafe (ITests) skipped, no Docker required
@@ -115,22 +125,22 @@ jobs:
       - name: Publish unit test report
         # Annotates PRs with per-test pass/fail details directly in the GitHub UI
         uses: dorny/test-reporter@v2
-        if: always()
+        if: always()    # run even if tests failed so the report is always published
         with:
           name: Unit Test Results
-          path: target/surefire-reports/*.xml
-          reporter: java-junit
-          fail-on-error: false
+          path: target/surefire-reports/*.xml    # JUnit XML produced by maven-surefire-plugin
+          reporter: java-junit                   # parser format matching the surefire XML schema
+          fail-on-error: false                   # test failures are already reported by Maven; don't fail the step a second time
 
       - name: Upload JaCoCo unit exec
         # Forwarded to integration-test job so both exec files can be merged
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4    # stores files between jobs (artifacts don't persist in the runner workspace)
         with:
           name: jacoco-unit-exec
           path: |
-            target/jacoco.exec
-            target/site/jacoco/
-          retention-days: 7
+            target/jacoco.exec       # binary coverage data — merged with IT exec in integration-test job
+            target/site/jacoco/      # HTML report for browsing unit coverage in the GitHub UI
+          retention-days: 7          # short-lived: only needed until the integration job completes
 
 # =============================================================================
 # Stage: integration (needs Docker for Testcontainers)
@@ -148,7 +158,10 @@ jobs:
   # ---------------------------------------------------------------------------
   integration-test:
     name: Test / Integration + SpotBugs + Coverage
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    # Skip on scheduled and manual runs — those triggers are reserved exclusively
+    # for the GraalVM native build (slow lane). The code was already tested
+    # when it landed on main via the regular pipeline, so re-running adds no value.
     if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
     needs: unit-test
     steps:
@@ -165,7 +178,7 @@ jobs:
       - name: Download JaCoCo unit exec
         # Pulls the unit coverage data produced by the previous job so that
         # the JaCoCo:merge goal can combine unit + IT coverage into one report.
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v4    # restores files uploaded by a previous job (artifacts don't persist in the runner workspace)
         with:
           name: jacoco-unit-exec
           path: target/
@@ -177,12 +190,12 @@ jobs:
 
       - name: Publish integration test report
         uses: dorny/test-reporter@v2
-        if: always()
+        if: always()    # run even if tests failed so the report is always published
         with:
           name: Integration Test Results
-          path: target/failsafe-reports/*.xml
-          reporter: java-junit
-          fail-on-error: false
+          path: target/failsafe-reports/*.xml    # JUnit XML produced by maven-failsafe-plugin
+          reporter: java-junit                   # parser format matching the failsafe XML schema
+          fail-on-error: false                   # test failures are already reported by Maven; don't fail the step a second time
 
       - name: Upload coverage + SpotBugs reports
         uses: actions/upload-artifact@v4
@@ -204,9 +217,12 @@ jobs:
   # ---------------------------------------------------------------------------
   build-jar:
     name: Package / JAR
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    # Skip on scheduled and manual runs — those triggers are reserved exclusively
+    # for the GraalVM native build (slow lane). The code was already tested
+    # when it landed on main via the regular pipeline, so re-running adds no value.
     if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
-    needs: [ unit-test, integration-test ]
+    needs: [ unit-test, integration-test ]    # both test gates must pass before producing the artifact
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -216,7 +232,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '25'
-          cache: maven
+          cache: maven    # caches ~/.m2/repository between runs keyed on pom.xml hash
 
       - name: Build JAR
         run: mvn $MAVEN_ARGS -DskipTests package
@@ -224,9 +240,9 @@ jobs:
       - name: Upload JAR artifact
         uses: actions/upload-artifact@v4
         with:
-          name: spring-api-jar
-          path: target/*.jar
-          retention-days: 7
+          name: customer-service-jar
+          path: target/*.jar    # Spring Boot fat JAR (includes embedded Tomcat + all dependencies)
+          retention-days: 7     # short-lived: for manual download or downstream deploy jobs
 
   # ---------------------------------------------------------------------------
   # Build the Docker image and push it to GitHub Container Registry (GHCR).
@@ -242,14 +258,14 @@ jobs:
   # ---------------------------------------------------------------------------
   docker-build:
     name: Package / Docker → GHCR
-    runs-on: ubuntu-latest
-    needs: [ unit-test, integration-test ]
+    runs-on: ubuntu-24.04
+    needs: [ unit-test, integration-test ]    # both test gates must pass before producing the image
     # Only on main branch or version tags, and never on scheduled/manual runs
     if: |
       (github.event_name != 'schedule' && github.event_name != 'workflow_dispatch') &&
       (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
     permissions:
-      contents: read
+      contents: read    # needed to checkout the repository
       # Required to push images to ghcr.io/<owner>/<repo>
       packages: write
     steps:
@@ -259,9 +275,9 @@ jobs:
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          registry: ghcr.io                          # GitHub Container Registry
+          username: ${{ github.actor }}              # GitHub user or bot that triggered the workflow
+          password: ${{ secrets.GITHUB_TOKEN }}      # auto-provisioned token, no manual secret needed
 
       - name: Extract Docker metadata
         id: meta
@@ -270,20 +286,20 @@ jobs:
           images: ghcr.io/${{ github.repository }}
           # sha-<short> tag + branch/tag name (mirrors GitLab: $CI_COMMIT_SHA + $CI_COMMIT_REF_SLUG)
           tags: |
-            type=sha,prefix=sha-
-            type=ref,event=branch
-            type=ref,event=tag
+            type=sha,prefix=sha-      # immutable pointer — e.g. sha-a1b2c3d — used for deployments
+            type=ref,event=branch     # moving pointer — e.g. main — for convenience
+            type=ref,event=tag        # version tag — e.g. v1.2.0 — when pushing a git tag
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.meta.outputs.tags }}      # all tags computed by the metadata step above
+          labels: ${{ steps.meta.outputs.labels }}  # OCI standard labels (revision, created, …) injected at build time
           # Layer cache: reuse layers from the last push to the same branch
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache
-          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache,mode=max
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache              # pull cached layers before building
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache,mode=max      # push all layers (not just final stage) for maximum cache reuse
 
 # =============================================================================
 # Stage: native (scheduled daily + manual trigger only)
@@ -310,12 +326,12 @@ jobs:
   # ---------------------------------------------------------------------------
   build-native:
     name: Native / GraalVM -> GHCR
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Runs only on: schedule (daily 03:00 UTC) and workflow_dispatch (manual)
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'    # inverse of the regular pipeline condition
     permissions:
-      contents: read
-      packages: write
+      contents: read    # needed to checkout the repository
+      packages: write   # needed to push the native image to GHCR
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -327,14 +343,14 @@ jobs:
       # On the daily schedule this covers "any change since yesterday's build".
       # outputs.native == 'true' → at least one watched file changed.
       - name: Check for native-relevant changes
-        id: filter
+        id: filter        # referenced as steps.filter.outputs.native in subsequent steps
         uses: dorny/paths-filter@v3
         with:
           filters: |
             native:
-              - 'Dockerfile.native'
-              - 'pom.xml'
-              - 'src/**'
+              - 'Dockerfile.native'    # base image or build instructions changed
+              - 'pom.xml'              # dependencies or plugin config changed
+              - 'src/**'               # application source code changed
 
       - name: Log in to GHCR
         # Only authenticate when we're actually going to build — saves a round-trip on skips
@@ -347,31 +363,31 @@ jobs:
 
       - name: Extract Docker metadata for native image
         id: meta
-        if: steps.filter.outputs.native == 'true'
+        if: steps.filter.outputs.native == 'true'    # skip metadata computation when no build will happen
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
           # Prefix all native tags with "native-" to distinguish from JVM images
           tags: |
-            type=sha,prefix=native-sha-
-            type=ref,event=branch,prefix=native-
+            type=sha,prefix=native-sha-              # immutable pointer — e.g. native-sha-a1b2c3d — used for deployments
+            type=ref,event=branch,prefix=native-     # moving pointer — e.g. native-main — for convenience
 
       - name: Build and push GraalVM native image
         # Skip entirely when no relevant file changed — saves 5-15 minutes of CPU
         if: steps.filter.outputs.native == 'true'
         uses: docker/build-push-action@v6
-        timeout-minutes: 30
+        timeout-minutes: 30    # AOT compilation is CPU-intensive; default 6h is far too loose
         with:
           context: .
           file: Dockerfile.native
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.meta.outputs.tags }}      # all tags computed by the metadata step above
+          labels: ${{ steps.meta.outputs.labels }}  # OCI standard labels (revision, created, …) injected at build time
           # Native image layers are almost entirely unique per build — cache still helps
           # for the Maven download layer (Stage 1) and the base image (Stage 2).
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:native-buildcache
-          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:native-buildcache,mode=max
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:native-buildcache              # pull cached layers before building
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:native-buildcache,mode=max      # push all layers (not just final stage) for maximum cache reuse
 
       - name: Skip notification
-        if: steps.filter.outputs.native == 'false'
+        if: steps.filter.outputs.native == 'false'    # complement of the build condition — one of the two always runs
         run: echo "No native-relevant files changed — skipping GraalVM build."

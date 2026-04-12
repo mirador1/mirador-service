@@ -31,7 +31,7 @@ set -e
 
 MVNW="./mvnw"
 MAVEN="$MVNW --batch-mode --errors --no-transfer-progress"
-IMAGE="spring-api:local"
+IMAGE="customer-service:local"
 
 case "$1" in
 

@@ -1,10 +1,20 @@
 target/
 *.log
 *.class
+# Ignore all IntelliJ IDEA config except the three files below that carry
+# project-level settings useful for any developer opening this repo:
+#   compiler.xml  — annotation processing (Lombok) + javac -parameters flag
+#   encodings.xml — UTF-8 encoding for src/main/java
+#   misc.xml      — JDK 25 version + Maven root (pom.xml)
+# workspace.xml, jarRepositories.xml, and vcs.xml are excluded because they
+# contain machine-specific paths, personal UI state, or are auto-derived by IntelliJ.
 .idea/
+!.idea/compiler.xml
+!.idea/encodings.xml
+!.idea/misc.xml
 .vscode/
 *.iml
-.DS_Store
+**/.DS_Store
 .env
 
 # Claude Code local config and worktrees

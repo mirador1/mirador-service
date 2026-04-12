@@ -258,7 +258,7 @@ docker-build:
 #     1. Spring Boot AOT processing (process-aot): generates reflection hints,
 #        proxy classes and resource configuration under target/spring-aot/.
 #     2. native:compile: invokes GraalVM native-image on the AOT output,
-#        producing a statically-linked binary at target/springapi.
+#        producing a statically-linked binary at target/customerservice.
 #   Stage 2 — debian:bookworm-slim (no JDK)
 #     Copies only the binary — no JVM, no Maven, no source code.
 #

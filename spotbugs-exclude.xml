@@ -30,7 +30,7 @@
       requires a subclass with a finalizer — impossible here since the class is a @Component.
     -->
     <Match>
-        <Class name="com.example.springapi.auth.JwtTokenProvider"/>
+        <Class name="com.example.customerservice.auth.JwtTokenProvider"/>
         <Bug pattern="CT_CONSTRUCTOR_THROW"/>
     </Match>
 
