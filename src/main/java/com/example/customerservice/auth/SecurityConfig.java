@@ -55,20 +55,28 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         return http
+                // CSRF protection is irrelevant for stateless REST APIs authenticated via Bearer tokens:
+                // there is no session cookie that a CSRF attack could hijack.
                 .csrf(AbstractHttpConfigurer::disable)
+                // Never create an HttpSession — every request must carry its own JWT.
+                // STATELESS also prevents Spring Security from storing the SecurityContext between requests.
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.POST, "/auth/login").permitAll()
-                        .requestMatchers("/actuator/**").permitAll()
-                        .requestMatchers("/swagger-ui/**", "/swagger-ui.html").permitAll()
-                        .requestMatchers("/v3/api-docs/**").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/customers").hasRole("ADMIN")
-                        .anyRequest().authenticated()
+                        .requestMatchers(HttpMethod.POST, "/auth/login").permitAll()  // public token endpoint
+                        .requestMatchers("/actuator/**").permitAll()                  // health + metrics (scrape by Prometheus)
+                        .requestMatchers("/swagger-ui/**", "/swagger-ui.html").permitAll() // Swagger UI
+                        .requestMatchers("/v3/api-docs/**").permitAll()               // OpenAPI spec
+                        .requestMatchers(HttpMethod.POST, "/customers").hasRole("ADMIN") // write access — ROLE_ADMIN only
+                        .anyRequest().authenticated()                                 // all other endpoints require a valid JWT
                 )
+                // Return 401 (not a redirect to a login page) for missing or invalid tokens.
+                // Spring Security's default entry point performs a redirect to /login — wrong for REST APIs.
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint((req, res, e) ->
                                 res.sendError(HttpServletResponse.SC_UNAUTHORIZED)))
+                // Run JwtAuthenticationFilter before Spring Security's default UsernamePasswordAuthenticationFilter
+                // so the SecurityContext is populated before authorization checks run.
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
     }

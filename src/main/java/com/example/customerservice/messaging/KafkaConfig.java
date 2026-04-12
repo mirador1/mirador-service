@@ -109,11 +109,16 @@ public class KafkaConfig {
     private DefaultKafkaConsumerFactory<String, Object> listenerConsumerFactory() {
         return new DefaultKafkaConsumerFactory<>(Map.of(
                 ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers,
+                // "earliest": on first start (no committed offset) replay all messages from the beginning.
+                // Ensures no CustomerCreatedEvent is lost if the consumer restarts before committing.
                 ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest",
                 ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class,
                 ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JacksonJsonDeserializer.class,
-                // resolve target type from the __TypeId__ header set by the producer
+                // Resolve target Java type from the __TypeId__ header written by JacksonJsonSerializer.
+                // Allows the same factory to deserialize both CustomerCreatedEvent and other event types.
                 JacksonJsonDeserializer.USE_TYPE_INFO_HEADERS, "true",
+                // Only trust our own messaging package — prevents deserialization of arbitrary classes
+                // from untrusted producers (deserialization gadget attack mitigation).
                 JacksonJsonDeserializer.TRUSTED_PACKAGES, "com.example.customerservice.messaging"
         ));
     }
@@ -142,11 +147,16 @@ public class KafkaConfig {
     }
 
     private DefaultKafkaConsumerFactory<String, CustomerEnrichReply> replyConsumerFactory() {
-        // false = always deserialize to CustomerEnrichReply, ignore type headers
+        // false = always deserialize to CustomerEnrichReply, ignoring __TypeId__ headers.
+        // The reply topic carries only one message type so dynamic type resolution is unnecessary.
         var deser = new JacksonJsonDeserializer<>(CustomerEnrichReply.class, false);
         deser.addTrustedPackages("com.example.customerservice.messaging");
         return new DefaultKafkaConsumerFactory<>(Map.of(
                 ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers,
+                // "latest": skip any replies that arrived before this consumer started.
+                // Stale replies (from a previous request-reply cycle) would be matched to the wrong
+                // correlation ID by ReplyingKafkaTemplate and silently discarded anyway, but
+                // "latest" avoids wasting time deserializing them.
                 ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest"
         ), new StringDeserializer(), deser);
     }
