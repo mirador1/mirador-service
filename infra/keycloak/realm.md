@@ -12,40 +12,6 @@ If you modify `realm-dev.json`, update the test copy too.
 
 ---
 
-## Architecture
-
-```
-                         ┌────────────────────────────────┐
-  ┌──────────────────┐   │           Keycloak             │
-  │   api-gateway    │   │  (identity provider)           │
-  │   caller service │   │                                │
-  └────────┬─────────┘   │  realm: customer-service       │
-           │              │  clients:                     │
-           │ 1. POST /token│    api-gateway  → ROLE_ADMIN │
-           │    client_credentials           monitoring   │
-           │──────────────►    service      → ROLE_USER   │
-           │ 2. JWT (signed)│                             │
-           │◄──────────────└──────────────────────────────┘
-           │                              ▲
-           │                              │ JWKS (startup only)
-           │ 3. Authorization: Bearer JWT │ fetches public keys
-           ▼                              │
-  ┌─────────────────────────────────────────────────────────┐
-  │                  customer-service                       │
-  │            (OAuth2 resource server)                     │
-  │                                                         │
-  │  validates JWT locally — never calls Keycloak at        │
-  │  request time, only fetches JWKS once on startup        │
-  └──────────────────────┬──────────────────────────────────┘
-                         │
-          ┌──────────────┼──────────────────┐
-          ▼              ▼                  ▼
-     PostgreSQL        Kafka             Redis
-```
-
-**Key point:** `customer-service` is a pure resource server. It fetches Keycloak's JWKS public keys
-once at startup and validates all subsequent JWTs locally with no round-trip to Keycloak per request.
-
 ---
 
 ## Realm settings
