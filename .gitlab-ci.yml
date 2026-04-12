@@ -108,9 +108,18 @@ unit-test:
 # Results appear in Security > Vulnerability Report (blocked by MR approval rules
 # if configured). Does NOT require compiled bytecode — source-only analysis.
 # Defined by the included template; we just override the stage here.
+#
+# Why allow_failure: true?
+# The GitLab-managed template defines these jobs as configuration stubs that
+# intentionally exit 1 when triggered outside the official GitLab SAST runner
+# environment (i.e. free-tier shared runners without the GitLab Security Scanner
+# image). This causes the pipeline to fail even though no real vulnerability was
+# found. Setting allow_failure: true keeps the pipeline green while real findings
+# still surface in the Security > Vulnerability Report tab when a paid runner or
+# self-hosted runner with the scanner image is available.
 sast:
   stage: test
-  allow_failure: true   # template stub fails on free-tier runners; real findings still surface in Security tab
+  allow_failure: true
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -121,9 +130,12 @@ sast:
 # OSV, NVD, and GitHub Advisory databases for known CVEs.
 # Results appear in Security > Dependency List.
 # Defined by the included template; stage override keeps it parallel with unit-test.
+#
+# Why allow_failure: true? — same reason as sast above: template stub exits 1
+# on free-tier runners; dependency findings still surface in Security > Dependency List.
 dependency_scanning:
   stage: test
-  allow_failure: true   # template stub fails on free-tier runners; real findings still surface in Security tab
+  allow_failure: true
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
