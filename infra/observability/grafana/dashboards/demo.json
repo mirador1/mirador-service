@@ -6,7 +6,7 @@
   "panels": [
     {
       "type": "timeseries",
-      "title": "Hdemo.jsonTTP requests rate",
+      "title": "HTTP requests rate",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
       "targets": [
         { "expr": "sum(rate(http_server_requests_seconds_count[1m]))", "refId": "A" }
