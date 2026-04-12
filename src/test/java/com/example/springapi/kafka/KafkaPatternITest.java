@@ -50,6 +50,13 @@ class KafkaPatternITest extends AbstractIntegrationTest {
     }
 
     @Test
+    void enrich_nonExistentCustomer_returns404() throws Exception {
+        // GET /customers/9999/enrich — customer does not exist → NoSuchElementException → 404
+        mockMvc.perform(get("/customers/9999/enrich").with(user("admin").roles("USER")))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void pattern2_enrichReturnsDisplayNameViaSyncKafkaReply() throws Exception {
         // Create a customer first
         MvcResult result = mockMvc.perform(post("/customers")
