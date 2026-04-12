@@ -1,4 +1,23 @@
+# =============================================================================
+# .dockerignore — files excluded from the Docker build context
+#
+# The build context is the directory tree sent to the Docker daemon when
+# running `docker build`. Excluding large or irrelevant directories speeds up
+# the transfer and prevents accidental inclusion of secrets or test artifacts.
+# =============================================================================
+
+# Maven build output — the multi-stage Dockerfile re-runs `mvn package` inside
+# the builder stage, so the local target/ directory is never needed. Excluding
+# it avoids sending hundreds of MB (compiled classes, fat JAR, Surefire reports)
+# to the daemon on every build.
 target/
+
+# Git metadata — not needed at runtime and adds several MB to the context.
 .git/
+
+# Maven wrapper JAR — the wrapper downloads Maven automatically inside the
+# builder stage. Sending the local JAR is redundant and adds ~3 MB.
 .mvn/wrapper/maven-wrapper.jar
+
+# Markdown documentation — never needed at runtime.
 **/*.md
