@@ -127,6 +127,26 @@ dependency_scanning:
   rules:
     - when: never
 
+# OWASP Dependency-Check — SCA (Software Composition Analysis).
+# Runs the Maven plugin to scan all dependencies against the NVD for known CVEs.
+# Produces an HTML report; fails on CVSS ≥ 7 (High/Critical).
+# allow_failure: true initially — promotes awareness without blocking the pipeline.
+# Set NVD_API_KEY as a masked CI/CD variable to speed up the NVD database download.
+owasp-dependency-check:
+  stage: test
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - when: on_success
+  script:
+    - mvn $MAVEN_CLI_OPTS dependency-check:check
+  artifacts:
+    when: always
+    paths:
+      - target/dependency-check-report.html
+    expire_in: 1 week
+  allow_failure: true
+
 # Pull in the GitLab-managed SAST and Dependency Scanning job definitions.
 # Placed after the overrides so our `stage:` settings take effect.
 include:

@@ -149,16 +149,18 @@ management:
   endpoints:
     web:
       exposure:
-        # Expose: health (probes), prometheus (metrics scraping), metrics (raw),
-        #         info (build info), env (config), configprops (bean props)
-        # Do NOT expose: shutdown, threaddump, heapdump in production without auth
-        include: health,info,prometheus,metrics,env,configprops
+        # Expose only operational endpoints that are safe without auth.
+        # env and configprops are excluded — they leak DB credentials, JWT secrets,
+        # and full application configuration. Enable them only behind authentication.
+        # Do NOT expose: shutdown, threaddump, heapdump in production without auth.
+        include: health,info,prometheus,metrics
 
   endpoint:
     health:
-      # Show DB details, custom indicators, etc. in the health response.
-      # In production, consider show-details: when-authorized to avoid data leakage.
-      show-details: always
+      # show-details: when_authorized — health details (DB host, error messages)
+      # are only visible to authenticated users. Unauthenticated callers see
+      # {"status":"UP"} without component details, preventing info disclosure.
+      show-details: when_authorized
       probes:
         # Activates /actuator/health/liveness and /actuator/health/readiness
         # Used as Kubernetes liveness/readiness probe endpoints

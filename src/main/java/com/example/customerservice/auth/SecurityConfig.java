@@ -78,7 +78,11 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/auth/login").permitAll()  // public token endpoint
                         .requestMatchers(HttpMethod.POST, "/auth/refresh").permitAll() // token refresh (validates existing JWT internally)
                         .requestMatchers("/demo/security/**").permitAll()             // security demo endpoints (educational)
-                        .requestMatchers("/actuator/**").permitAll()                  // health + metrics (scrape by Prometheus)
+                        // Actuator: only health probes and info are public.
+                        // /actuator/prometheus is accessed by Prometheus — restrict to internal
+                        // network via network policy, not Spring Security (Prometheus sends no JWT).
+                        .requestMatchers("/actuator/health/**", "/actuator/info", "/actuator/prometheus").permitAll()
+                        .requestMatchers("/actuator/**").hasRole("ADMIN")             // other actuator endpoints require auth
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html").permitAll() // Swagger UI
                         .requestMatchers("/v3/api-docs/**").permitAll()               // OpenAPI spec
                         .requestMatchers("/ws/**").permitAll()                        // WebSocket STOMP endpoint

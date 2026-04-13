@@ -1,6 +1,9 @@
 package com.example.customerservice.auth;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
@@ -61,7 +64,7 @@ public class AuthController {
      * </ol>
      */
     @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestBody LoginRequest request, HttpServletRequest httpRequest) {
+    public ResponseEntity<?> login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpRequest) {
         String ip = extractIp(httpRequest);
 
         if (loginAttemptService.isBlocked(ip)) {
@@ -118,5 +121,7 @@ public class AuthController {
         return request.getRemoteAddr();
     }
 
-    public record LoginRequest(String username, String password) {}
+    public record LoginRequest(
+            @NotBlank @Size(max = 50) String username,
+            @NotBlank @Size(max = 128) String password) {}
 }

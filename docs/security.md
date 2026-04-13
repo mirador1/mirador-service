@@ -28,7 +28,11 @@
 | SQL injection demo | Vulnerable string concatenation vs parameterized query | `customer/SecurityDemoController` |
 | XSS demo | Reflected input vs HTML-encoded output | `customer/SecurityDemoController` |
 | CORS info | Explains `allowedOrigins("*")` + credentials risk | `customer/SecurityDemoController` |
-| OWASP Dependency-Check | Maven plugin scans for known CVEs in dependencies | `pom.xml`, `run.sh security-check` |
+| JWT hardening | `iss` / `aud` claims validated to prevent cross-service token reuse | `auth/JwtTokenProvider` |
+| Actuator hardening | `env`/`configprops` disabled; health details require auth; only `health`, `info`, `prometheus` are public | `application.yml`, `auth/SecurityConfig` |
+| Input validation on auth | `@NotBlank` + `@Size` on login request DTOs | `auth/AuthController` |
+| Find Security Bugs (SAST) | SpotBugs plugin detecting 130+ OWASP vulnerability patterns | `pom.xml` |
+| OWASP Dependency-Check (SCA) | Maven plugin scans for known CVEs in dependencies; CI job in pipeline | `pom.xml`, `.gitlab-ci.yml`, `run.sh security-check` |
 
 ---
 

@@ -494,6 +494,18 @@
                         <artifactId>asm-commons</artifactId>
                         <version>9.8</version>
                     </dependency>
+                    <!--
+                      Find Security Bugs — SAST plugin for SpotBugs.
+                      Detects security-specific issues: SQL injection, XSS, XXE, weak crypto,
+                      hardcoded secrets, path traversal, LDAP injection, CRLF injection, and
+                      130+ other vulnerability patterns from the OWASP Top 10.
+                      https://find-sec-bugs.github.io/
+                    -->
+                    <dependency>
+                        <groupId>com.h3xstream.findsecbugs</groupId>
+                        <artifactId>findsecbugs-plugin</artifactId>
+                        <version>1.13.0</version>
+                    </dependency>
                 </dependencies>
                 <executions>
                     <execution>

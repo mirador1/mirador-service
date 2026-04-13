@@ -49,6 +49,12 @@ public class JwtTokenProvider {
     /** Token validity: 24 hours. Adjust for your security/UX requirements. */
     private static final long EXPIRATION_MS = 24L * 60 * 60 * 1000;
 
+    /** JWT issuer claim — identifies the service that issued the token. */
+    private static final String ISSUER = "customer-service";
+
+    /** JWT audience claim — tokens are only valid for this API. */
+    private static final String AUDIENCE = "customer-service-api";
+
     /** HMAC-SHA256 key derived from the configured secret string. */
     private final SecretKey secretKey;
 
@@ -71,6 +77,8 @@ public class JwtTokenProvider {
 
         return Jwts.builder()
                 .subject(username)
+                .issuer(ISSUER)
+                .audience().add(AUDIENCE).and()
                 .issuedAt(now)
                 .expiration(expiry)
                 .signWith(secretKey)
@@ -86,6 +94,8 @@ public class JwtTokenProvider {
         try {
             Jwts.parser()
                     .verifyWith(secretKey)
+                    .requireIssuer(ISSUER)
+                    .requireAudience(AUDIENCE)
                     .build()
                     .parseSignedClaims(token);
             return true;
@@ -102,6 +112,8 @@ public class JwtTokenProvider {
     public String getUsername(String token) {
         Claims claims = Jwts.parser()
                 .verifyWith(secretKey)
+                .requireIssuer(ISSUER)
+                .requireAudience(AUDIENCE)
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
