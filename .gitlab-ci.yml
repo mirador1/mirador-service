@@ -1,5 +1,5 @@
 # ──────────────────────────────────────────────────────────────────────────────
-# Pipeline overview — two separate lanes:
+# Pipeline overview — three separate lanes:
 #
 # ┌─ REGULAR pipeline (every MR push + main branch push) — fast lane ─────────┐
 # │   lint          Dockerfile linting (hadolint)                              │
@@ -13,6 +13,17 @@
 # │                 skipped if Dockerfile.native, pom.xml, src/ unchanged      │
 # │                 Configure in GitLab: CI/CD > Schedules (e.g. 03:00 UTC)   │
 # │                 Can also be triggered manually from the GitLab UI           │
+# └────────────────────────────────────────────────────────────────────────────┘
+#
+# ┌─ MANUAL / ON-DEMAND compatibility matrix ──────────────────────────────────┐
+# │   compat        4 manual jobs, each testing a different SB/Java combo:     │
+# │                   sb4-java21   Spring Boot 4 + Java 21  (-Dcompat)         │
+# │                   sb4-java17   Spring Boot 4 + Java 17  (-Dcompat -Djava17)│
+# │                   sb3-java21   Spring Boot 3 + Java 21  (-Dsb3)            │
+# │                   sb3-java17   Spring Boot 3 + Java 17  (-Dsb3 -Djava17)   │
+# │                 Trigger: click ▶ on the job in any pipeline,               │
+# │                 OR run via "Run pipeline" with variable RUN_COMPAT=true.   │
+# │                 SB4+Java25 (the default) is already covered by unit-test.  │
 # └────────────────────────────────────────────────────────────────────────────┘
 #
 # Goal: code-review feedback in < 10 minutes; GraalVM only when it matters.
@@ -33,6 +44,7 @@ stages:
   - test          # Unit tests + security scans — fast, no Docker
   - integration   # Testcontainers ITests + SpotBugs + coverage gate — needs Docker
   - package       # Produce deployable artifacts — JAR + Docker image
+  - compat        # On-demand compatibility matrix: SB3/SB4 × Java17/21/25
   - native        # GraalVM AOT native-image build (main branch + tags only)
 
 # ── shared defaults ────────────────────────────────────────────────────────────
@@ -249,6 +261,98 @@ docker-build:
         .
     - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
     - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG"
+
+# ── stage: compat ─────────────────────────────────────────────────────────────
+#
+# On-demand compatibility matrix — unit + integration tests across SB/Java combos.
+# SB4 + Java 25 is the default and is already exercised by unit-test + integration-test.
+# These four jobs cover the remaining supported combinations from the README:
+#
+#   sb4-java21  → mvn verify -Dcompat             (SB4, ScopedValue→ThreadLocal)
+#   sb4-java17  → mvn verify -Dcompat -Djava17    (SB4, + switch pattern→if/else)
+#   sb3-java21  → mvn verify -Dsb3               (SB3, manual X-API-Version dispatch)
+#   sb3-java17  → mvn verify -Dsb3 -Djava17       (SB3 + Java 17 compat layers)
+#
+# Trigger options:
+#   • Click ▶ on the job in any pipeline (when: manual)
+#   • "Run pipeline" in GitLab CI/CD UI with variable RUN_COMPAT=true (runs all four)
+#
+# DinD service is included so Testcontainers integration tests run too.
+# allow_failure: true — compat failures don't block MR merge.
+
+.compat-job: &compat-job
+  stage: compat
+  services:
+    - name: docker:28-dind
+      alias: docker
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $RUN_COMPAT == "true"
+      when: on_success
+    - when: manual
+      allow_failure: true
+  allow_failure: true
+
+compat-sb4-java21:
+  <<: *compat-job
+  image: maven:3.9.14-eclipse-temurin-21-noble
+  variables:
+    MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+  script:
+    - mvn $MAVEN_CLI_OPTS verify -Dcompat
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - target/surefire-reports/*.xml
+        - target/failsafe-reports/*.xml
+    expire_in: 1 week
+
+compat-sb4-java17:
+  <<: *compat-job
+  image: maven:3.9.14-eclipse-temurin-17-noble
+  variables:
+    MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+  script:
+    - mvn $MAVEN_CLI_OPTS verify -Dcompat -Djava17
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - target/surefire-reports/*.xml
+        - target/failsafe-reports/*.xml
+    expire_in: 1 week
+
+compat-sb3-java21:
+  <<: *compat-job
+  image: maven:3.9.14-eclipse-temurin-21-noble
+  variables:
+    MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+  script:
+    - mvn $MAVEN_CLI_OPTS verify -Dsb3
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - target/surefire-reports/*.xml
+        - target/failsafe-reports/*.xml
+    expire_in: 1 week
+
+compat-sb3-java17:
+  <<: *compat-job
+  image: maven:3.9.14-eclipse-temurin-17-noble
+  variables:
+    MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+  script:
+    - mvn $MAVEN_CLI_OPTS verify -Dsb3 -Djava17
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - target/surefire-reports/*.xml
+        - target/failsafe-reports/*.xml
+    expire_in: 1 week
 
 # ── stage: native ─────────────────────────────────────────────────────────────
 
