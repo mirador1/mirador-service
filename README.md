@@ -292,6 +292,66 @@ These patterns are present and documented, but they support the scenario rather 
 | GraalVM native image | AOT trade-offs: ~50 ms start, ~50 MB RSS vs JVM baseline |
 | Virtual threads (Project Loom) | Parallel sub-tasks in `AggregationService`, enabled globally |
 
+### Security — application security patterns
+
+| Pattern | What it illustrates |
+|---|---|
+| OWASP security headers | `SecurityHeadersFilter` — CSP, X-Frame-Options, nosniff, Referrer-Policy |
+| Input sanitization | `@Size(max=255)` on DTOs, request body limit (1 MB) |
+| Brute-force protection | `LoginAttemptService` — IP lockout after 5 failed login attempts (15 min) |
+| JWT refresh | `POST /auth/refresh` — extend session without re-login |
+| Audit logging | `AuditService` + `audit_event` table — who did what, when, from which IP |
+| API key (M2M) | `X-API-Key` header for machine-to-machine calls without JWT |
+| API versioning deprecation | `Deprecation` + `Sunset` headers on v1 endpoints |
+| SQL injection demo | `/demo/security/sqli-vulnerable` vs `/demo/security/sqli-safe` |
+| XSS demo | `/demo/security/xss-vulnerable` vs `/demo/security/xss-safe` |
+| CORS info | `/demo/security/cors-info` — explains misconfiguration risks |
+| OWASP Dependency-Check | Maven plugin scans dependencies for known CVEs |
+| Docker management | `GET /docker/containers`, `POST /docker/containers/{name}/stop\|start\|restart` |
+
+---
+
+## Security demo scenarios
+
+### Scenario A — SQL injection (OWASP A03)
+
+```bash
+# Vulnerable: string concatenation → dumps all customers
+curl "http://localhost:8080/demo/security/sqli-vulnerable?name=Alice'%20OR%20'1'='1"
+
+# Safe: parameterized query → returns only exact matches
+curl "http://localhost:8080/demo/security/sqli-safe?name=Alice"
+```
+
+### Scenario B — Brute-force attack
+
+```bash
+# After 5 failed attempts, the IP is locked out for 15 minutes
+for i in $(seq 1 6); do
+  curl -s -X POST http://localhost:8080/auth/login \
+    -H 'Content-Type: application/json' \
+    -d '{"username":"admin","password":"wrong"}' | jq .
+done
+# → 6th attempt returns HTTP 429 with retryAfterMinutes: 15
+```
+
+### Scenario C — XSS attack
+
+```bash
+# Vulnerable: script tag is reflected as HTML
+curl "http://localhost:8080/demo/security/xss-vulnerable?name=<script>alert('XSS')</script>"
+
+# Safe: HTML-encoded output
+curl "http://localhost:8080/demo/security/xss-safe?name=<script>alert('XSS')</script>"
+```
+
+### Scenario D — Dependency vulnerability scan
+
+```bash
+./run.sh security-check
+# → Report at target/dependency-check-report.html
+```
+
 ---
 
 ## Diagnostic scenarios
@@ -750,3 +810,14 @@ Scheduled (daily, both platforms): GraalVM native image — only when `Dockerfil
 | **Build** | SpotBugs static bytecode analysis (Medium threshold) | `pom.xml`, `spotbugs-exclude.xml` |
 | **Build** | GraalVM native image support (`-Pnative`) | `pom.xml` native profile, `Dockerfile.native` |
 | **Build** | Docker layered JAR optimisation | `Dockerfile` |
+| **Security** | OWASP security headers (CSP, X-Frame-Options, nosniff) | `auth/SecurityHeadersFilter` |
+| **Security** | Input sanitization (`@Size(max=255)`) + request body limit (1 MB) | `customer/CreateCustomerRequest`, `application.yml` |
+| **Security** | Brute-force login protection (5 attempts, 15 min lockout) | `auth/LoginAttemptService` |
+| **Security** | JWT token refresh (`POST /auth/refresh`) | `auth/AuthController` |
+| **Security** | Audit logging (DB-backed `audit_event` table) | `observability/AuditService`, `V4__create_audit_event.sql` |
+| **Security** | SQL injection demo (vulnerable vs parameterized) | `customer/SecurityDemoController` |
+| **Security** | XSS demo (reflected vs HTML-encoded) | `customer/SecurityDemoController` |
+| **Security** | CORS misconfiguration explanation | `customer/SecurityDemoController` |
+| **Security** | API versioning deprecation headers (Deprecation + Sunset) | `customer/CustomerController` |
+| **Security** | OWASP Dependency-Check (CVE scan) | `pom.xml`, `run.sh security-check` |
+| **Security** | Docker container management API | `customer/DockerController` |

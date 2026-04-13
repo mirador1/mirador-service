@@ -543,6 +543,21 @@
                     </annotationProcessorPaths>
                 </configuration>
             </plugin>
+        <!--
+          OWASP Dependency-Check — scans dependencies for known CVEs (NVD database).
+          Run manually: mvn dependency-check:check
+          Or via: ./run.sh security-check
+          Generates an HTML report at target/dependency-check-report.html
+        -->
+        <plugin>
+            <groupId>org.owasp</groupId>
+            <artifactId>dependency-check-maven</artifactId>
+            <version>12.1.1</version>
+            <configuration>
+                <failBuildOnCVSS>9</failBuildOnCVSS>
+                <formats>HTML,JSON</formats>
+            </configuration>
+        </plugin>
         </plugins>
     </build>
 

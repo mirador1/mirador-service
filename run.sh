@@ -215,6 +215,12 @@ case "$1" in
     echo "Run with: docker compose up -d"
     ;;
 
+  security-check)
+    echo "Running OWASP Dependency-Check (CVE scan)..."
+    $MAVEN dependency-check:check
+    echo "Report: target/dependency-check-report.html"
+    ;;
+
   clean)
     echo "Cleaning build artifacts..."
     $MAVEN clean
@@ -340,6 +346,7 @@ case "$1" in
     echo "  integration   IT + SpotBugs + JaCoCo (needs Docker)"
     echo "  package       build fat JAR — skips tests (run verify first)"
     echo "  docker        build local JVM Docker image tagged '$IMAGE'"
+    echo "  security-check OWASP Dependency-Check (CVE scan)"
     echo "  clean         remove target/"
     echo "  install-tools install hadolint + lefthook via Homebrew"
     echo ""

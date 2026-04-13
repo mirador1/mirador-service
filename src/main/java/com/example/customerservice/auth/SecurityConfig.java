@@ -76,6 +76,8 @@ public class SecurityConfig {
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.POST, "/auth/login").permitAll()  // public token endpoint
+                        .requestMatchers(HttpMethod.POST, "/auth/refresh").permitAll() // token refresh (validates existing JWT internally)
+                        .requestMatchers("/demo/security/**").permitAll()             // security demo endpoints (educational)
                         .requestMatchers("/actuator/**").permitAll()                  // health + metrics (scrape by Prometheus)
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html").permitAll() // Swagger UI
                         .requestMatchers("/v3/api-docs/**").permitAll()               // OpenAPI spec

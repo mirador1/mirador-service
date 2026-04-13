@@ -132,6 +132,14 @@ server:
     # Never send the stack trace to the client — it reveals internal structure
     # and is a security risk (OWASP A05: Security Misconfiguration)
     include-stacktrace: never
+  tomcat:
+    # Limit request body to 1 MB — prevents payload-based DoS attacks
+    max-http-form-post-size: 1MB
+    max-swallow-size: 1MB
+  # Limit multipart uploads and overall request size
+  servlet:
+    session:
+      timeout: 30m
 
 
 # =============================================================================

@@ -50,6 +50,7 @@ import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.concurrent.ExecutionException;
 
@@ -183,7 +184,9 @@ public class CustomerController {
                 .lowCardinalityKeyValue("endpoint", "/customers")
                 .observe(() -> customerFindAllTimer.record(() ->
                         search != null ? service.search(search, capped) : service.findAll(capped)));
-        return withLinkHeaders(page);
+        return withLinkHeaders(page, Map.of(
+                "Deprecation", "true",
+                "Sunset", "2027-01-01T00:00:00Z"));
     }
 
     /**
@@ -504,6 +507,11 @@ public class CustomerController {
 
     /** Adds RFC 8288 Link headers (next, prev, first, last) to paginated responses. */
     private <T> ResponseEntity<Page<T>> withLinkHeaders(Page<T> page) {
+        return withLinkHeaders(page, Map.of());
+    }
+
+    /** Adds Link headers + optional extra headers (e.g., Deprecation, Sunset). */
+    private <T> ResponseEntity<Page<T>> withLinkHeaders(Page<T> page, Map<String, String> extraHeaders) {
         var links = new java.util.StringJoiner(", ");
         String base = "/customers?size=" + page.getSize();
         if (page.hasNext()) {
@@ -515,8 +523,9 @@ public class CustomerController {
         links.add("<%s&page=0>; rel=\"first\"".formatted(base));
         links.add("<%s&page=%d>; rel=\"last\"".formatted(base, page.getTotalPages() - 1));
 
-        return ResponseEntity.ok()
-                .header("Link", links.toString())
-                .body(page);
+        var builder = ResponseEntity.ok()
+                .header("Link", links.toString());
+        extraHeaders.forEach(builder::header);
+        return builder.body(page);
     }
 }
