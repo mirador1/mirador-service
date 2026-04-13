@@ -6,6 +6,12 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Persists security audit events to the {@code audit_event} table.
  *
@@ -40,5 +46,70 @@ public class AuditService {
         } catch (Exception e) {
             log.error("audit_event_persist_failed action={} error={}", action, e.getMessage());
         }
+    }
+
+    /**
+     * Returns a page of audit events with optional filters on action, user, and time range.
+     *
+     * @param page  zero-based page index
+     * @param size  page size (number of rows)
+     * @param action optional action filter (exact match)
+     * @param user   optional user_name filter (exact match)
+     * @param from   optional lower bound for created_at (inclusive)
+     * @param to     optional upper bound for created_at (inclusive)
+     */
+    public AuditPage findAll(int page, int size, String action, String user, Instant from, Instant to) {
+        // Build WHERE clause dynamically
+        var whereClauses = new ArrayList<String>();
+        var params = new ArrayList<Object>();
+
+        if (action != null && !action.isBlank()) {
+            whereClauses.add("action = ?");
+            params.add(action);
+        }
+        if (user != null && !user.isBlank()) {
+            whereClauses.add("user_name = ?");
+            params.add(user);
+        }
+        if (from != null) {
+            whereClauses.add("created_at >= ?");
+            params.add(java.sql.Timestamp.from(from));
+        }
+        if (to != null) {
+            whereClauses.add("created_at <= ?");
+            params.add(java.sql.Timestamp.from(to));
+        }
+
+        String where = whereClauses.isEmpty() ? "" : " WHERE " + String.join(" AND ", whereClauses);
+
+        // Count total matching rows
+        Long total = jdbc.queryForObject("SELECT COUNT(*) FROM audit_event" + where,
+                Long.class, params.toArray());
+        long totalElements = total != null ? total : 0L;
+        int totalPages = size > 0 ? (int) Math.ceil((double) totalElements / size) : 0;
+
+        // Fetch the page
+        var pageParams = new ArrayList<>(params);
+        pageParams.add(size);
+        pageParams.add((long) page * size);
+
+        List<AuditEventDto> content = jdbc.query(
+                "SELECT id, user_name, action, detail, ip_address, created_at" +
+                        " FROM audit_event" + where +
+                        " ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                (rs, rowNum) -> mapRow(rs),
+                pageParams.toArray());
+
+        return new AuditPage(content, page, size, totalElements, totalPages);
+    }
+
+    private AuditEventDto mapRow(ResultSet rs) throws SQLException {
+        return new AuditEventDto(
+                rs.getLong("id"),
+                rs.getString("user_name"),
+                rs.getString("action"),
+                rs.getString("detail"),
+                rs.getString("ip_address"),
+                rs.getTimestamp("created_at").toInstant());
     }
 }
