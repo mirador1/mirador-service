@@ -239,6 +239,17 @@ public class CustomerController {
     }
 
     /**
+     * Returns a single customer by ID.
+     *
+     * <p>Returns HTTP 404 if the customer does not exist.
+     */
+    @GetMapping("/{id}")
+    public CustomerDto getById(@PathVariable Long id) {
+        return service.findById(id)
+                .orElseThrow(() -> new NoSuchElementException("Customer not found: " + id));
+    }
+
+    /**
      * Updates an existing customer's name and email.
      *
      * <p>Returns HTTP 404 if the customer does not exist.
