@@ -568,6 +568,9 @@
             <configuration>
                 <failBuildOnCVSS>9</failBuildOnCVSS>
                 <formats>HTML,JSON</formats>
+                <suppressionFiles>
+                    <suppressionFile>owasp-suppressions.xml</suppressionFile>
+                </suppressionFiles>
             </configuration>
         </plugin>
         </plugins>

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+
+    <!--
+      False positives on spring-ai-ollama-spring-boot-starter / spring-ai-core / spring-ai-ollama.
+
+      Root cause: OWASP Dependency-Check incorrectly assigns the CPE
+        cpe:2.3:a:vmware:spring_boot:1.0.0:m6:*:*:*:*:*:*
+      to these Spring AI 1.0.0-M6 jars because it parses "1.0.0-M6" as a
+      Spring Boot milestone version. The CVEs below target Spring Boot itself
+      (≤ 3.x) and Spring Data REST — they do not apply to Spring AI artifacts.
+      Our project runs Spring Boot 4.x which is also not affected.
+    -->
+
+    <!-- CVE-2017-8046: Spring Data REST RCE via malformed PATCH request.
+         Affects spring-data-rest-webmvc; not applicable to Spring AI. -->
+    <suppress>
+        <notes>False positive: CVE-2017-8046 (Spring Data REST RCE) matched via wrong CPE
+        cpe:2.3:a:vmware:spring_boot:1.0.0:m6 on Spring AI 1.0.0-M6 artifacts.
+        Spring AI is not Spring Boot. The CVE targets spring-data-rest-webmvc only.</notes>
+        <gav regex="true">^org\.springframework\.ai:spring-ai-.*</gav>
+        <cve>CVE-2017-8046</cve>
+    </suppress>
+
+    <!-- CVE-2021-26987: Pivotal Spring Framework SSRF/RCE.
+         Wrongly attributed to Spring AI via incorrect CPE match. -->
+    <suppress>
+        <notes>False positive: CVE-2021-26987 matched via wrong CPE on Spring AI 1.0.0-M6 artifacts.
+        Spring AI is not Spring Boot / Spring Framework at those affected versions.</notes>
+        <gav regex="true">^org\.springframework\.ai:spring-ai-.*</gav>
+        <cve>CVE-2021-26987</cve>
+    </suppress>
+
+    <!-- CVE-2023-20873: Spring Boot < 3.0.6 actuator security bypass.
+         Wrongly attributed because OWASP parsed "1.0.0-M6" as a Spring Boot 1.x milestone.
+         Our project uses Spring Boot 4.x which is not affected. -->
+    <suppress>
+        <notes>False positive: CVE-2023-20873 (Spring Boot &lt; 3.0.6) matched via wrong CPE
+        cpe:2.3:a:vmware:spring_boot:1.0.0:m6 on Spring AI 1.0.0-M6 artifacts.
+        Spring AI is not Spring Boot. Our project runs Spring Boot 4.x.</notes>
+        <gav regex="true">^org\.springframework\.ai:spring-ai-.*</gav>
+        <cve>CVE-2023-20873</cve>
+    </suppress>
+
+</suppressions>
