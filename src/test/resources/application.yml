@@ -43,6 +43,7 @@ logging:
     org.flywaydb: DEBUG
 
 app:
+  api-key: demo-api-key-2026
   kafka:
     topics:
       customer-created: customer.created
