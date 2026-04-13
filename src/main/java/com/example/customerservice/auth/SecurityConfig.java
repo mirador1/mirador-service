@@ -79,6 +79,8 @@ public class SecurityConfig {
                         .requestMatchers("/ws/**").permitAll()                        // WebSocket STOMP endpoint
                         .requestMatchers(HttpMethod.POST, "/customers").hasRole("ADMIN") // write access — ROLE_ADMIN only
                         .requestMatchers(HttpMethod.POST, "/customers/batch").hasRole("ADMIN") // batch import — ROLE_ADMIN only
+                        .requestMatchers(HttpMethod.PUT, "/customers/**").hasRole("ADMIN")     // update — ROLE_ADMIN only
+                        .requestMatchers(HttpMethod.DELETE, "/customers/**").hasRole("ADMIN")   // delete — ROLE_ADMIN only
                         .anyRequest().authenticated()                                 // all other endpoints require a valid JWT
                 )
                 // Return 401 (not a redirect to a login page) for missing or invalid tokens.

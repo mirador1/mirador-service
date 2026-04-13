@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.Optional;
 
 /**
@@ -106,6 +107,30 @@ public class CustomerService {
         websocket.convertAndSend("/topic/customers", dto);
 
         return dto;
+    }
+
+    /**
+     * Updates an existing customer's name and email.
+     * @throws NoSuchElementException if the customer does not exist
+     */
+    public CustomerDto update(Long id, CreateCustomerRequest request) {
+        Customer customer = repository.findById(id)
+                .orElseThrow(() -> new NoSuchElementException("Customer not found: " + id));
+        customer.setName(request.name());
+        customer.setEmail(request.email());
+        Customer saved = repository.save(customer);
+        return toDto(saved);
+    }
+
+    /**
+     * Deletes a customer by ID.
+     * @throws NoSuchElementException if the customer does not exist
+     */
+    public void delete(Long id) {
+        if (!repository.existsById(id)) {
+            throw new NoSuchElementException("Customer not found: " + id);
+        }
+        repository.deleteById(id);
     }
 
     /**
