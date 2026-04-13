@@ -164,6 +164,12 @@
             <version>${datasource-micrometer.version}</version>
         </dependency>
 
+        <!-- WebSocket — real-time notifications via STOMP over SockJS -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-websocket</artifactId>
+        </dependency>
+
         <!-- API docs — SpringDoc generates OpenAPI 3 spec + Swagger UI at /swagger-ui.html -->
         <dependency>
             <groupId>org.springdoc</groupId>

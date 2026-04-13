@@ -5,6 +5,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.List;
+
 /**
  * Spring Data JPA repository for {@link Customer} entities.
  *
@@ -36,4 +38,17 @@ public interface CustomerRepository extends JpaRepository<Customer, Long> {
      * [Spring Data JPA — interface projection]
      */
     Page<CustomerSummary> findAllProjectedBy(Pageable pageable);
+
+    /**
+     * Cursor-based pagination: returns customers whose ID is strictly greater than {@code cursor},
+     * ordered by ID ascending. The query uses an index seek ({@code WHERE id > ?}) instead of
+     * {@code OFFSET}, making it efficient on large datasets.
+     */
+    List<Customer> findByIdGreaterThanOrderByIdAsc(Long cursor, Pageable pageable);
+
+    /**
+     * Checks if a customer with the given email already exists.
+     * Used by batch import to skip duplicates.
+     */
+    boolean existsByEmail(String email);
 }

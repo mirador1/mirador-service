@@ -35,6 +35,15 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
+
+import java.io.OutputStreamWriter;
+import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.concurrent.ExecutionException;
@@ -345,5 +354,71 @@ public class CustomerController {
                         throw new IllegalStateException("Enrich failed for id=" + id, e.getCause());
                     }
                 }));
+    }
+
+    // ─── Cursor-based pagination ────────────────────────────────────────────
+
+    /**
+     * Returns a cursor-based page of customers.
+     *
+     * <p>Unlike offset-based pagination ({@code ?page=5&size=20}), cursor pagination uses
+     * the last element's ID as a bookmark: {@code ?cursor=42&size=20}. The DB query uses
+     * {@code WHERE id > 42 ORDER BY id LIMIT 21} (fetches size+1 to detect {@code hasNext}).
+     *
+     * <p>Performance advantage: offset-based pagination scans and skips rows, becoming slower
+     * as the page number increases. Cursor pagination always does an index seek.
+     */
+    @GetMapping("/cursor")
+    public CursorPage<CustomerDto> getAllCursor(
+            @RequestParam(defaultValue = "0") Long cursor,
+            @RequestParam(defaultValue = "20") int size) {
+        return service.findAllCursor(cursor, size);
+    }
+
+    // ─── Batch import ───────────────────────────────────────────────────────
+
+    /**
+     * Creates multiple customers in a single request.
+     *
+     * <p>Each entry is validated and persisted individually — a failure on one row does not
+     * abort the entire batch. Duplicate emails are detected and reported as errors.
+     * Successfully created customers trigger Kafka events and WebSocket notifications.
+     */
+    @PreAuthorize("hasRole('ADMIN')")
+    @PostMapping("/batch")
+    public BatchImportResult batchCreate(@Valid @RequestBody List<CreateCustomerRequest> requests) {
+        return Observation.createNotStarted("customer.batch-import", observationRegistry)
+                .lowCardinalityKeyValue("endpoint", "/customers/batch")
+                .observe(() -> service.batchCreate(requests));
+    }
+
+    // ─── CSV export ─────────────────────────────────────────────────────────
+
+    /**
+     * Streams all customers as a CSV file.
+     *
+     * <p>Uses {@link StreamingResponseBody} so the response is written directly to the
+     * output stream without buffering the entire result set in memory. This is observable
+     * in Tempo as a single long-running span whose duration grows with the dataset size.
+     */
+    @GetMapping("/export")
+    public ResponseEntity<StreamingResponseBody> exportCsv() {
+        StreamingResponseBody body = outputStream -> {
+            var writer = new PrintWriter(new OutputStreamWriter(outputStream, StandardCharsets.UTF_8));
+            writer.println("id,name,email,created_at");
+            for (Customer c : service.findAllForExport()) {
+                writer.printf("%d,\"%s\",\"%s\",%s%n",
+                        c.getId(),
+                        c.getName().replace("\"", "\"\""),
+                        c.getEmail().replace("\"", "\"\""),
+                        c.getCreatedAt());
+            }
+            writer.flush();
+        };
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=customers.csv")
+                .contentType(MediaType.parseMediaType("text/csv"))
+                .body(body);
     }
 }

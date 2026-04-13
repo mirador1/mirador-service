@@ -76,7 +76,9 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/**").permitAll()                  // health + metrics (scrape by Prometheus)
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html").permitAll() // Swagger UI
                         .requestMatchers("/v3/api-docs/**").permitAll()               // OpenAPI spec
+                        .requestMatchers("/ws/**").permitAll()                        // WebSocket STOMP endpoint
                         .requestMatchers(HttpMethod.POST, "/customers").hasRole("ADMIN") // write access — ROLE_ADMIN only
+                        .requestMatchers(HttpMethod.POST, "/customers/batch").hasRole("ADMIN") // batch import — ROLE_ADMIN only
                         .anyRequest().authenticated()                                 // all other endpoints require a valid JWT
                 )
                 // Return 401 (not a redirect to a login page) for missing or invalid tokens.
