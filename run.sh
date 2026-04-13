@@ -101,8 +101,17 @@ case "$1" in
       mkdir -p infra/pyroscope
       curl -sL https://github.com/grafana/pyroscope-java/releases/latest/download/pyroscope.jar -o "$PYROSCOPE_JAR"
     fi
+    # Pyroscope profiles 3 dimensions:
+    #   CPU  — itimer event (which methods burn CPU time)
+    #   HEAP — alloc event (where memory is allocated, threshold 512KB)
+    #   LOCK — lock event (where thread contention happens, threshold 10ms)
     PYROSCOPE_APPLICATION_NAME=customer-service \
     PYROSCOPE_SERVER_ADDRESS=${PYROSCOPE_SERVER_ADDRESS:-http://localhost:4040} \
+    PYROSCOPE_PROFILER_EVENT=itimer \
+    PYROSCOPE_PROFILER_ALLOC=512k \
+    PYROSCOPE_PROFILER_LOCK=10ms \
+    PYROSCOPE_LABELS="service=customer-service,env=local" \
+    PYROSCOPE_UPLOAD_INTERVAL=10s \
     $MVNW spring-boot:run -Dspring-boot.run.jvmArguments="-javaagent:$PYROSCOPE_JAR"
     ;;
 
