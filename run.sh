@@ -33,6 +33,37 @@ MVNW="./mvnw"
 MAVEN="$MVNW --batch-mode --errors --no-transfer-progress"
 IMAGE="customer-service:local"
 
+# Ensure Docker is running for commands that need it
+ensure_docker() {
+  if docker info >/dev/null 2>&1; then
+    return
+  fi
+  echo "Docker is not running — attempting to start..."
+  case "$(uname -s)" in
+    Darwin)
+      open -a Docker
+      ;;
+    Linux)
+      if command -v systemctl &>/dev/null; then
+        sudo systemctl start docker
+      else
+        echo "ERROR: Cannot start Docker automatically. Please start it manually."
+        exit 1
+      fi
+      ;;
+    *)
+      echo "ERROR: Unsupported OS. Please start Docker manually."
+      exit 1
+      ;;
+  esac
+  echo -n "Waiting for Docker"
+  while ! docker info >/dev/null 2>&1; do
+    echo -n "."
+    sleep 2
+  done
+  echo " ready!"
+}
+
 case "$1" in
 
   # ---------------------------------------------------------------------------
@@ -40,16 +71,19 @@ case "$1" in
   # ---------------------------------------------------------------------------
 
   db)
+    ensure_docker
     echo "Starting PostgreSQL..."
     docker compose up -d db
     ;;
 
   kafka)
+    ensure_docker
     echo "Starting Kafka..."
     docker compose up -d kafka
     ;;
 
   obs)
+    ensure_docker
     echo "Starting observability stack..."
     docker compose -f docker-compose.observability.yml up -d
     ;;
@@ -73,9 +107,12 @@ case "$1" in
     ;;
 
   all)
+    ensure_docker
     echo "Starting everything..."
-    docker compose up -d db kafka
+    docker compose up -d
     docker compose -f docker-compose.observability.yml up -d
+    # Stop spring-app container (if running) — we run the app locally via Maven
+    docker stop spring-app 2>/dev/null || true
     $MVNW spring-boot:run
     ;;
 
@@ -84,8 +121,37 @@ case "$1" in
     ./infra/simulate-traffic.sh "${2:-60}" "${3:-2}"
     ;;
 
+  restart)
+    ensure_docker
+    echo "Restarting everything (clean)..."
+    # Kill the running Spring app (target Java process only, not Docker)
+    pgrep -f 'CustomerServiceApplication' | xargs kill 2>/dev/null || true
+    pgrep -f 'spring-boot:run' | xargs kill 2>/dev/null || true
+    # Stop and recreate all containers
+    docker compose down
+    docker compose -f docker-compose.observability.yml down
+    docker compose up -d
+    docker compose -f docker-compose.observability.yml up -d
+    docker stop spring-app 2>/dev/null || true
+    echo "Infrastructure ready. Starting app..."
+    $MVNW spring-boot:run
+    ;;
+
+  nuke)
+    ensure_docker
+    echo "Full cleanup — removing containers, volumes, and build artifacts..."
+    pgrep -f 'CustomerServiceApplication' | xargs kill 2>/dev/null || true
+    pgrep -f 'spring-boot:run' | xargs kill 2>/dev/null || true
+    docker compose down -v
+    docker compose -f docker-compose.observability.yml down -v
+    $MAVEN clean
+    echo "Done. Run './run.sh all' to start from scratch."
+    ;;
+
   stop)
-    echo "Stopping all containers..."
+    echo "Stopping everything..."
+    pgrep -f 'CustomerServiceApplication' | xargs kill 2>/dev/null || true
+    pgrep -f 'spring-boot:run' | xargs kill 2>/dev/null || true
     docker compose down
     docker compose -f docker-compose.observability.yml down
     ;;
@@ -158,9 +224,11 @@ case "$1" in
     echo "  obs           start observability stack"
     echo "  app           start Spring app (local)"
     echo "  app-profiled  start Spring app with Pyroscope profiling"
-    echo "  all           start everything"
+    echo "  all           start everything (infra + obs + app)"
+    echo "  restart       stop + restart everything (keeps data)"
     echo "  simulate      run traffic simulation (default: 60 iterations, 2s pause)"
-    echo "  stop          stop all containers"
+    echo "  stop          stop app + all containers"
+    echo "  nuke          full cleanup — containers, volumes, build artifacts"
     echo ""
     echo "Quality / CI:"
     echo "  check         unit tests only — fast, no Docker required"
