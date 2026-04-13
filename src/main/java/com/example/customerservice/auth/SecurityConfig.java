@@ -63,7 +63,7 @@ public class SecurityConfig {
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.POST, "/auth/login").permitAll()  // public token endpoint
+                        .requestMatchers(HttpMethod.POST, "/auth/**").permitAll()     // login + refresh token endpoints
                         .requestMatchers("/actuator/**").permitAll()                  // health + metrics (scrape by Prometheus)
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html").permitAll() // Swagger UI
                         .requestMatchers("/v3/api-docs/**").permitAll()               // OpenAPI spec
