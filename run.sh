@@ -109,10 +109,9 @@ case "$1" in
   all)
     ensure_docker
     echo "Starting everything..."
-    docker compose up -d
+    # Start infra services only (not the app container — we run locally via Maven)
+    docker compose up -d db kafka redis ollama keycloak pgadmin kafka-ui redisinsight
     docker compose -f docker-compose.observability.yml up -d
-    # Stop spring-app container (if running) — we run the app locally via Maven
-    docker stop spring-app 2>/dev/null || true
     $MVNW spring-boot:run
     ;;
 
@@ -130,9 +129,8 @@ case "$1" in
     # Stop and recreate all containers
     docker compose down
     docker compose -f docker-compose.observability.yml down
-    docker compose up -d
+    docker compose up -d db kafka redis ollama keycloak pgadmin kafka-ui redisinsight
     docker compose -f docker-compose.observability.yml up -d
-    docker stop spring-app 2>/dev/null || true
     echo "Infrastructure ready. Starting app..."
     $MVNW spring-boot:run
     ;;
