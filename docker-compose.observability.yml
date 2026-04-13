@@ -137,7 +137,30 @@ services:
       - "9411:9411"
     environment:
       # Enable CORS for Angular UI on localhost:4200
-      ZIPKIN_HTTP_ALLOWED_ORIGINS: "http://localhost:4200"
+      # Zipkin uses Armeria — ZIPKIN_HTTP_ALLOWED_ORIGINS is not a native config.
+      # Instead, we use a Nginx sidecar or accept that Zipkin 3.x has CORS built-in.
+      # For dev, the simplest approach: use the Spring Boot proxy at /obs/zipkin/*
+      JAVA_OPTS: "-Xms64m -Xmx256m"
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Nginx CORS proxy for Zipkin and Loki
+  # The Angular UI on localhost:4200 needs to call Zipkin (9411) and Loki (3100)
+  # directly. Neither service supports CORS natively. This Nginx sidecar adds
+  # the required Access-Control-Allow-Origin headers.
+  # Access: Zipkin via http://localhost:9412, Loki via http://localhost:3101
+  # ---------------------------------------------------------------------------
+  cors-proxy:
+    image: nginx:alpine
+    container_name: customerservice-cors-proxy
+    ports:
+      - "9412:9412"    # Zipkin CORS proxy
+      - "3101:3101"    # Loki CORS proxy
+    volumes:
+      - ./infra/observability/cors-proxy.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - zipkin
+      - lgtm
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
