@@ -175,6 +175,21 @@ public class CustomerService {
         return repository.findAll();
     }
 
+    /** Search customers by name or email (case-insensitive). */
+    public Page<CustomerDto> search(String query, Pageable pageable) {
+        return repository.search(query, pageable).map(this::toDto);
+    }
+
+    /** Search customers by name or email — v2 shape with createdAt. */
+    public Page<CustomerDtoV2> searchV2(String query, Pageable pageable) {
+        return repository.search(query, pageable).map(this::toDtoV2);
+    }
+
+    /** Simulates a slow database query for observability demos. */
+    public void simulateSlowQuery(double seconds) {
+        repository.simulateSlowQuery(seconds);
+    }
+
     /** Maps a JPA entity to a v1 DTO (id, name, email). */
     private CustomerDto toDto(Customer customer) {
         return new CustomerDto(

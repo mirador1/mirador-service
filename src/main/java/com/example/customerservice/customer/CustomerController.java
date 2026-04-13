@@ -39,6 +39,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -174,10 +175,15 @@ public class CustomerController {
      * {@code spring.mvc.apiversion.*} in {@code application.yml}.
      */
     @GetMapping(version = "1.0")
-    public Page<CustomerDto> getAll(@PageableDefault(size = 20, sort = "id") Pageable pageable) {
-        return Observation.createNotStarted("customer.find-all", observationRegistry)
+    public ResponseEntity<Page<CustomerDto>> getAll(
+            @PageableDefault(size = 20, sort = "id") Pageable pageable,
+            @RequestParam(required = false) String search) {
+        Pageable capped = capPageSize(pageable);
+        Page<CustomerDto> page = Observation.createNotStarted("customer.find-all", observationRegistry)
                 .lowCardinalityKeyValue("endpoint", "/customers")
-                .observe(() -> customerFindAllTimer.record(() -> service.findAll(pageable)));
+                .observe(() -> customerFindAllTimer.record(() ->
+                        search != null ? service.search(search, capped) : service.findAll(capped)));
+        return withLinkHeaders(page);
     }
 
     /**
@@ -196,11 +202,16 @@ public class CustomerController {
      * Spring Framework 7.0 ({@code @RequestMapping#version()}).
      */
     @GetMapping(version = "2.0+")
-    public Page<CustomerDtoV2> getAllV2(@PageableDefault(size = 20, sort = "id") Pageable pageable) {
-        return Observation.createNotStarted("customer.find-all-v2", observationRegistry)
+    public ResponseEntity<Page<CustomerDtoV2>> getAllV2(
+            @PageableDefault(size = 20, sort = "id") Pageable pageable,
+            @RequestParam(required = false) String search) {
+        Pageable capped = capPageSize(pageable);
+        Page<CustomerDtoV2> page = Observation.createNotStarted("customer.find-all-v2", observationRegistry)
                 .lowCardinalityKeyValue("endpoint", "/customers")
                 .lowCardinalityKeyValue("version", "2")
-                .observe(() -> customerFindAllTimer.record(() -> service.findAllV2(pageable)));
+                .observe(() -> customerFindAllTimer.record(() ->
+                        search != null ? service.searchV2(search, capped) : service.findAllV2(capped)));
+        return withLinkHeaders(page);
     }
 
     /**
@@ -428,6 +439,25 @@ public class CustomerController {
      * output stream without buffering the entire result set in memory. This is observable
      * in Tempo as a single long-running span whose duration grows with the dataset size.
      */
+    // ─── Slow query simulation ────────────────────────────────────────────
+
+    /**
+     * Simulates a slow database query using PostgreSQL {@code pg_sleep()}.
+     *
+     * <p>Useful for observability demos: the long-running DB span is clearly visible
+     * in Tempo/Zipkin traces, and the latency spike appears in Grafana dashboards.
+     *
+     * @param seconds duration of the simulated slow query (capped at 10s)
+     */
+    @GetMapping("/slow-query")
+    public java.util.Map<String, String> slowQuery(@RequestParam(defaultValue = "2") double seconds) {
+        double capped = Math.min(seconds, 10);
+        service.simulateSlowQuery(capped);
+        return java.util.Map.of("status", "completed", "duration", capped + "s");
+    }
+
+    // ─── CSV export ─────────────────────────────────────────────────────────
+
     @GetMapping("/export")
     public ResponseEntity<StreamingResponseBody> exportCsv() {
         StreamingResponseBody body = outputStream -> {
@@ -447,5 +477,35 @@ public class CustomerController {
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=customers.csv")
                 .contentType(MediaType.parseMediaType("text/csv"))
                 .body(body);
+    }
+
+    // ─── Helpers ────────────────────────────────────────────────────────────
+
+    private static final int MAX_PAGE_SIZE = 100;
+
+    /** Caps the page size to prevent unbounded queries (e.g., ?size=999999). */
+    private Pageable capPageSize(Pageable pageable) {
+        if (pageable.getPageSize() > MAX_PAGE_SIZE) {
+            return PageRequest.of(pageable.getPageNumber(), MAX_PAGE_SIZE, pageable.getSort());
+        }
+        return pageable;
+    }
+
+    /** Adds RFC 8288 Link headers (next, prev, first, last) to paginated responses. */
+    private <T> ResponseEntity<Page<T>> withLinkHeaders(Page<T> page) {
+        var links = new java.util.StringJoiner(", ");
+        String base = "/customers?size=" + page.getSize();
+        if (page.hasNext()) {
+            links.add("<%s&page=%d>; rel=\"next\"".formatted(base, page.getNumber() + 1));
+        }
+        if (page.hasPrevious()) {
+            links.add("<%s&page=%d>; rel=\"prev\"".formatted(base, page.getNumber() - 1));
+        }
+        links.add("<%s&page=0>; rel=\"first\"".formatted(base));
+        links.add("<%s&page=%d>; rel=\"last\"".formatted(base, page.getTotalPages() - 1));
+
+        return ResponseEntity.ok()
+                .header("Link", links.toString())
+                .body(page);
     }
 }

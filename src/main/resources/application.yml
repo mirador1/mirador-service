@@ -335,6 +335,13 @@ app:
   # Rate limiting — Bucket4j token-bucket algorithm, per client IP
   # Each IP gets its own bucket. When empty, requests receive HTTP 429 + Retry-After.
   # ---------------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
+  # API key — alternative M2M authentication via X-API-Key header
+  # Set via environment variable in production (secrets manager recommended).
+  # Leave empty to disable API key authentication.
+  # ---------------------------------------------------------------------------
+  api-key: ${API_KEY:demo-api-key-2026}
+
   rate-limit:
     capacity: 100         # max tokens in the bucket (burst size)
     refill-tokens: 100    # tokens added per refill cycle

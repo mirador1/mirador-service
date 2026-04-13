@@ -49,13 +49,104 @@
       "targets": [
         { "expr": "customer_recent_buffer_size", "refId": "A" }
       ]
+    },
+    {
+      "type": "stat",
+      "title": "Total customers (DB)",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 16 },
+      "targets": [
+        { "expr": "customer_created_count_total", "refId": "A" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP request latency by endpoint (p95)",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 22 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{uri!~\"/actuator.*\"}[5m])) by (le, uri))",
+          "refId": "A",
+          "legendFormat": "{{ uri }}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP error rate (4xx + 5xx)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 30 },
+      "targets": [
+        {
+          "expr": "sum(rate(http_server_requests_seconds_count{status=~\"4..|5..\"}[1m])) by (status)",
+          "refId": "A",
+          "legendFormat": "HTTP {{ status }}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Kafka events processed",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 30 },
+      "targets": [
+        { "expr": "rate(kafka_customer_created_processed_total[1m])", "refId": "A" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Resilience4j circuit breaker state",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 38 },
+      "targets": [
+        {
+          "expr": "resilience4j_circuitbreaker_state",
+          "refId": "A",
+          "legendFormat": "{{ name }} = {{ state }}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Customer find-all latency p50 vs p99",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 38 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(customer_find_all_duration_seconds_bucket[5m])) by (le))",
+          "refId": "A",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(customer_find_all_duration_seconds_bucket[5m])) by (le))",
+          "refId": "B",
+          "legendFormat": "p99"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "JVM memory used",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 46 },
+      "targets": [
+        {
+          "expr": "sum(jvm_memory_used_bytes) by (area)",
+          "refId": "A",
+          "legendFormat": "{{ area }}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "HikariCP active connections",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 46 },
+      "targets": [
+        { "expr": "hikaricp_connections_active", "refId": "A", "legendFormat": "active" },
+        { "expr": "hikaricp_connections_idle", "refId": "B", "legendFormat": "idle" },
+        { "expr": "hikaricp_connections_pending", "refId": "C", "legendFormat": "pending" }
+      ]
     }
   ],
   "schemaVersion": 39,
   "style": "dark",
-  "tags": ["spring", "observability"],
+  "tags": ["spring", "observability", "customer-service"],
   "templating": { "list": [] },
   "time": { "from": "now-15m", "to": "now" },
-  "title": "customerservice overview",
-  "version": 1
+  "title": "Customer Service — Overview",
+  "version": 2
 }
