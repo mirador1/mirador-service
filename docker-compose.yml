@@ -147,7 +147,8 @@ services:
       # Disable HTTPS for local development
       KC_HTTP_ENABLED: "true"
       KC_HOSTNAME_STRICT: "false"
-      KC_HOSTNAME_STRICT_HTTPS: "false"
+      # Disable SSL requirement on all realms (including master) for local dev
+      KC_SPI_REALM_DEFAULT__DEFAULT__SSL__REQUIRED: none
     ports:
       - "9090:8080"
     volumes:

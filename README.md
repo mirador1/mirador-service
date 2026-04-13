@@ -63,6 +63,14 @@ flowchart TB
         GR2["Grafana :3001 (OTel)\nTempo traces · Loki logs"]
         LK["Loki\nOTLP log ingestion"]
         TP["Tempo\nOTLP trace ingestion"]
+        ZK["Zipkin :9411\ndistributed tracing"]
+        PY["Pyroscope :4040\ncontinuous profiling"]
+    end
+
+    subgraph AdminTools["admin & visualization tools"]
+        PGA["pgAdmin :5050\nPostgreSQL browser"]
+        KUI["Kafka UI :9080\ntopics · messages · lag"]
+        RIS["RedisInsight :5540\nkey browser · CLI"]
     end
 
     Client --> RL --> Idp --> Auth
@@ -84,10 +92,14 @@ flowchart TB
     Todo --> JP
 
     Tr --> TP
+    Tr --> ZK
     Ri & Hi & Tr -.->|metrics + spans| PR
     PR --> GR1
     TP & LK --> GR2
     Tr -.->|structured logs| LK
+    PGA -.-> PG
+    KUI -.-> KF
+    RIS -.-> RD
 ```
 
 ### Component reference
@@ -209,10 +221,16 @@ api-gateway service                 Keycloak                    customer-service
 ## Quick start
 
 ```bash
-# 1. Start infrastructure (PostgreSQL, Kafka, Redis, Grafana, Prometheus, Loki, Tempo)
+# 1. Start infrastructure (PostgreSQL, Kafka, Redis, Ollama, Keycloak)
+docker compose up -d
+
+# 1b. (optional) Start observability stack (Grafana, Prometheus, Loki, Tempo, Zipkin, Pyroscope)
 ./run.sh obs
 
-# 2. Get a token
+# 2. Start the application locally
+./run.sh app
+
+# 3. Get a token
 TOKEN=$(curl -s -X POST http://localhost:8080/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"username":"admin","password":"admin"}' | jq -r .token)
@@ -223,16 +241,24 @@ curl -s -X POST http://localhost:8080/customers \
   -H 'Content-Type: application/json' \
   -d '{"name":"Alice","email":"alice@example.com"}'
 # → {"id":1,"name":"Alice","email":"alice@example.com"}
+# (20 demo customers are pre-loaded by Flyway at startup)
 
-# 4. Trigger synchronous Kafka enrichment
+# 5. Trigger synchronous Kafka enrichment
 curl -s http://localhost:8080/customers/1/enrich \
   -H "Authorization: Bearer $TOKEN"
 # → {"id":1,"name":"Alice","email":"alice@example.com","displayName":"Alice <alice@example.com>"}
 
-# 5. Observe
+# 6. Observe
 curl -s http://localhost:8080/actuator/prometheus | grep customer
 open http://localhost:3000   # Grafana — HTTP throughput, latency, customer count
 open http://localhost:3001   # Grafana + OTel — distributed traces (Tempo), structured logs (Loki)
+open http://localhost:9411   # Zipkin — distributed traces
+open http://localhost:5050   # pgAdmin — PostgreSQL browser
+open http://localhost:9080   # Kafka UI — topics, messages, consumer groups
+open http://localhost:5540   # RedisInsight — Redis key browser
+
+# 7. Generate traffic for observability dashboards
+./run.sh simulate           # 60 iterations of mixed API traffic
 ```
 
 ---
@@ -245,7 +271,7 @@ Everything in this section is necessary to answer: *what is slow, what failed, a
 
 | Capability | How it's implemented |
 |---|---|
-| Distributed tracing | OpenTelemetry → Tempo (OTLP); DB spans via `datasource-micrometer` |
+| Distributed tracing | OpenTelemetry → Tempo (OTLP) + Zipkin (dual export); DB spans via `datasource-micrometer` |
 | Metrics and latency histograms | Micrometer → Prometheus → Grafana (p50/p95/p99, custom counters) |
 | Structured logs correlated with traces | OTel log exporter → Loki, trace ID injected in every log line |
 | Health probes | Custom `DatabaseReachabilityHealthIndicator`, liveness/readiness groups |
@@ -437,6 +463,12 @@ curl -s http://localhost:8080/actuator/prometheus | grep 'http_server_requests\|
 | Grafana — HTTP | http://localhost:3000 | Throughput, latency (p50/p95/p99), customer creation rate, buffer size |
 | Prometheus | http://localhost:9090 | Raw metrics, histogram queries |
 | Grafana — OTel | http://localhost:3001 | Distributed traces (Tempo), structured logs (Loki) |
+| Zipkin | http://localhost:9411 | Distributed traces — lightweight alternative to Tempo |
+| Pyroscope | http://localhost:4040 | Continuous profiling — CPU/memory flamegraphs |
+| pgAdmin | http://localhost:5050 | PostgreSQL web admin (admin@demo.com / admin) |
+| Kafka UI | http://localhost:9080 | Topics, messages, consumer groups, lag |
+| RedisInsight | http://localhost:5540 | Redis key browser, CLI, memory analysis |
+| Keycloak | http://localhost:9090 | OAuth2 identity provider admin console (admin / admin) |
 
 ### Trace a request end-to-end
 
@@ -510,8 +542,11 @@ curl -s http://localhost:8080/customers -H "Authorization: Bearer $TOKEN"
 
 ./run.sh db             # PostgreSQL only
 ./run.sh kafka          # Kafka (KRaft, no ZooKeeper)
-./run.sh obs            # full observability stack (Grafana, Prometheus, Loki, Tempo)
+./run.sh obs            # full observability stack (Grafana, Prometheus, Loki, Tempo, Zipkin, Pyroscope)
+./run.sh app            # Spring Boot app (local Maven)
+./run.sh app-profiled   # Spring Boot app with Pyroscope Java agent (CPU/memory flamegraphs)
 ./run.sh all            # everything + the application
+./run.sh simulate       # generate traffic (60 iterations, configurable)
 
 ./run.sh test           # unit tests (no Docker)
 ./run.sh integration    # integration tests (Testcontainers — requires Docker)
@@ -541,7 +576,7 @@ com.example.customerservice
 │                   CustomerEventListener                  — Kafka fire-and-forget + request-reply
 ├── observability/  ObservabilityConfig, DatabaseReachabilityHealthIndicator,
 │                   RequestIdFilter, RequestContext,
-│                   TraceService                           — health, tracing, metrics, request ID
+│                   TraceService, ZipkinExporterConfig      — health, tracing, metrics, request ID
 ├── resilience/     IdempotencyFilter, RateLimitingFilter,
 │                   ShedLockConfig                         — rate limiting, idempotency, distributed lock
 └── CustomerServiceApplication.java
@@ -598,6 +633,14 @@ flowchart TB
         GR["Grafana"]
         LK["Loki"]
         TP["Tempo"]
+        ZK["Zipkin"]
+        PY["Pyroscope"]
+    end
+
+    subgraph AdminTools["admin tools"]
+        PGA["pgAdmin"]
+        KUI["Kafka UI"]
+        RIS["RedisInsight"]
     end
 
     Client --> RL --> Idp --> Auth
@@ -622,10 +665,14 @@ flowchart TB
     Todo --> JP
 
     Tr --> TP
+    Tr --> ZK
     Obs -.-> PR
     PR --> GR
     Tr -.-> LK
     LK --> GR
+    PGA -.-> PG
+    KUI -.-> KF
+    RIS -.-> RD
 ```
 
 ---
@@ -688,10 +735,14 @@ Scheduled (daily, both platforms): GraalVM native image — only when `Dockerfil
 | **Integration** | Spring AI ChatClient with Ollama (local LLM) + circuit breaker | `integration/BioService` |
 | **Observability** | Micrometer + Prometheus metrics scraping | `observability/ObservabilityConfig` |
 | **Observability** | OpenTelemetry trace export to Tempo | `application.yml` (OTLP config) |
+| **Observability** | Zipkin trace export (dual export alongside OTLP) | `observability/ZipkinExporterConfig` |
+| **Observability** | Pyroscope continuous profiling (CPU/memory flamegraphs) | `infra/pyroscope/pyroscope.jar`, `run.sh app-profiled` |
 | **Observability** | OpenTelemetry structured log export to Loki | `application.yml` (OTLP config) |
 | **Observability** | JDBC DataSource instrumentation (datasource-micrometer) | `pom.xml` |
 | **Observability** | Custom health indicator + liveness/readiness probes | `observability/DatabaseReachabilityHealthIndicator` |
 | **Data** | Flyway schema migrations | `db/migration/V1__*.sql`, `V2__*.sql` |
+| **Data** | Repeatable seed migration (20 demo customers) | `db/migration/R__seed_demo_customers.sql` |
+| **Data** | Traffic simulation script | `infra/simulate-traffic.sh`, `run.sh simulate` |
 | **Testing** | Testcontainers (PostgreSQL + Kafka) integration tests | `AbstractIntegrationTest` |
 | **Testing** | Spring Boot 4 `RestTestClient` MockMvc DSL | `customer/CustomerRestClientITest` |
 | **Testing** | ArchUnit architectural constraint tests | `ArchitectureTest` |
