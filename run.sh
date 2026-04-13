@@ -212,6 +212,91 @@ case "$1" in
     echo "Every 'git push' will automatically run './run.sh check' (unit tests)."
     ;;
 
+  status)
+    echo ""
+    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "║                   customer-service status                   ║"
+    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo ""
+
+    # Docker
+    if docker info >/dev/null 2>&1; then
+      echo "  Docker              ✅ running"
+    else
+      echo "  Docker              ❌ not running"
+    fi
+
+    # Spring Boot app
+    if pgrep -f 'CustomerServiceApplication' >/dev/null 2>&1; then
+      echo "  Spring Boot app     ✅ running (PID $(pgrep -f 'CustomerServiceApplication' | head -1))"
+    else
+      echo "  Spring Boot app     ❌ not running"
+    fi
+
+    # Health check
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/actuator/health 2>/dev/null || echo "000")
+    if [ "$HTTP_CODE" = "200" ]; then
+      echo "  Health check        ✅ UP (http://localhost:8080)"
+    else
+      echo "  Health check        ❌ DOWN (HTTP $HTTP_CODE)"
+    fi
+
+    echo ""
+    echo "  ── Infrastructure ──────────────────────────────────────────"
+    # Check each container
+    for svc in postgres-demo kafka-demo redis-demo ollama keycloak; do
+      STATUS=$(docker inspect -f '{{.State.Status}}' "$svc" 2>/dev/null || echo "missing")
+      HEALTH=$(docker inspect -f '{{.State.Health.Status}}' "$svc" 2>/dev/null || echo "")
+      if [ "$STATUS" = "running" ]; then
+        LABEL="✅ $STATUS"
+        [ -n "$HEALTH" ] && LABEL="$LABEL ($HEALTH)"
+      else
+        LABEL="❌ $STATUS"
+      fi
+      printf "  %-22s%s\n" "$svc" "$LABEL"
+    done
+
+    echo ""
+    echo "  ── Admin tools ─────────────────────────────────────────────"
+    for svc in pgadmin kafka-ui redisinsight; do
+      STATUS=$(docker inspect -f '{{.State.Status}}' "$svc" 2>/dev/null || echo "missing")
+      if [ "$STATUS" = "running" ]; then
+        LABEL="✅ $STATUS"
+      else
+        LABEL="❌ $STATUS"
+      fi
+      printf "  %-22s%s\n" "$svc" "$LABEL"
+    done
+
+    echo ""
+    echo "  ── Observability ────────────────────────────────────────────"
+    for svc in customerservice-prometheus customerservice-grafana customerservice-lgtm customerservice-zipkin customerservice-pyroscope; do
+      STATUS=$(docker inspect -f '{{.State.Status}}' "$svc" 2>/dev/null || echo "missing")
+      if [ "$STATUS" = "running" ]; then
+        LABEL="✅ $STATUS"
+      else
+        LABEL="⬚  $STATUS"
+      fi
+      SHORT=$(echo "$svc" | sed 's/customerservice-//')
+      printf "  %-22s%s\n" "$SHORT" "$LABEL"
+    done
+
+    echo ""
+    echo "  ── URLs ─────────────────────────────────────────────────────"
+    echo "  App           http://localhost:8080"
+    echo "  Swagger       http://localhost:8080/swagger-ui.html"
+    echo "  pgAdmin       http://localhost:5050"
+    echo "  Kafka UI      http://localhost:9080"
+    echo "  RedisInsight  http://localhost:5540"
+    echo "  Keycloak      http://localhost:9090"
+    echo "  Grafana       http://localhost:3000"
+    echo "  Grafana OTel  http://localhost:3001"
+    echo "  Zipkin        http://localhost:9411"
+    echo "  Pyroscope     http://localhost:4040"
+    echo "  Prometheus    http://localhost:9090"
+    echo ""
+    ;;
+
   *)
     echo ""
     echo "Usage: ./run.sh <command>"
@@ -227,6 +312,7 @@ case "$1" in
     echo "  simulate      run traffic simulation (default: 60 iterations, 2s pause)"
     echo "  stop          stop app + all containers"
     echo "  nuke          full cleanup — containers, volumes, build artifacts"
+    echo "  status        check status of all services"
     echo ""
     echo "Quality / CI:"
     echo "  check         unit tests only — fast, no Docker required"
