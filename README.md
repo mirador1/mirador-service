@@ -286,10 +286,11 @@ The Maven Wrapper (`./mvnw`) pins the exact version. To switch:
 ./mvnw --version
 ```
 
-**Why both work**: all plugin versions are resolved via the `spring-boot-starter-parent`
-`<pluginManagement>`, which Maven 4 accepts. No unversioned plugins, no deprecated
-`<prerequisites>` or `<reporting>` sections. The `maven-antrun-plugin` conditional
-copies (`xmlns:if="ant:if"`) use standard Ant features supported by both Maven versions.
+**Tested with Maven 4.0.0-rc-3** — all 5 profile combinations compile and pass tests.
+All plugin versions are resolved via the `spring-boot-starter-parent` `<pluginManagement>`,
+which Maven 4 accepts. No unversioned plugins, no deprecated `<prerequisites>` or
+`<reporting>` sections. The `maven-antrun-plugin` conditional copies (`xmlns:if="ant:if"`)
+use standard Ant features supported by both Maven versions.
 
 ---
 
