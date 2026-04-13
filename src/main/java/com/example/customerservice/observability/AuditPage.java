@@ -11,4 +11,8 @@ public record AuditPage(
         int size,
         long totalElements,
         int totalPages) {
+
+    public AuditPage {
+        content = List.copyOf(content);
+    }
 }
