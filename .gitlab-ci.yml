@@ -12,7 +12,7 @@
 # │   native        build-native — GraalVM AOT native image (5-15 min)        │
 # │                 skipped if Dockerfile.native, pom.xml, src/ unchanged      │
 # │                 Configure in GitLab: CI/CD > Schedules (e.g. 03:00 UTC)   │
-# │                 Can also be triggered manually from the GitLab UI           │
+# │                 Also available as ▶ manual button in every pipeline        │
 # └────────────────────────────────────────────────────────────────────────────┘
 #
 # ┌─ MANUAL / ON-DEMAND compatibility matrix ──────────────────────────────────┐
@@ -398,9 +398,11 @@ build-native:
         - Dockerfile.native
         - pom.xml
         - src/**/*
-    # Allow manual trigger (e.g. after a version bump without source changes)
-    - if: $CI_PIPELINE_SOURCE == "web" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-    - when: never
+    # Manual ▶ button in any pipeline (MR or branch) — click to trigger a native build.
+    # allow_failure: true so it never blocks a merge.
+    - when: manual
+      allow_failure: true
+  allow_failure: true   # never blocks a merge when triggered manually
   timeout: 30 minutes   # AOT compilation is CPU-intensive; default 1h is too loose
   script:
     - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
