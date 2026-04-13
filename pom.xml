@@ -150,13 +150,17 @@
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-registry-prometheus</artifactId>
         </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-opentelemetry</artifactId>
-        </dependency>
+        <!-- spring-boot-starter-opentelemetry: SB4-only, declared in sb4 profile below -->
+        <!-- SB3 equivalent (micrometer-tracing-bridge-otel + opentelemetry-exporter-otlp) in sb3 profile -->
         <dependency>
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-exporter-zipkin</artifactId>
+        </dependency>
+        <!-- OTLP log export: bridges Logback log events to OpenTelemetry pipeline (→ Loki via LGTM) -->
+        <dependency>
+            <groupId>io.opentelemetry.instrumentation</groupId>
+            <artifactId>opentelemetry-logback-appender-1.0</artifactId>
+            <version>2.16.0-alpha</version>
         </dependency>
         <dependency>
             <groupId>net.ttddyy.observation</groupId>
@@ -273,11 +277,7 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-webmvc-test</artifactId>
-            <scope>test</scope>
-        </dependency>
+        <!-- spring-boot-webmvc-test: SB4-only, declared in sb4 profile below -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-testcontainers</artifactId>
@@ -597,6 +597,189 @@
                                 </goals>
                             </execution>
                         </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!--
+          sb4 profile — Spring Boot 4 (default).
+          Active when the "sb3" system property is NOT set: mvn verify (or mvn -Pnative verify).
+          Provides dependencies that exist only in Spring Boot 4:
+            spring-boot-starter-opentelemetry — unified OTEL starter (replaces micrometer-tracing bridges)
+            spring-boot-webmvc-test           — RestTestClient + SB4 AutoConfigureMockMvc package
+        -->
+        <profile>
+            <id>sb4</id>
+            <activation>
+                <property>
+                    <name>!sb3</name>
+                </property>
+            </activation>
+            <dependencies>
+                <dependency>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-starter-opentelemetry</artifactId>
+                </dependency>
+                <dependency>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-webmvc-test</artifactId>
+                    <scope>test</scope>
+                </dependency>
+            </dependencies>
+        </profile>
+
+        <!--
+          sb3 profile — Spring Boot 3.4.x compatibility.
+          Activated via: mvn verify -Dsb3
+
+          Strategy:
+            1. Override Spring Boot version via BOM import (takes precedence over parent).
+            2. Pin Java to 21 (virtual threads available, records supported).
+            3. Replace SB4-only dependencies with SB3 equivalents.
+            4. Add source overlays (src/main/java-sb3, src/test/java-sb3) via build-helper-maven-plugin.
+            5. Exclude SB4-only source files from compilation.
+
+          Source overlays:
+            src/main/java-sb3/.../CustomerController.java
+              → replaces @GetMapping(version=...) with manual X-API-Version header dispatch
+            src/test/java-sb3/.../AutoConfigureMockMvc.java
+              → bridge annotation: SB4 package delegates to SB3 @AutoConfigureMockMvc
+        -->
+        <profile>
+            <id>sb3</id>
+            <activation>
+                <property>
+                    <name>sb3</name>
+                </property>
+            </activation>
+            <properties>
+                <java.version>21</java.version>
+            </properties>
+            <dependencyManagement>
+                <dependencies>
+                    <!-- Override the parent BOM: all Spring Boot managed versions resolve to 3.4.5 -->
+                    <dependency>
+                        <groupId>org.springframework.boot</groupId>
+                        <artifactId>spring-boot-dependencies</artifactId>
+                        <version>3.4.5</version>
+                        <type>pom</type>
+                        <scope>import</scope>
+                    </dependency>
+                </dependencies>
+            </dependencyManagement>
+            <dependencies>
+                <!-- SB3 equivalent of spring-boot-starter-opentelemetry -->
+                <dependency>
+                    <groupId>io.micrometer</groupId>
+                    <artifactId>micrometer-tracing-bridge-otel</artifactId>
+                </dependency>
+                <dependency>
+                    <groupId>io.opentelemetry</groupId>
+                    <artifactId>opentelemetry-exporter-otlp</artifactId>
+                </dependency>
+            </dependencies>
+            <build>
+                <pluginManagement>
+                    <plugins>
+                        <!-- Pin spring-boot-maven-plugin to 3.4.5 (parent resolves 4.0.5) -->
+                        <plugin>
+                            <groupId>org.springframework.boot</groupId>
+                            <artifactId>spring-boot-maven-plugin</artifactId>
+                            <version>3.4.5</version>
+                        </plugin>
+                    </plugins>
+                </pluginManagement>
+                <plugins>
+                    <!--
+                      Source overlay strategy: copy all sources → target/sb3-merged-sources,
+                      then overwrite SB4-specific files with SB3 alternatives.
+                      The compiler is pointed at the merged directory instead of src/main/java.
+                    -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-resources-plugin</artifactId>
+                        <executions>
+                            <!-- Step 1: copy all main sources -->
+                            <execution>
+                                <id>copy-main-sources</id>
+                                <phase>initialize</phase>
+                                <goals><goal>copy-resources</goal></goals>
+                                <configuration>
+                                    <outputDirectory>${project.build.directory}/sb3-merged-sources/main</outputDirectory>
+                                    <resources>
+                                        <resource>
+                                            <directory>src/main/java</directory>
+                                            <filtering>false</filtering>
+                                        </resource>
+                                    </resources>
+                                </configuration>
+                            </execution>
+                            <!-- Step 2: overlay SB3-specific files (overwrites SB4 versions) -->
+                            <execution>
+                                <id>overlay-sb3-main-sources</id>
+                                <phase>initialize</phase>
+                                <goals><goal>copy-resources</goal></goals>
+                                <configuration>
+                                    <outputDirectory>${project.build.directory}/sb3-merged-sources/main</outputDirectory>
+                                    <overwrite>true</overwrite>
+                                    <resources>
+                                        <resource>
+                                            <directory>src/main/java-sb3</directory>
+                                            <filtering>false</filtering>
+                                        </resource>
+                                    </resources>
+                                </configuration>
+                            </execution>
+                            <!-- Step 3: copy all test sources -->
+                            <execution>
+                                <id>copy-test-sources</id>
+                                <phase>initialize</phase>
+                                <goals><goal>copy-resources</goal></goals>
+                                <configuration>
+                                    <outputDirectory>${project.build.directory}/sb3-merged-sources/test</outputDirectory>
+                                    <resources>
+                                        <resource>
+                                            <directory>src/test/java</directory>
+                                            <filtering>false</filtering>
+                                            <excludes>
+                                                <!-- RestTestClient is Spring 7 / SB4 only -->
+                                                <exclude>com/example/customerservice/customer/CustomerRestClientITest.java</exclude>
+                                            </excludes>
+                                        </resource>
+                                    </resources>
+                                </configuration>
+                            </execution>
+                            <!-- Step 4: overlay SB3-specific test files -->
+                            <execution>
+                                <id>overlay-sb3-test-sources</id>
+                                <phase>initialize</phase>
+                                <goals><goal>copy-resources</goal></goals>
+                                <configuration>
+                                    <outputDirectory>${project.build.directory}/sb3-merged-sources/test</outputDirectory>
+                                    <overwrite>true</overwrite>
+                                    <resources>
+                                        <resource>
+                                            <directory>src/test/java-sb3</directory>
+                                            <filtering>false</filtering>
+                                        </resource>
+                                    </resources>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <!-- Point the compiler at the merged source directories -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-compiler-plugin</artifactId>
+                        <configuration>
+                            <compileSourceRoots>
+                                <compileSourceRoot>${project.build.directory}/sb3-merged-sources/main</compileSourceRoot>
+                            </compileSourceRoots>
+                            <testCompileSourceRoots>
+                                <testCompileSourceRoot>${project.build.directory}/sb3-merged-sources/test</testCompileSourceRoot>
+                            </testCompileSourceRoots>
+                        </configuration>
                     </plugin>
                 </plugins>
             </build>
