@@ -47,38 +47,46 @@
         <spring-ai.version>1.0.0-M6</spring-ai.version>
         <datasource-micrometer.version>2.2.1</datasource-micrometer.version> <!-- JDBC DataSource observation bridge → query latency in Prometheus -->
         <!--
-          springdoc 3.0.2 bundles swagger-ui 5.32.0 which contains DOMPurify CVEs
-          (MEDIUM: mXSS re-contextualization, prototype-pollution XSS, predicate bypass).
-          These are internal to the dev-only Swagger UI page — not exploitable in prod.
-          Waiting for a springdoc release that upgrades its bundled swagger-ui past 5.32.
+          springdoc 3.0.3 (upgraded from 3.0.2) — bundles swagger-ui 5.32.2 which patches
+          DOMPurify CVEs present in 5.32.0 (mXSS re-contextualization, prototype-pollution
+          XSS, predicate bypass — all MEDIUM, dev-only Swagger UI page).
         -->
-        <springdoc.version>3.0.2</springdoc.version>
+        <springdoc.version>3.0.3</springdoc.version>
         <pyroscope.version>2.1.2</pyroscope.version>                <!-- continuous profiling agent — pushes CPU/memory profiles to Pyroscope -->
         <testcontainers.version>1.21.4</testcontainers.version>     <!-- pinned to align kafka module with the core version -->
         <jjwt.version>0.12.6</jjwt.version>                        <!-- split into api/impl/jackson — see dependency block -->
         <shedlock.version>6.0.2</shedlock.version>                  <!-- split into spring/provider — see dependency block -->
         <!--
-          Tomcat 11.0.20 (managed by spring-boot-starter-parent 4.0.5 BOM) has unfixed CVEs:
-          CVE-2026-34483 (7.5 HIGH), CVE-2026-34486 (7.5 HIGH), CVE-2026-34487 (7.5 HIGH),
-          CVE-2026-34500 (6.5 MEDIUM). Fix requires Tomcat 11.0.21+ which is not yet referenced
-          by the SB4 BOM. Override below when a fixed version is available in Maven Central:
-            <tomcat.version>11.0.21</tomcat.version>
+          Tomcat 11.0.21 (upgraded from 11.0.20 via spring-boot-starter-parent BOM override) —
+          fixes CVE-2026-34483 (7.5 HIGH), CVE-2026-34486 (7.5 HIGH), CVE-2026-34487 (7.5 HIGH),
+          CVE-2026-34500 (6.5 MEDIUM). 11.0.21 is the latest GA on Maven Central.
         -->
-        <!--
-          protobuf-java 4.32.0 (transitive via spring-boot-starter-opentelemetry → OTel SDK)
-          has CVE-2026-0994 (7.5 HIGH). No newer version is available in local Maven cache.
-          Override below when 4.33+ is available:
-            <google-protobuf.version>4.33.0</google-protobuf.version>
-        -->
+        <tomcat.version>11.0.21</tomcat.version>
     </properties>
 
     <!--
       Force ASM 9.8 for ArchUnit.
       ArchUnit 1.4.x ships with ASM 9.7 which does not support Java 25 bytecode (class version 69).
       ASM 9.8 adds Java 25 support. This override propagates to ArchUnit's transitive dependency.
+
+      Force protobuf-java 4.34.1 (upgraded from 4.32.0) — CVE-2026-0994 (7.5 HIGH).
+      protobuf is transitive (spring-boot-starter-opentelemetry → OTel SDK → protobuf-java)
+      and not exposed as a property in the Spring Boot BOM, so it must be pinned here.
+      NOTE: CVE-2026-0994 persists on 4.34.1 — NVD does not yet list a patched version.
+      Kept at latest GA to minimise attack surface; revisit when NVD marks a version safe.
     -->
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>com.google.protobuf</groupId>
+                <artifactId>protobuf-java</artifactId>
+                <version>4.34.1</version>
+            </dependency>
+            <dependency>
+                <groupId>com.google.protobuf</groupId>
+                <artifactId>protobuf-java-util</artifactId>
+                <version>4.34.1</version>
+            </dependency>
             <dependency>
                 <groupId>org.ow2.asm</groupId>
                 <artifactId>asm</artifactId>
