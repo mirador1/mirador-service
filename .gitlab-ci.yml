@@ -146,10 +146,18 @@ dependency_scanning:
 # Set NVD_API_KEY as a masked CI/CD variable to speed up the NVD database download.
 owasp-dependency-check:
   stage: test
+  timeout: 2h   # NVD full download ~60 min on first run; cached runs are ~2 min
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
     - when: on_success
+  cache:
+    - key: "$CI_COMMIT_REF_SLUG"
+      paths:
+        - .m2/repository
+    - key: "owasp-nvd-db-v1"   # shared across all branches — survives after first download
+      paths:
+        - .owasp-data/
   script:
     - mvn $MAVEN_CLI_OPTS dependency-check:check
   artifacts:

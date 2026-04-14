@@ -22,3 +22,4 @@ infra/pyroscope/pyroscope.jar
 
 # Claude Code local config and worktrees
 .claude/
+.owasp-data/

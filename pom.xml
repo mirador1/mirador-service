@@ -571,6 +571,8 @@
                 <suppressionFiles>
                     <suppressionFile>owasp-suppressions.xml</suppressionFile>
                 </suppressionFiles>
+                <!-- Store NVD database inside the project dir so GitLab CI can cache it -->
+                <dataDirectory>${project.basedir}/.owasp-data</dataDirectory>
                 <!-- Disable analyzers not applicable to a Java-only project -->
                 <assemblyAnalyzerEnabled>false</assemblyAnalyzerEnabled>
                 <!-- Disable OSS Index — requires paid credentials; NVD covers the same CVEs -->
