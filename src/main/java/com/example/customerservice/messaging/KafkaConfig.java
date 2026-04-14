@@ -23,7 +23,13 @@ import org.springframework.kafka.requestreply.ReplyingKafkaTemplate;
 import org.springframework.kafka.support.serializer.JacksonJsonDeserializer;
 import org.springframework.kafka.support.serializer.JacksonJsonSerializer;
 
+import io.micrometer.common.KeyValue;
+import io.micrometer.common.KeyValues;
 import io.micrometer.observation.ObservationRegistry;
+import org.springframework.kafka.support.micrometer.KafkaListenerObservation;
+import org.springframework.kafka.support.micrometer.KafkaRecordReceiverContext;
+import org.springframework.kafka.support.micrometer.KafkaRecordSenderContext;
+import org.springframework.kafka.support.micrometer.KafkaTemplateObservation;
 import java.util.Map;
 
 /**
@@ -98,6 +104,13 @@ public class KafkaConfig {
         // KafkaTemplate bean. For manually declared beans, observation + registry must be set explicitly.
         template.setObservationEnabled(true);
         template.setObservationRegistry(observationRegistry);
+        // Add peer.service=kafka so Tempo renders Kafka as a named external node in the service map
+        template.setObservationConvention(new KafkaTemplateObservation.DefaultKafkaTemplateObservationConvention() {
+            @Override
+            public KeyValues getLowCardinalityKeyValues(KafkaRecordSenderContext ctx) {
+                return super.getLowCardinalityKeyValues(ctx).and(KeyValue.of("peer.service", "kafka"));
+            }
+        });
         return template;
     }
 
@@ -115,6 +128,14 @@ public class KafkaConfig {
         // Must be set programmatically on manually declared beans.
         factory.getContainerProperties().setObservationEnabled(true);
         factory.getContainerProperties().setObservationRegistry(observationRegistry);
+        // Add peer.service=kafka so Tempo renders Kafka as a named external node in the service map
+        factory.getContainerProperties().setObservationConvention(
+                new KafkaListenerObservation.DefaultKafkaListenerObservationConvention() {
+                    @Override
+                    public KeyValues getLowCardinalityKeyValues(KafkaRecordReceiverContext ctx) {
+                        return super.getLowCardinalityKeyValues(ctx).and(KeyValue.of("peer.service", "kafka"));
+                    }
+                });
         return factory;
     }
 
@@ -152,6 +173,13 @@ public class KafkaConfig {
         // messaging.system=kafka and messaging.destination.name=customer.request
         template.setObservationEnabled(true);
         template.setObservationRegistry(observationRegistry);
+        // Add peer.service=kafka so Tempo renders Kafka as a named external node in the service map
+        template.setObservationConvention(new KafkaTemplateObservation.DefaultKafkaTemplateObservationConvention() {
+            @Override
+            public KeyValues getLowCardinalityKeyValues(KafkaRecordSenderContext ctx) {
+                return super.getLowCardinalityKeyValues(ctx).and(KeyValue.of("peer.service", "kafka"));
+            }
+        });
         return template;
     }
 
@@ -163,6 +191,13 @@ public class KafkaConfig {
         props.setGroupId(replyGroupId);
         // Enable observation on the reply consumer — generates Kafka consumer spans
         props.setObservationEnabled(true);
+        // Add peer.service=kafka so Tempo renders Kafka as a named external node in the service map
+        props.setObservationConvention(new KafkaListenerObservation.DefaultKafkaListenerObservationConvention() {
+            @Override
+            public KeyValues getLowCardinalityKeyValues(KafkaRecordReceiverContext ctx) {
+                return super.getLowCardinalityKeyValues(ctx).and(KeyValue.of("peer.service", "kafka"));
+            }
+        });
         return new ConcurrentMessageListenerContainer<>(replyConsumerFactory(), props);
     }
 
