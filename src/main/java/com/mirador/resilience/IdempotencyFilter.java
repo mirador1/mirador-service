@@ -12,6 +12,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.util.ContentCachingResponseWrapper;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -58,13 +59,16 @@ public class IdempotencyFilter extends OncePerRequestFilter {
     static final String HEADER = "Idempotency-Key";
     private static final int MAX_ENTRIES = 10_000;
 
+    /** Cached idempotent response: status code + body. */
+    private record CachedResponse(int status, String body) {}
+
     // Insertion-order bounded map: removes the oldest entry when MAX_ENTRIES is exceeded.
     // Wrapped with synchronizedMap because LinkedHashMap is not thread-safe.
     @SuppressWarnings("serial")
-    private final Map<String, String> cache = Collections.synchronizedMap(
+    private final Map<String, CachedResponse> cache = Collections.synchronizedMap(
             new LinkedHashMap<>(MAX_ENTRIES, 0.75f, false) {
                 @Override
-                protected boolean removeEldestEntry(Map.Entry<String, String> eldest) {
+                protected boolean removeEldestEntry(Map.Entry<String, CachedResponse> eldest) {
                     return size() > MAX_ENTRIES;
                 }
             });
@@ -85,12 +89,14 @@ public class IdempotencyFilter extends OncePerRequestFilter {
             return;
         }
 
-        String cached = cache.get(key);
+        CachedResponse cached = cache.get(key);
         if (cached != null) {
-            log.info("idempotency_hit key={}", key);
-            response.setStatus(HttpServletResponse.SC_OK);
+            // Replay the original status code (e.g. 201 Created for POST /customers),
+            // not a hardcoded 200 — idempotency means "same response", not "always OK".
+            log.info("idempotency_hit key={} status={}", key, cached.status());
+            response.setStatus(cached.status());
             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-            response.getWriter().write(cached);
+            response.getWriter().write(cached.body());
             return;
         }
 
@@ -98,11 +104,18 @@ public class IdempotencyFilter extends OncePerRequestFilter {
         var wrapper = new ContentCachingResponseWrapper(response);
         chain.doFilter(request, wrapper);
 
-        String body = new String(wrapper.getContentAsByteArray(), wrapper.getCharacterEncoding());
-        if (wrapper.getStatus() == HttpServletResponse.SC_OK && !body.isBlank()) {
-            // LinkedHashMap.removeEldestEntry() evicts the oldest entry automatically when full
-            cache.put(key, body);
-            log.info("idempotency_store key={}", key);
+        // getCharacterEncoding() may return null if Content-Type has no charset — default to UTF-8.
+        String charset = wrapper.getCharacterEncoding() != null
+                ? wrapper.getCharacterEncoding()
+                : StandardCharsets.UTF_8.name();
+        String body = new String(wrapper.getContentAsByteArray(), charset);
+        // Cache any 2xx response — not just 200. POST /customers returns 201 Created,
+        // so caching only 200 would make the idempotency key silently ineffective for the
+        // main use case. Non-2xx (4xx/5xx) are deliberately NOT cached: the client should
+        // be able to retry after fixing the request or after a transient server error.
+        if (wrapper.getStatus() >= 200 && wrapper.getStatus() < 300 && !body.isBlank()) {
+            cache.put(key, new CachedResponse(wrapper.getStatus(), body));
+            log.info("idempotency_store key={} status={}", key, wrapper.getStatus());
         }
         wrapper.copyBodyToResponse();
     }

@@ -108,6 +108,34 @@ class IdempotencyFilterTest {
     }
 
     @Test
+    void createdResponse_201_cachedAndReplayed() throws Exception {
+        // POST /customers returns 201 Created — the filter must cache 201, not just 200,
+        // otherwise idempotency would be silently ineffective for the primary use case.
+        FilterChain chain = mock(FilterChain.class);
+
+        var req1 = new MockHttpServletRequest("POST", "/customers");
+        req1.addHeader(IdempotencyFilter.HEADER, "key-201");
+        var res1 = new MockHttpServletResponse();
+        doAnswer(invocation -> {
+            var wrappedRes = (jakarta.servlet.http.HttpServletResponse) invocation.getArgument(1);
+            wrappedRes.setStatus(201);
+            wrappedRes.getWriter().write("{\"id\":99}");
+            return null;
+        }).when(chain).doFilter(any(), any());
+        filter.doFilter(req1, res1, chain);
+
+        // Replay — chain must not be called, 201 must be preserved
+        var req2 = new MockHttpServletRequest("POST", "/customers");
+        req2.addHeader(IdempotencyFilter.HEADER, "key-201");
+        var res2 = new MockHttpServletResponse();
+        filter.doFilter(req2, res2, chain);
+
+        verify(chain, times(1)).doFilter(any(), any());
+        assertThat(res2.getStatus()).isEqualTo(201);
+        assertThat(res2.getContentAsString()).isEqualTo("{\"id\":99}");
+    }
+
+    @Test
     void nonOkResponse_notCached_chainCalledOnRetry() throws Exception {
         FilterChain chain = mock(FilterChain.class);
 

@@ -89,7 +89,9 @@ public class JwtTokenProvider {
                         java.time.Duration.ofMillis(ttlMs));
             }
         } catch (Exception e) {
-            log.debug("Could not blacklist token: {}", e.getMessage());
+            // WARN because a blacklist failure means a logged-out token could still be accepted
+            // until it naturally expires — a security-relevant event worth surfacing in logs.
+            log.warn("blacklist_failed — token will expire naturally: {}", e.getMessage());
         }
     }
 
