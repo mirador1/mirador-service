@@ -927,7 +927,7 @@ public class QualityReportEndpoint {
      * RetireJS/GHSA advisories put the full Markdown description in the name field —
      * for those we extract the GHSA-xxxx ID from references, or return a short summary.
      */
-    private static String cleanCveId(String rawName, JsonNode references) {
+    static String cleanCveId(String rawName, JsonNode references) {
         if (rawName == null || rawName.isBlank()) return "UNKNOWN";
         // Proper CVE ID
         if (rawName.matches("CVE-\\d{4}-\\d+")) return rawName;
@@ -955,7 +955,7 @@ public class QualityReportEndpoint {
      * (e.g. DOMPurify PoC descriptions). We extract only the first
      * meaningful plain-text sentence/paragraph.
      */
-    private static String cleanCveDescription(String raw) {
+    static String cleanCveDescription(String raw) {
         if (raw == null || raw.isBlank()) return "";
         // Strip markdown section headers (lines starting with #)
         // and take content of the first non-empty, non-header paragraph

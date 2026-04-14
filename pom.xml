@@ -500,6 +500,49 @@
                      no version, even when the parent's pluginManagement already resolves it.
                      Version inherited from spring-boot-starter-parent pluginManagement. -->
                 <version>0.8.14</version>
+                <configuration>
+                    <excludes>
+                        <!--
+                          Classes excluded from coverage measurement — not business logic:
+
+                          1. Spring Boot 3 / Java 17-21 overlay classes (src/main/java/org/springframework/**):
+                             These are compatibility shims for the -Dsb3 / -Dcompat profiles. They are
+                             never loaded in the default SB4/Java25 build, so measuring their coverage
+                             would just punish the default profile. Exclude by package prefix.
+                        -->
+                        <exclude>org/springframework/**</exclude>
+                        <!--
+                          2. Pure Spring wiring — @Configuration / @Bean methods with no
+                             conditional logic. Coverage here would only test Spring internals,
+                             not application code. Excluded:
+                             SecurityConfig, KafkaConfig, OpenApiConfig, WebSocketConfig,
+                             ShedLockConfig, HttpClientConfig, ObservabilityConfig, KeycloakConfig
+                        -->
+                        <exclude>com/mirador/auth/SecurityConfig.class</exclude>
+                        <exclude>com/mirador/auth/KeycloakConfig.class</exclude>
+                        <exclude>com/mirador/messaging/KafkaConfig.class</exclude>
+                        <exclude>com/mirador/messaging/WebSocketConfig.class</exclude>
+                        <exclude>com/mirador/api/OpenApiConfig.class</exclude>
+                        <exclude>com/mirador/integration/HttpClientConfig.class</exclude>
+                        <exclude>com/mirador/resilience/ShedLockConfig.class</exclude>
+                        <exclude>com/mirador/observability/ObservabilityConfig.class</exclude>
+                        <!--
+                          3. Observability/tooling infrastructure — these classes read build artifacts
+                             (JaCoCo CSV, SpotBugs XML, OWASP JSON …) and expose them as JSON. They
+                             are heavily I/O-dependent and not business logic. Excluded:
+                             QualityReportEndpoint, TestReportInfoContributor, OtelLogbackInstaller,
+                             PyroscopeConfig (profiling agent init, not invoked without agent jar)
+                        -->
+                        <exclude>com/mirador/observability/QualityReportEndpoint.class</exclude>
+                        <exclude>com/mirador/observability/TestReportInfoContributor.class</exclude>
+                        <exclude>com/mirador/observability/OtelLogbackInstaller.class</exclude>
+                        <exclude>com/mirador/observability/PyroscopeConfig.class</exclude>
+                        <!--
+                          4. Application bootstrap
+                        -->
+                        <exclude>com/mirador/MiradorApplication.class</exclude>
+                    </excludes>
+                </configuration>
                 <executions>
                     <execution>
                         <id>prepare-agent</id>
@@ -550,8 +593,8 @@
                                         <limit>
                                             <counter>INSTRUCTION</counter>
                                             <value>COVEREDRATIO</value>
-                                            <!-- 60 %: conservative starting point, raise over time -->
-                                            <minimum>0.60</minimum>
+                                            <!-- 70 %: infrastructure/config excluded; see jacoco <excludes> above -->
+                                            <minimum>0.70</minimum>
                                         </limit>
                                     </limits>
                                 </rule>
