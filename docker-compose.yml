@@ -145,7 +145,12 @@ services:
   keycloak:
     image: quay.io/keycloak/keycloak:26.2.5
     container_name: keycloak
-    command: start-dev --import-realm
+    # --spi-realm-default-default-ssl-required=NONE overrides the persisted sslRequired
+    # value on the master realm (env vars only apply to new realms, not existing ones).
+    command: >
+      start-dev
+      --import-realm
+      --spi-realm-default-default-ssl-required=NONE
     environment:
       # Admin console credentials
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
@@ -153,8 +158,7 @@ services:
       # Disable HTTPS for local development
       KC_HTTP_ENABLED: "true"
       KC_HOSTNAME_STRICT: "false"
-      # Disable SSL requirement on all realms (including master) for local dev
-      KC_SPI_REALM_DEFAULT__DEFAULT__SSL__REQUIRED: none
+      KC_HOSTNAME_STRICT_HTTPS: "false"
     ports:
       - "9090:8080"
     volumes:
