@@ -598,6 +598,21 @@
                 <ossindexAnalyzerEnabled>false</ossindexAnalyzerEnabled>
             </configuration>
         </plugin>
+        <!-- HTML test report: generated automatically after every mvn verify at target/site/surefire-report.html -->
+        <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-surefire-report-plugin</artifactId>
+            <executions>
+                <execution>
+                    <id>test-report</id>
+                    <phase>verify</phase>
+                    <goals>
+                        <goal>report-only</goal>       <!-- unit tests  -->
+                        <goal>failsafe-report-only</goal> <!-- integration tests -->
+                    </goals>
+                </execution>
+            </executions>
+        </plugin>
         </plugins>
     </build>
 

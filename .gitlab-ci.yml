@@ -101,14 +101,15 @@ unit-test:
       when: never
     - when: on_success
   script:
-    - mvn $MAVEN_CLI_OPTS test
+    - mvn $MAVEN_CLI_OPTS test surefire-report:report-only
   artifacts:
     when: always    # upload even on test failure so the JUnit report is always available for diagnosis
     reports:
       junit: target/surefire-reports/*.xml    # populates the "Tests" tab in the MR and pipeline view
     paths:
-      - target/jacoco.exec       # binary coverage data — forwarded to integration-test for JaCoCo merge
-      - target/site/jacoco/      # HTML unit coverage report (browsable in the job artifacts panel)
+      - target/jacoco.exec           # binary coverage data — forwarded to integration-test for JaCoCo merge
+      - target/site/jacoco/          # HTML unit coverage report (browsable in the job artifacts panel)
+      - target/reports/surefire.html # HTML test report (browsable in the job artifacts panel)
     expire_in: 1 week    # short-lived: only needed until the integration job completes and the MR is merged
 
 # GitLab SAST — static application security testing.
@@ -207,8 +208,9 @@ integration-test:
     reports:
       junit: target/failsafe-reports/*.xml    # populates the "Tests" tab with integration test results
     paths:
-      - target/site/jacoco-it/     # HTML integration coverage report (browsable in the job artifacts panel)
-      - target/spotbugsXml.xml     # SpotBugs XML — parseable by GitLab Code Quality widget
+      - target/site/jacoco-it/       # HTML integration coverage report (browsable in the job artifacts panel)
+      - target/spotbugsXml.xml       # SpotBugs XML — parseable by GitLab Code Quality widget
+      - target/reports/failsafe.html # HTML integration test report (browsable in the job artifacts panel)
     expire_in: 1 week
 
 # ── stage: package ────────────────────────────────────────────────────────────
