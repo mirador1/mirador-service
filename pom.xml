@@ -576,6 +576,8 @@
                     </execution>
                 </executions>
                 <configuration>
+                    <!-- skip=true by default — enabled via -Preport to avoid slowing down regular builds -->
+                    <skip>true</skip>
                     <effort>Default</effort>
                     <threshold>Medium</threshold>
                     <!-- Documented false positives for Spring DI patterns — see spotbugs-exclude.xml -->
@@ -638,6 +640,8 @@
                 <assemblyAnalyzerEnabled>false</assemblyAnalyzerEnabled>
                 <!-- Disable OSS Index — requires paid credentials; NVD covers the same CVEs -->
                 <ossindexAnalyzerEnabled>false</ossindexAnalyzerEnabled>
+                <!-- skip=true by default — enabled via -Preport to avoid slowing down regular builds -->
+                <skip>true</skip>
             </configuration>
         </plugin>
         <!-- HTML test report: generated automatically after every mvn verify at target/site/surefire-report.html -->
@@ -741,10 +745,10 @@
             <configuration>
                 <skip>true</skip>
                 <targetClasses>
-                    <param>com.example.mirador.*</param>
+                    <param>com.mirador.*</param>
                 </targetClasses>
                 <targetTests>
-                    <param>com.example.mirador.*</param>
+                    <param>com.mirador.*</param>
                 </targetTests>
                 <outputFormats>
                     <outputFormat>XML</outputFormat>
@@ -1199,6 +1203,56 @@
                             <testCompileSourceRoots>
                                 <testCompileSourceRoot>${project.build.directory}/merged-sources/test</testCompileSourceRoot>
                             </testCompileSourceRoots>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!--
+          report profile — enables all quality analysis tools that are skip=true by default.
+          Usage: mvn verify -Preport
+          Generates: SpotBugs XML, OWASP CVE JSON/HTML, PMD XML, Checkstyle XML, JaCoCo CSV.
+          Pitest must be run separately: mvn test-compile pitest:mutationCoverage -Preport
+          Intended to be run manually or via a daily CI schedule — NOT on every push.
+        -->
+        <profile>
+            <id>report</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>com.github.spotbugs</groupId>
+                        <artifactId>spotbugs-maven-plugin</artifactId>
+                        <configuration>
+                            <skip>false</skip>
+                        </configuration>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.owasp</groupId>
+                        <artifactId>dependency-check-maven</artifactId>
+                        <configuration>
+                            <skip>false</skip>
+                        </configuration>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-pmd-plugin</artifactId>
+                        <configuration>
+                            <skip>false</skip>
+                        </configuration>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-checkstyle-plugin</artifactId>
+                        <configuration>
+                            <skip>false</skip>
+                        </configuration>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.pitest</groupId>
+                        <artifactId>pitest-maven</artifactId>
+                        <configuration>
+                            <skip>false</skip>
                         </configuration>
                     </plugin>
                 </plugins>
