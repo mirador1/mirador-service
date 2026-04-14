@@ -42,14 +42,22 @@ public class SecurityHeadersFilter extends OncePerRequestFilter {
             @NonNull FilterChain filterChain) throws ServletException, IOException {
 
         response.setHeader("X-Content-Type-Options", "nosniff");
-        response.setHeader("X-Frame-Options", "DENY");
         response.setHeader("X-XSS-Protection", "0");
         response.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
         response.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
 
-        // CSP only on API endpoints — Swagger UI needs inline scripts and external resources
         String path = request.getRequestURI();
-        if (!path.startsWith("/swagger-ui") && !path.startsWith("/v3/api-docs")) {
+
+        // /reports/** pages are intentionally embedded as iframes in the Angular frontend.
+        // X-Frame-Options is relaxed (removed) so the browser allows cross-origin framing.
+        // Content-Security-Policy frame-ancestors is also skipped for these paths.
+        if (!path.startsWith("/reports/")) {
+            response.setHeader("X-Frame-Options", "DENY");
+        }
+
+        // CSP only on API endpoints — Swagger UI needs inline scripts and external resources.
+        // /reports/** is also excluded so browsers allow iframe embedding from Angular.
+        if (!path.startsWith("/swagger-ui") && !path.startsWith("/v3/api-docs") && !path.startsWith("/reports/")) {
             response.setHeader("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'");
         }
 

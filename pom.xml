@@ -655,6 +655,34 @@
                 </execution>
             </executions>
         </plugin>
+        <!--
+          Copy HTML test reports into the JAR's static resources so Spring Boot serves them
+          at http://localhost:8080/reports/surefire.html and .../failsafe.html.
+          The Angular frontend embeds these as iframes (X-Frame-Options is relaxed for /reports/**).
+          This execution runs after surefire-report:report-only has generated the HTML files.
+        -->
+        <plugin>
+            <artifactId>maven-resources-plugin</artifactId>
+            <executions>
+                <execution>
+                    <id>copy-test-reports-to-static</id>
+                    <phase>verify</phase>
+                    <goals>
+                        <goal>copy-resources</goal>
+                    </goals>
+                    <configuration>
+                        <outputDirectory>${project.build.outputDirectory}/static/reports</outputDirectory>
+                        <resources>
+                            <resource>
+                                <directory>${project.build.directory}/reports</directory>
+                                <filtering>false</filtering>
+                            </resource>
+                        </resources>
+                        <overwrite>true</overwrite>
+                    </configuration>
+                </execution>
+            </executions>
+        </plugin>
         </plugins>
     </build>
 
