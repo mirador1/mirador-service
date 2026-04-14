@@ -83,6 +83,11 @@ flowchart TB
         RIS["RedisInsight :5540"]
     end
 
+    subgraph CI["CI/CD — local runner"]
+        GLR["GitLab Runner\ndocker-compose.runner.yml\nexecutes jobs on this machine"]
+        GLC[("gitlab.com\nrepo · pipeline view\nContainer Registry")]
+    end
+
     Client --> RL --> Idp --> Auth
     Auth --> CC
     CC --> CS
@@ -110,6 +115,8 @@ flowchart TB
     PGA -.-> PG
     KUI -.-> KF
     RIS -.-> RD
+    GLR -.->|"long-poll HTTPS\n(outbound only)"| GLC
+    GLC -.->|"triggers jobs"| GLR
 ```
 
 ---
