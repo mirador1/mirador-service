@@ -16,6 +16,8 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import java.util.List;
 
 /**
@@ -113,6 +115,17 @@ public class SecurityConfig {
                 .addFilterBefore(apiKeyAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
+    }
+
+    /**
+     * BCrypt password encoder, strength 10.
+     * OWASP-recommended balance between security (~100ms per hash) and user experience.
+     * Injected into {@link DataInitializer} and {@link AuthController} for credential validation.
+     */
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        // Strength 10 is the OWASP-recommended balance between security and performance (~100ms per hash)
+        return new BCryptPasswordEncoder(10);
     }
 
     @Bean

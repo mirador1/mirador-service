@@ -18,7 +18,7 @@ class JwtTokenProviderTest {
 
     @Test
     void generateToken_thenValidateAndExtractUsername() {
-        String token = provider.generateToken("alice");
+        String token = provider.generateToken("alice", "ROLE_ADMIN");
 
         assertThat(provider.validateToken(token)).isTrue();
         assertThat(provider.getUsername(token)).isEqualTo("alice");
@@ -26,7 +26,7 @@ class JwtTokenProviderTest {
 
     @Test
     void validateToken_returnsFalse_forTamperedToken() {
-        String token = provider.generateToken("alice");
+        String token = provider.generateToken("alice", "ROLE_ADMIN");
         String tampered = token.substring(0, token.length() - 4) + "XXXX";
 
         assertThat(provider.validateToken(tampered)).isFalse();
@@ -40,7 +40,7 @@ class JwtTokenProviderTest {
     @Test
     void validateToken_returnsFalse_forTokenSignedWithDifferentKey() {
         JwtTokenProvider other = new JwtTokenProvider("other-secret-key-minimum-32-characters!", null);
-        String foreignToken = other.generateToken("bob");
+        String foreignToken = other.generateToken("bob", "ROLE_USER");
 
         assertThat(provider.validateToken(foreignToken)).isFalse();
     }

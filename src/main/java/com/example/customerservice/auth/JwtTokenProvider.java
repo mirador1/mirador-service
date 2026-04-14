@@ -61,28 +61,21 @@ public class JwtTokenProvider {
     }
 
     /**
-     * Generates a signed access token JWT for the given username (15 min validity).
+     * Generates a signed access token JWT for the given username and role (15 min validity).
      *
-     * <p>Role assignment (three-tier model):
-     * <ul>
-     *   <li>{@code admin}  → {@code ROLE_ADMIN}  — full access (read, write, delete, admin endpoints)</li>
-     *   <li>{@code user}   → {@code ROLE_USER}   — read + write (GET, POST, PUT); cannot delete</li>
-     *   <li>any other user → {@code ROLE_READER} — read-only (GET endpoints only)</li>
-     * </ul>
+     * <p>The role is passed in explicitly from the caller (loaded from the database via
+     * {@link AppUserDetailsService}) instead of being derived from the username. This decouples
+     * token issuance from username conventions and allows role changes to take effect on next login.
      *
      * <p>The {@code role} claim is embedded in the token so clients (Angular JWT inspector,
      * Swagger UI) can display the role without a separate API call.
+     *
+     * @param username the authenticated user's username ({@code sub} claim)
+     * @param role     the Spring Security role string, e.g. {@code ROLE_ADMIN}
      */
-    public String generateToken(String username) {
+    public String generateToken(String username, String role) {
         Date now = new Date();
         Date expiry = new Date(now.getTime() + ACCESS_TOKEN_EXPIRATION_MS);
-        // Three-tier role assignment based on known usernames
-        String role = switch (username) {
-            case "admin"  -> "ROLE_ADMIN";   // full access
-            case "user"   -> "ROLE_USER";    // read + write, no delete
-            default       -> "ROLE_READER";  // read-only (e.g. viewer)
-        };
-
         return Jwts.builder()
                 .subject(username)
                 .issuer(ISSUER)
@@ -92,6 +85,23 @@ public class JwtTokenProvider {
                 .expiration(expiry)
                 .signWith(secretKey)
                 .compact();
+    }
+
+    /**
+     * Convenience overload that derives the role from the username for backwards compatibility.
+     * Prefer {@link #generateToken(String, String)} when the role is already known (e.g. from DB).
+     *
+     * @deprecated Use {@link #generateToken(String, String)} — role should come from the database.
+     */
+    @Deprecated
+    public String generateToken(String username) {
+        // Legacy mapping: derive role from well-known username strings
+        String role = switch (username) {
+            case "admin" -> "ROLE_ADMIN";
+            case "user"  -> "ROLE_USER";
+            default      -> "ROLE_READER";
+        };
+        return generateToken(username, role);
     }
 
     /**

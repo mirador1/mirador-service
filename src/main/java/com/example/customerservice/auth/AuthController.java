@@ -14,6 +14,9 @@ import jakarta.validation.constraints.Size;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -57,26 +60,22 @@ public class AuthController {
 
     private static final Logger log = LoggerFactory.getLogger(AuthController.class);
 
-    /**
-     * Demo user store: username → password.
-     * Three accounts covering each role tier (ROLE_ADMIN / ROLE_USER / ROLE_READER).
-     * In production, replace with a database-backed UserDetailsService + BCrypt.
-     */
-    private static final Map<String, String> USERS = Map.of(
-            "admin",  "admin",   // ROLE_ADMIN — full access
-            "user",   "user",    // ROLE_USER  — read + write
-            "viewer", "viewer"   // ROLE_READER — read-only
-    );
-
     private final JwtTokenProvider jwtTokenProvider;
     private final LoginAttemptService loginAttemptService;
     private final AuditService auditService;
+    /** Database-backed user store — replaces the previous hardcoded in-memory map. */
+    private final AppUserDetailsService userDetailsService;
+    /** BCrypt encoder used to verify the submitted password against the stored hash. */
+    private final PasswordEncoder passwordEncoder;
 
     public AuthController(JwtTokenProvider jwtTokenProvider, LoginAttemptService loginAttemptService,
-                          AuditService auditService) {
+                          AuditService auditService, AppUserDetailsService userDetailsService,
+                          PasswordEncoder passwordEncoder) {
         this.jwtTokenProvider = jwtTokenProvider;
         this.loginAttemptService = loginAttemptService;
         this.auditService = auditService;
+        this.userDetailsService = userDetailsService;
+        this.passwordEncoder = passwordEncoder;
     }
 
     /**
@@ -113,9 +112,21 @@ public class AuthController {
                                  "retryAfterMinutes", LoginAttemptService.LOCKOUT_MINUTES));
         }
 
-        // Validate against the demo user store (username + password must both match)
-        String expectedPassword = USERS.get(request.username());
-        if (expectedPassword == null || !expectedPassword.equals(request.password())) {
+        // Load user from the database (replaces the previous hardcoded in-memory map)
+        UserDetails userDetails;
+        try {
+            userDetails = userDetailsService.loadUserByUsername(request.username());
+        } catch (UsernameNotFoundException e) {
+            loginAttemptService.recordFailure(ip);
+            int remaining = loginAttemptService.getRemainingAttempts(ip);
+            log.warn("audit_login_failed ip={} username={} remaining_attempts={}", ip, request.username(), remaining);
+            auditService.log(request.username(), "LOGIN_FAILED",
+                    "User not found, " + remaining + " attempts remaining", ip);
+            return ResponseEntity.status(401)
+                    .body(Map.of("error", "Invalid credentials", "remainingAttempts", remaining));
+        }
+        // Verify submitted password against the stored BCrypt hash
+        if (!passwordEncoder.matches(request.password(), userDetails.getPassword())) {
             loginAttemptService.recordFailure(ip);
             int remaining = loginAttemptService.getRemainingAttempts(ip);
             log.warn("audit_login_failed ip={} username={} remaining_attempts={}", ip, request.username(), remaining);
@@ -128,10 +139,14 @@ public class AuthController {
 
         loginAttemptService.recordSuccess(ip);
 
+        // Extract the role from the user's granted authorities (ROLE_ADMIN / ROLE_USER / ROLE_READER)
+        String role = userDetails.getAuthorities().iterator().next().getAuthority();
+
         // Clean old refresh tokens for this user
         jwtTokenProvider.deleteRefreshTokensByUsername(request.username());
 
-        String accessToken = jwtTokenProvider.generateToken(request.username());
+        // Pass role explicitly — JwtTokenProvider no longer derives role from username
+        String accessToken = jwtTokenProvider.generateToken(request.username(), role);
         String refreshToken = jwtTokenProvider.generateRefreshToken(request.username());
         log.info("audit_login_success ip={} username={}", ip, request.username());
         auditService.log(request.username(), "LOGIN_SUCCESS", "JWT issued", ip);
@@ -157,7 +172,10 @@ public class AuthController {
 
             // Rotate: delete old, create new
             jwtTokenProvider.deleteRefreshToken(oldToken);
-            String accessToken = jwtTokenProvider.generateToken(username);
+            // Look up the current role from the database — role may have changed since last login
+            String role = userDetailsService.loadUserByUsername(username)
+                    .getAuthorities().iterator().next().getAuthority();
+            String accessToken = jwtTokenProvider.generateToken(username, role);
             String refreshToken = jwtTokenProvider.generateRefreshToken(username);
             auditService.log(username, "TOKEN_REFRESH", "Refresh token rotated", null);
             return ResponseEntity.ok(Map.of("accessToken", accessToken, "refreshToken", refreshToken));
