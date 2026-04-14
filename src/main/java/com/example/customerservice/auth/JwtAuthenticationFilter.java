@@ -97,6 +97,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (StringUtils.hasText(token)) {
             // Try built-in JWT first (HMAC-SHA256, issued by /auth/login)
             if (jwtTokenProvider.validateToken(token)) {
+                // Reject tokens that have been explicitly invalidated via POST /auth/logout
+                if (jwtTokenProvider.isBlacklisted(token)) {
+                    log.debug("JWT token has been blacklisted (user logged out)");
+                    filterChain.doFilter(request, response);
+                    return;
+                }
                 authenticateBuiltin(token);
             } else if (keycloakJwtDecoder != null) {
                 // Fall back to Keycloak JWT (JWKS-validated, issued by Keycloak)

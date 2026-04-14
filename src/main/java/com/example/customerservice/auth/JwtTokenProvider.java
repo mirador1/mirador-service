@@ -5,7 +5,9 @@ import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -51,13 +53,61 @@ public class JwtTokenProvider {
     /** JWT audience claim — tokens are only valid for this API. */
     private static final String AUDIENCE = "customer-service-api";
 
+    /** Redis key prefix for blacklisted JWT access tokens. TTL = remaining token lifetime. */
+    private static final String BLACKLIST_PREFIX = "jwt:blacklist:";
+
     private final SecretKey secretKey;
     private final RefreshTokenRepository refreshTokenRepository;
+
+    /**
+     * Optional: null in unit tests where no Redis context is available.
+     * {@link @Autowired} (field injection) used to avoid a circular dependency with SecurityConfig.
+     */
+    @Autowired(required = false)
+    StringRedisTemplate redisTemplate;
 
     public JwtTokenProvider(@Value("${jwt.secret:dev-secret-key-min-32-chars-long}") String secret,
                             RefreshTokenRepository refreshTokenRepository) {
         this.secretKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.refreshTokenRepository = refreshTokenRepository;
+    }
+
+    /**
+     * Blacklists a JWT access token for its remaining validity duration.
+     * Stores the token hash in Redis with TTL = remaining seconds until expiry.
+     * Subsequent requests carrying this token will be rejected by {@link JwtAuthenticationFilter}.
+     */
+    public void blacklistToken(String token) {
+        if (redisTemplate == null) return;  // no-op in unit test context
+        try {
+            Claims claims = parseClaims(token);
+            long ttlMs = claims.getExpiration().getTime() - System.currentTimeMillis();
+            if (ttlMs > 0) {
+                redisTemplate.opsForValue().set(
+                        BLACKLIST_PREFIX + token,
+                        "1",
+                        java.time.Duration.ofMillis(ttlMs));
+            }
+        } catch (Exception e) {
+            log.debug("Could not blacklist token: {}", e.getMessage());
+        }
+    }
+
+    /** Returns true if the token has been blacklisted (e.g., via logout). */
+    public boolean isBlacklisted(String token) {
+        if (redisTemplate == null) return false;  // no-op in unit test context
+        return Boolean.TRUE.equals(redisTemplate.hasKey(BLACKLIST_PREFIX + token));
+    }
+
+    /** Parses JWT claims — shared by {@link #blacklistToken} and {@link #isBlacklisted}. */
+    private Claims parseClaims(String token) {
+        return Jwts.parser()
+                .verifyWith(secretKey)
+                .requireIssuer(ISSUER)
+                .requireAudience(AUDIENCE)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
     }
 
     /**

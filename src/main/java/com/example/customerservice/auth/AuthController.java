@@ -14,11 +14,13 @@ import jakarta.validation.constraints.Size;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -182,6 +184,36 @@ public class AuthController {
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(401).body(Map.of("error", e.getMessage()));
         }
+    }
+
+    /**
+     * Logs out the authenticated user by:
+     * <ol>
+     *   <li>Blacklisting the current access token in Redis (TTL = remaining expiry)</li>
+     *   <li>Deleting all refresh tokens for the user from the database</li>
+     * </ol>
+     *
+     * <p>After logout, the access token is rejected by {@link JwtAuthenticationFilter}
+     * even if it hasn't expired yet. Requires a valid Bearer token in the Authorization header.
+     */
+    @Operation(summary = "Logout — invalidate access and refresh tokens",
+            description = "Blacklists the current JWT (stored in Redis until expiry) and deletes all refresh tokens. "
+                    + "Requires a valid Bearer token in the Authorization header.")
+    @ApiResponse(responseCode = "200", description = "Logged out successfully")
+    @PostMapping("/logout")
+    public ResponseEntity<?> logout(
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @AuthenticationPrincipal UserDetails principal) {
+        // Blacklist the access token so it's rejected before its natural expiry
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            String token = authHeader.substring(7);
+            jwtTokenProvider.blacklistToken(token);
+        }
+        if (principal != null) {
+            jwtTokenProvider.deleteRefreshTokensByUsername(principal.getUsername());
+            auditService.log(principal.getUsername(), "LOGOUT", "JWT blacklisted, refresh tokens deleted", null);
+        }
+        return ResponseEntity.ok(Map.of("message", "Logged out successfully"));
     }
 
     private String extractIp(HttpServletRequest request) {
