@@ -23,6 +23,7 @@ import org.springframework.kafka.requestreply.ReplyingKafkaTemplate;
 import org.springframework.kafka.support.serializer.JacksonJsonDeserializer;
 import org.springframework.kafka.support.serializer.JacksonJsonSerializer;
 
+import io.micrometer.observation.ObservationRegistry;
 import java.util.Map;
 
 /**
@@ -90,11 +91,13 @@ public class KafkaConfig {
     }
 
     @Bean
-    KafkaTemplate<String, Object> kafkaTemplate(ProducerFactory<String, Object> pf) {
+    KafkaTemplate<String, Object> kafkaTemplate(ProducerFactory<String, Object> pf,
+                                                 ObservationRegistry observationRegistry) {
         var template = new KafkaTemplate<>(pf);
         // spring.kafka.template.observation-enabled only applies to Spring Boot's auto-configured
-        // KafkaTemplate bean. For manually declared beans, observation must be enabled explicitly.
+        // KafkaTemplate bean. For manually declared beans, observation + registry must be set explicitly.
         template.setObservationEnabled(true);
+        template.setObservationRegistry(observationRegistry);
         return template;
     }
 
@@ -102,7 +105,8 @@ public class KafkaConfig {
 
     @Bean
     ConcurrentKafkaListenerContainerFactory<String, Object> kafkaListenerContainerFactory(
-            KafkaTemplate<String, Object> kafkaTemplate) {
+            KafkaTemplate<String, Object> kafkaTemplate,
+            ObservationRegistry observationRegistry) {
         var factory = new ConcurrentKafkaListenerContainerFactory<String, Object>();
         factory.setConsumerFactory(listenerConsumerFactory());
         // required for @SendTo (reply routing in Pattern 2)
@@ -110,6 +114,7 @@ public class KafkaConfig {
         // spring.kafka.listener.observation-enabled only applies to auto-configured factories.
         // Must be set programmatically on manually declared beans.
         factory.getContainerProperties().setObservationEnabled(true);
+        factory.getContainerProperties().setObservationRegistry(observationRegistry);
         return factory;
     }
 
@@ -136,7 +141,8 @@ public class KafkaConfig {
     @SuppressWarnings("unchecked")
     ReplyingKafkaTemplate<String, CustomerEnrichRequest, CustomerEnrichReply> replyingKafkaTemplate(
             ProducerFactory<String, Object> pf,
-            ConcurrentMessageListenerContainer<String, CustomerEnrichReply> replyListenerContainer) {
+            ConcurrentMessageListenerContainer<String, CustomerEnrichReply> replyListenerContainer,
+            ObservationRegistry observationRegistry) {
         // Safe cast: the JacksonJsonSerializer handles any Object type at runtime
         var template = new ReplyingKafkaTemplate<>(
                 (ProducerFactory<String, CustomerEnrichRequest>) (ProducerFactory<?, ?>) pf,
@@ -145,6 +151,7 @@ public class KafkaConfig {
         // Enable Micrometer observation — generates Kafka producer spans with
         // messaging.system=kafka and messaging.destination.name=customer.request
         template.setObservationEnabled(true);
+        template.setObservationRegistry(observationRegistry);
         return template;
     }
 
