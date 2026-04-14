@@ -20,7 +20,6 @@ import java.util.Properties;
 import java.util.Set;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.actuate.endpoint.annotation.Endpoint;
 import org.springframework.boot.actuate.endpoint.annotation.ReadOperation;
 import org.springframework.core.io.ClassPathResource;
@@ -75,8 +74,11 @@ public class QualityReportEndpoint {
     private static final String DEV_OWASP      = "target/dependency-check-report.json";
     private static final String DEV_PITEST     = "target/pit-reports/mutations.xml";
 
-    @Autowired
-    private RequestMappingHandlerMapping requestMappingHandlerMapping;
+    private final RequestMappingHandlerMapping requestMappingHandlerMapping;
+
+    public QualityReportEndpoint(RequestMappingHandlerMapping requestMappingHandlerMapping) {
+        this.requestMappingHandlerMapping = requestMappingHandlerMapping;
+    }
 
     @ReadOperation
     public Map<String, Object> report() {
