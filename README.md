@@ -214,7 +214,7 @@ curl -s -X POST http://localhost:8080/customers \
 
 | Capability | How it's implemented |
 |---|---|
-| Distributed tracing | OpenTelemetry → Tempo (OTLP) + Zipkin (dual export); DB spans via `datasource-micrometer` |
+| Distributed tracing | OpenTelemetry → Tempo (via LGTM on port 3001); DB spans via `datasource-micrometer` |
 | Metrics and latency histograms | Micrometer → Prometheus → Grafana (p50/p95/p99, custom counters) |
 | Structured logs correlated with traces | OTel log exporter → Loki, trace ID injected in every log line |
 | Health probes | Custom indicators for DB, Kafka, Redis, Ollama; liveness/readiness groups |
@@ -265,20 +265,66 @@ curl -s -X POST http://localhost:8080/customers \
 
 Pre-push hook (via lefthook) runs unit tests automatically before every `git push`.
 
-### Dashboards
+### Port reference
 
-| Dashboard | URL |
-|-----------|-----|
-| App / Swagger | http://localhost:8080/swagger-ui.html |
-| Grafana — HTTP | http://localhost:3000 |
-| Grafana — OTel | http://localhost:3001 |
-| Prometheus | http://localhost:9090 |
-| Zipkin | http://localhost:9411 |
-| Pyroscope | http://localhost:4040 |
-| pgAdmin | http://localhost:5050 (admin@demo.com / admin) |
-| Kafka UI | http://localhost:9080 |
-| RedisInsight | http://localhost:5540 |
-| Keycloak | http://localhost:9090 (admin / admin) |
+> **⚠️ Two runtime modes — two different API ports**
+>
+> | Mode | Frontend | API |
+> |------|----------|-----|
+> | **Docker Compose** (`./run.sh all`) | http://localhost:4200 (`ng serve`) | http://localhost:**8080** |
+> | **kind cluster** (`deploy-local.sh`) | http://localhost:**8090** (nginx-ingress) | http://localhost:**8090**/api |
+>
+> `ng serve` always targets port **8080** (local Spring Boot process).  
+> The kind cluster bundles everything behind **8090** — use the kind URL if the app is only running in Kubernetes.
+
+#### Application
+
+| Service | Port | URL |
+|---------|------|-----|
+| Spring Boot API (local) | 8080 | http://localhost:8080/swagger-ui.html |
+| Angular UI (`ng serve`) | 4200 | http://localhost:4200 → API on :8080 |
+| kind ingress — frontend + API | 8090 | http://localhost:8090 (HTTPS: 8443) |
+
+#### Data stores
+
+| Service | Port | Notes |
+|---------|------|-------|
+| PostgreSQL | 5432 | user: `demo` / pass: `demo` |
+| Redis | 6379 | |
+| Kafka (KRaft) | 9092 | PLAINTEXT\_HOST listener |
+| Ollama (LLM) | 11434 | llama3.2:1b — pulled on first start |
+| Keycloak | 9090 | admin / admin · realm: `customer-service` |
+
+#### Admin tools
+
+| Service | Port | URL |
+|---------|------|-----|
+| pgAdmin | 5050 | http://localhost:5050 (no login) |
+| pgweb | 8081 | http://localhost:8081 |
+| Kafka UI | 9080 | http://localhost:9080 |
+| AKHQ | 8083 | http://localhost:8083 |
+| Redis Commander | 8082 | http://localhost:8082 |
+| RedisInsight | 5540 | http://localhost:5540 |
+
+#### Observability
+
+| Service | Port | URL / Notes |
+|---------|------|-------------|
+| Grafana (standalone) | 3000 | http://localhost:3000 · Prometheus datasource |
+| Grafana LGTM | 3001 | http://localhost:3001 · **Tempo + Loki** datasources |
+| Tempo Explore | 3001 | http://localhost:3001/explore → select Tempo |
+| Tempo HTTP API | 3200 | `GET /api/traces/{traceId}` — direct trace lookup |
+| Prometheus | 9091 | http://localhost:9091 (9090 used by Keycloak) |
+| Loki (CORS proxy) | 3100 | Nginx proxy adding `Access-Control-Allow-Origin` |
+| OTLP HTTP collector | 4318 | Spring Boot sends traces + logs here |
+| Pyroscope | 4040 | http://localhost:4040 · CPU/memory flamegraphs |
+
+#### Infrastructure
+
+| Service | Port | Notes |
+|---------|------|-------|
+| Docker API proxy | 2375 | Filtered read-only Docker Engine API (CORS) |
+| GitLab Runner | — | Outbound HTTPS polling — no port exposed |
 
 ---
 
