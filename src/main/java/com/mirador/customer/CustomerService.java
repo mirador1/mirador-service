@@ -241,6 +241,8 @@ public class CustomerService {
                 }
                 created.add(create(req));
             } catch (Exception e) {
+                // Broad catch is intentional: batch items are independent — a constraint
+                // violation, validation error, or DB failure on one row must not abort the rest.
                 errors.add(new BatchImportResult.BatchError(i, req.name(), e.getMessage()));
             }
         }
