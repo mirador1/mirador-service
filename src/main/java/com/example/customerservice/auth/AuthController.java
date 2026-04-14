@@ -1,5 +1,6 @@
 package com.example.customerservice.auth;
 
+import com.example.customerservice.observability.AuditService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -49,10 +50,13 @@ public class AuthController {
 
     private final JwtTokenProvider jwtTokenProvider;
     private final LoginAttemptService loginAttemptService;
+    private final AuditService auditService;
 
-    public AuthController(JwtTokenProvider jwtTokenProvider, LoginAttemptService loginAttemptService) {
+    public AuthController(JwtTokenProvider jwtTokenProvider, LoginAttemptService loginAttemptService,
+                          AuditService auditService) {
         this.jwtTokenProvider = jwtTokenProvider;
         this.loginAttemptService = loginAttemptService;
+        this.auditService = auditService;
     }
 
     /**
@@ -71,6 +75,7 @@ public class AuthController {
 
         if (loginAttemptService.isBlocked(ip)) {
             log.warn("audit_login_blocked ip={} reason=brute_force_lockout", ip);
+            auditService.log(request.username(), "LOGIN_BLOCKED", "Brute-force lockout", ip);
             return ResponseEntity.status(429)
                     .body(Map.of("error", "Too many failed attempts. Try again later.",
                                  "retryAfterMinutes", LoginAttemptService.LOCKOUT_MINUTES));
@@ -80,6 +85,8 @@ public class AuthController {
             loginAttemptService.recordFailure(ip);
             int remaining = loginAttemptService.getRemainingAttempts(ip);
             log.warn("audit_login_failed ip={} username={} remaining_attempts={}", ip, request.username(), remaining);
+            auditService.log(request.username(), "LOGIN_FAILED",
+                    "Invalid credentials, " + remaining + " attempts remaining", ip);
             return ResponseEntity.status(401)
                     .body(Map.of("error", "Invalid credentials",
                                  "remainingAttempts", remaining));
@@ -93,6 +100,7 @@ public class AuthController {
         String accessToken = jwtTokenProvider.generateToken(request.username());
         String refreshToken = jwtTokenProvider.generateRefreshToken(request.username());
         log.info("audit_login_success ip={} username={}", ip, request.username());
+        auditService.log(request.username(), "LOGIN_SUCCESS", "JWT issued", ip);
         return ResponseEntity.ok(Map.of("accessToken", accessToken, "refreshToken", refreshToken));
     }
 
@@ -110,6 +118,7 @@ public class AuthController {
             jwtTokenProvider.deleteRefreshToken(oldToken);
             String accessToken = jwtTokenProvider.generateToken(username);
             String refreshToken = jwtTokenProvider.generateRefreshToken(username);
+            auditService.log(username, "TOKEN_REFRESH", "Refresh token rotated", null);
             return ResponseEntity.ok(Map.of("accessToken", accessToken, "refreshToken", refreshToken));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(401).body(Map.of("error", e.getMessage()));

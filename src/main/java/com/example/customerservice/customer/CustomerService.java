@@ -6,11 +6,14 @@ import com.example.customerservice.messaging.CustomerCreatedEvent;
 import com.example.customerservice.messaging.CustomerEventPublisher;
 import com.example.customerservice.customer.Customer;
 import com.example.customerservice.customer.CustomerRepository;
+import com.example.customerservice.observability.AuditService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -43,6 +46,7 @@ public class CustomerService {
     private final CustomerEventPublisher eventPublisher;
     private final SimpMessagingTemplate websocket;
     private final SseEmitterRegistry sseEmitterRegistry;
+    private final AuditService auditService;
     private final String customerCreatedTopic;
 
     public CustomerService(CustomerRepository repository,
@@ -50,12 +54,14 @@ public class CustomerService {
                            CustomerEventPublisher eventPublisher,
                            SimpMessagingTemplate websocket,
                            SseEmitterRegistry sseEmitterRegistry,
+                           AuditService auditService,
                            @Value("${app.kafka.topics.customer-created}") String customerCreatedTopic) {
         this.repository = repository;
         this.recentCustomerBuffer = recentCustomerBuffer;
         this.eventPublisher = eventPublisher;
         this.websocket = websocket;
         this.sseEmitterRegistry = sseEmitterRegistry;
+        this.auditService = auditService;
         this.customerCreatedTopic = customerCreatedTopic;
     }
 
@@ -112,6 +118,8 @@ public class CustomerService {
         // SSE — push to all active Server-Sent Events subscribers
         sseEmitterRegistry.send("customer", dto);
 
+        auditService.log(currentUser(), "CUSTOMER_CREATED",
+                "id=" + saved.getId() + " name=" + saved.getName(), null);
         return dto;
     }
 
@@ -125,6 +133,8 @@ public class CustomerService {
         customer.setName(request.name());
         customer.setEmail(request.email());
         Customer saved = repository.save(customer);
+        auditService.log(currentUser(), "CUSTOMER_UPDATED",
+                "id=" + id + " name=" + saved.getName(), null);
         return toDto(saved);
     }
 
@@ -137,6 +147,13 @@ public class CustomerService {
             throw new NoSuchElementException("Customer not found: " + id);
         }
         repository.deleteById(id);
+        auditService.log(currentUser(), "CUSTOMER_DELETED", "id=" + id, null);
+    }
+
+    /** Returns the authenticated user's name from the security context, or "anonymous". */
+    private String currentUser() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return auth != null ? auth.getName() : "anonymous";
     }
 
     /**
