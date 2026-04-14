@@ -885,7 +885,14 @@
                         </resources>
                     </configuration>
                 </execution>
-                <!-- OWASP Dependency Check JSON report -->
+                <!--
+                  OWASP Dependency Check JSON report.
+                  The last scan result is committed at src/main/resources/META-INF/build-reports/
+                  so it is always available in the JAR without re-running the 17-min scan.
+                  This execution overrides the committed version only when -Preport is active
+                  and OWASP has generated a fresh target/dependency-check-report.json.
+                  When skipped (default), Maven process-resources uses the committed file.
+                -->
                 <execution>
                     <id>copy-owasp-report</id>
                     <phase>prepare-package</phase>
