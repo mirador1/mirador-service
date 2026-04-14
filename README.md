@@ -160,6 +160,56 @@ Six deployment targets in CI (deploy stage):
 
 ## Quick start
 
+### Prerequisites
+
+| Tool | Min. version | Install |
+|---|---|---|
+| **Java** | 25 | [sdkman.io](https://sdkman.io) `sdk install java 25-open` |
+| **Docker Desktop** | 4.x | [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/) |
+| **Maven** | 3.9 (or use `./mvnw`) | bundled Maven Wrapper `./mvnw` — no installation needed |
+| **Git** | any | pre-installed on most systems |
+
+Optional (for frontend):
+
+| Tool | Min. version | Install |
+|---|---|---|
+| **Node.js** | 22 LTS | [nodejs.org](https://nodejs.org) or `nvm install 22` |
+| **npm** | 10 | bundled with Node 22 |
+
+---
+
+### First-time setup
+
+```bash
+# 1. Clone the backend
+git clone https://gitlab.com/benoit.besson/mirador-service.git
+cd mirador-service
+
+# 2. Make scripts executable (once)
+chmod +x run.sh mvnw
+
+# 3. Start everything: infrastructure + observability + Spring Boot
+./run.sh all
+```
+
+That's it. The script starts Docker automatically if it isn't running.
+
+> **With the Angular frontend:**
+>
+> ```bash
+> # In a second terminal, from the sibling mirador-ui directory:
+> git clone https://gitlab.com/benoit.besson/mirador-ui.git
+> cd mirador-ui
+> chmod +x run.sh
+> ./run.sh            # delegates infra to backend run.sh then starts ng serve
+> ```
+
+Sign in with **admin / admin** at http://localhost:4200 (UI) or http://localhost:8080/swagger-ui.html (API).
+
+---
+
+### Step-by-step (manual)
+
 ```bash
 # Start everything (Docker + observability + app)
 ./run.sh all
@@ -236,7 +286,6 @@ curl -s -X POST http://localhost:8080/customers \
 ./run.sh nuke           # full cleanup — containers, volumes, build artifacts
 ./run.sh status         # check status of all services
 ./run.sh simulate       # generate traffic (60 iterations, 2s pause)
-./run.sh app-profiled   # start app with Pyroscope profiling
 
 ./run.sh test           # unit tests (no Docker)
 ./run.sh integration    # integration tests (Testcontainers)
