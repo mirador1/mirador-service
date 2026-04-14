@@ -5,14 +5,14 @@
 # locally and consume zero gitlab.com shared runner minutes.
 #
 # Ports (host → container):
-#   9080 → 80   : GitLab web UI  → http://localhost:9080
+#   9081 → 80   : GitLab web UI  → http://localhost:9081
 #   9443 → 443  : GitLab HTTPS   (optional — plain HTTP is enough locally)
 #   9022 → 22   : GitLab SSH     (for git push over SSH)
 #
 # First-run setup:
 #   1. docker compose -f docker-compose.gitlab.yml up -d
 #   2. Wait ~2 minutes for GitLab to initialize
-#   3. Open http://localhost:9080 and set the root password when prompted
+#   3. Open http://localhost:9081 and set the root password when prompted
 #   4. Create a project that mirrors customer-service
 #   5. Register the local runner against this instance:
 #      docker exec -it gitlab-runner \
@@ -39,7 +39,7 @@ services:
     hostname: localhost
     restart: unless-stopped
     ports:
-      - "9080:80"    # Web UI  → http://localhost:9080
+      - "9081:80"    # Web UI  → http://localhost:9081
       - "9443:443"   # HTTPS
       - "9022:22"    # SSH (git push over SSH)
     volumes:
@@ -51,8 +51,8 @@ services:
       - gitlab-data:/var/opt/gitlab
     environment:
       GITLAB_OMNIBUS_CONFIG: |
-        # Bind GitLab to port 80 inside the container, exposed on host as 9080
-        external_url 'http://localhost:9080'
+        # Bind GitLab to port 80 inside the container, exposed on host as 9081
+        external_url 'http://localhost:9081'
 
         # SSH port exposed on the host
         gitlab_rails['gitlab_shell_ssh_port'] = 9022
