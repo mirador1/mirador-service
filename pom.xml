@@ -571,6 +571,10 @@
                 <suppressionFiles>
                     <suppressionFile>owasp-suppressions.xml</suppressionFile>
                 </suppressionFiles>
+                <!-- Disable analyzers not applicable to a Java-only project -->
+                <assemblyAnalyzerEnabled>false</assemblyAnalyzerEnabled>
+                <!-- Disable OSS Index — requires paid credentials; NVD covers the same CVEs -->
+                <ossindexAnalyzerEnabled>false</ossindexAnalyzerEnabled>
             </configuration>
         </plugin>
         </plugins>
