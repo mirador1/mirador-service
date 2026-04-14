@@ -3,29 +3,22 @@
 #
 # Run with: docker compose -f docker-compose.observability.yml up -d
 #
-# Two parallel observability paths are provided:
+# Services:
 #
-# Path 1 — LGTM all-in-one (Grafana + Loki + Tempo + Mimir)    [port 3001]
+# LGTM all-in-one (Grafana + Loki + Tempo + Mimir)             [port 3001]
 #   grafana/otel-lgtm bundles all LGTM components in a single container.
-#   The Spring Boot app sends traces and logs via OpenTelemetry OTLP (port 4318).
-#   Grafana is pre-configured with Loki (logs) and Tempo (traces) datasources.
-#   Tempo HTTP query API exposed on port 3200 for direct trace lookup.
-#   Access: http://localhost:3001
+#   Spring Boot sends traces and logs via OpenTelemetry OTLP (port 4318).
+#   Grafana: http://localhost:3001
 #   Explore traces: http://localhost:3001/explore (select Tempo datasource)
 #
-# Path 2 — Standalone Prometheus + Grafana                      [port 3000 + 9090]
+# Prometheus — scrapes /actuator/prometheus every 15s            [port 9091]
+#   Access: http://localhost:9091
 #
-# Path 3 — Pyroscope (continuous profiling)                     [port 4040]
-#   CPU/memory flamegraphs. The Spring Boot app pushes profiles via the Pyroscope
-#   Java agent or HTTP SDK. Integrates with Grafana as a datasource.
+# Pyroscope — continuous profiling (CPU/memory flamegraphs)      [port 4040]
 #   Access: http://localhost:4040
-#   Prometheus scrapes /actuator/prometheus every 15s.
-#   Grafana is provisioned with dashboards from infra/observability/grafana/.
-#   Access Grafana: http://localhost:3000
-#   Access Prometheus: http://localhost:9090
 #
-# The two paths can run concurrently. LGTM is the recommended path for full
-# distributed tracing (Tempo) and structured log correlation (Loki + traceID).
+# cors-proxy — Nginx proxy adding CORS headers to Loki (:3100) and Docker API (:2375)
+# docker-proxy — read-only Docker Engine API for container status in the Angular UI
 # =============================================================================
 
 services:
@@ -48,7 +41,7 @@ services:
     image: grafana/otel-lgtm:0.22.1
     container_name: customerservice-lgtm
     ports:
-      - "3001:3000"    # Grafana UI (separate port from standalone Grafana on 3000)
+      - "3001:3000"    # Grafana UI
       # Loki API (3100) is NOT exposed directly — routed through the CORS proxy instead.
       # The cors-proxy service listens on host port 3100 and forwards to lgtm:3100
       # with Access-Control-Allow-Origin headers for the Angular UI.
@@ -98,37 +91,6 @@ services:
     volumes:
       # Mount the scrape config as read-only — Prometheus does not need to write it
       - ./infra/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-
-  # ---------------------------------------------------------------------------
-  # Grafana — visualization layer for Prometheus metrics
-  #
-  # Dashboards and datasources are provisioned at startup from the infra/ directory,
-  # so no manual setup is needed after first launch.
-  #   - Datasources: infra/observability/grafana/provisioning/datasources/
-  #   - Dashboards:  infra/observability/grafana/dashboards/
-  # Access: http://localhost:3000 (no login required — anonymous auth for dev)
-  # ---------------------------------------------------------------------------
-  grafana:
-    image: grafana/grafana:11.6.0
-    container_name: customerservice-grafana
-    ports:
-      - "3000:3000"    # Grafana UI — http://localhost:3000
-    depends_on:
-      prometheus:
-        condition: service_started
-      lgtm:
-        condition: service_healthy   # waits for Tempo /ready — ensures datasources resolve at startup
-    environment:
-      # Disable login for dev — anonymous access with Admin role
-      GF_AUTH_ANONYMOUS_ENABLED: "true"
-      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
-      GF_AUTH_DISABLE_LOGIN_FORM: "true"
-      # Default dashboard: Customer Service Overview
-      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/demo.json
-    volumes:
-      # Auto-provision datasources (Prometheus) and dashboards at startup
-      - ./infra/observability/grafana/provisioning:/etc/grafana/provisioning
-      - ./infra/observability/grafana/dashboards:/var/lib/grafana/dashboards
 
   # ---------------------------------------------------------------------------
   # Nginx CORS proxy for Loki
