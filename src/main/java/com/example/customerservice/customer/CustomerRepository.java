@@ -4,6 +4,9 @@ import com.example.customerservice.customer.Customer;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+
+import java.util.List;
 
 /**
  * Spring Data JPA repository for {@link Customer} entities.
@@ -36,4 +39,32 @@ public interface CustomerRepository extends JpaRepository<Customer, Long> {
      * [Spring Data JPA — interface projection]
      */
     Page<CustomerSummary> findAllProjectedBy(Pageable pageable);
+
+    /**
+     * Cursor-based pagination: returns customers whose ID is strictly greater than {@code cursor},
+     * ordered by ID ascending. The query uses an index seek ({@code WHERE id > ?}) instead of
+     * {@code OFFSET}, making it efficient on large datasets.
+     */
+    List<Customer> findByIdGreaterThanOrderByIdAsc(Long cursor, Pageable pageable);
+
+    /**
+     * Checks if a customer with the given email already exists.
+     * Used by batch import to skip duplicates.
+     */
+    boolean existsByEmail(String email);
+
+    /**
+     * Full-text search on name and email (case-insensitive LIKE).
+     * Used by {@code GET /customers?search=alice}.
+     */
+    @Query("SELECT c FROM Customer c WHERE LOWER(c.name) LIKE LOWER(CONCAT('%', :search, '%')) " +
+           "OR LOWER(c.email) LIKE LOWER(CONCAT('%', :search, '%'))")
+    Page<Customer> search(String search, Pageable pageable);
+
+    /**
+     * Intentionally slow query for observability demos.
+     * Calls PostgreSQL {@code pg_sleep()} to simulate a long-running query.
+     */
+    @Query(value = "SELECT pg_sleep(:seconds)", nativeQuery = true)
+    void simulateSlowQuery(double seconds);
 }

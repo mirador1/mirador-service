@@ -45,6 +45,12 @@ public class JwtTokenProvider {
     /** Refresh token validity: 7 days. */
     private static final long REFRESH_TOKEN_EXPIRATION_MS = 7L * 24 * 60 * 60 * 1000;
 
+    /** JWT issuer claim — identifies the service that issued the token. */
+    private static final String ISSUER = "customer-service";
+
+    /** JWT audience claim — tokens are only valid for this API. */
+    private static final String AUDIENCE = "customer-service-api";
+
     private final SecretKey secretKey;
     private final RefreshTokenRepository refreshTokenRepository;
 
@@ -63,6 +69,8 @@ public class JwtTokenProvider {
 
         return Jwts.builder()
                 .subject(username)
+                .issuer(ISSUER)
+                .audience().add(AUDIENCE).and()
                 .issuedAt(now)
                 .expiration(expiry)
                 .signWith(secretKey)
@@ -84,13 +92,15 @@ public class JwtTokenProvider {
     }
 
     /**
-     * Validates the token signature and expiry.
+     * Validates the token signature, expiry, issuer, and audience.
      * Returns {@code false} (instead of throwing) for any invalid token.
      */
     public boolean validateToken(String token) {
         try {
             Jwts.parser()
                     .verifyWith(secretKey)
+                    .requireIssuer(ISSUER)
+                    .requireAudience(AUDIENCE)
                     .build()
                     .parseSignedClaims(token);
             return true;
@@ -106,6 +116,8 @@ public class JwtTokenProvider {
     public String getUsername(String token) {
         Claims claims = Jwts.parser()
                 .verifyWith(secretKey)
+                .requireIssuer(ISSUER)
+                .requireAudience(AUDIENCE)
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();

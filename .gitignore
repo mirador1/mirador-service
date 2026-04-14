@@ -17,5 +17,9 @@ target/
 **/.DS_Store
 .env
 
+# Pyroscope Java agent (downloaded at dev setup, ~5 MB binary)
+infra/pyroscope/pyroscope.jar
+
 # Claude Code local config and worktrees
 .claude/
+.owasp-data/

@@ -2,6 +2,7 @@ package com.example.customerservice.customer;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 /**
  * Validated request body for {@code POST /customers}.
@@ -20,7 +21,7 @@ import jakarta.validation.constraints.NotBlank;
  * {@link com.example.customerservice.api.ApiExceptionHandler} and returned as HTTP 400 Problem Detail.
  */
 public record CreateCustomerRequest(
-        @NotBlank String name,
-        @NotBlank @Email String email
+        @NotBlank @Size(max = 255, message = "Name must not exceed 255 characters") String name,
+        @NotBlank @Email @Size(max = 255, message = "Email must not exceed 255 characters") String email
 ) {
 }

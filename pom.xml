@@ -134,10 +134,11 @@
         </dependency>
 
         <!--
-          Observability stack — four complementary artifacts:
+          Observability stack — five complementary artifacts:
             actuator              → /actuator/health, /actuator/prometheus, etc.
             micrometer-prometheus → Prometheus registry: scrape at /actuator/prometheus
             opentelemetry         → OTLP trace + log export to Tempo / Loki via OTEL collector
+            opentelemetry-zipkin  → exports traces to Zipkin (alongside OTLP to Tempo)
             datasource-micrometer → instruments JDBC DataSource with Micrometer Observations
                                     (query count, latency histograms, slow-query detection)
         -->
@@ -149,14 +150,28 @@
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-registry-prometheus</artifactId>
         </dependency>
+        <!-- spring-boot-starter-opentelemetry: SB4-only, declared in sb4 profile below -->
+        <!-- SB3 equivalent (micrometer-tracing-bridge-otel + opentelemetry-exporter-otlp) in sb3 profile -->
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-opentelemetry</artifactId>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-zipkin</artifactId>
+        </dependency>
+        <!-- OTLP log export: bridges Logback log events to OpenTelemetry pipeline (→ Loki via LGTM) -->
+        <dependency>
+            <groupId>io.opentelemetry.instrumentation</groupId>
+            <artifactId>opentelemetry-logback-appender-1.0</artifactId>
+            <version>2.16.0-alpha</version>
         </dependency>
         <dependency>
             <groupId>net.ttddyy.observation</groupId>
             <artifactId>datasource-micrometer-spring-boot</artifactId>
             <version>${datasource-micrometer.version}</version>
+        </dependency>
+
+        <!-- WebSocket — real-time notifications via STOMP over SockJS -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-websocket</artifactId>
         </dependency>
 
         <!-- API docs — SpringDoc generates OpenAPI 3 spec + Swagger UI at /swagger-ui.html -->
@@ -262,11 +277,7 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-webmvc-test</artifactId>
-            <scope>test</scope>
-        </dependency>
+        <!-- spring-boot-webmvc-test: SB4-only, declared in sb4 profile below -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-testcontainers</artifactId>
@@ -483,6 +494,18 @@
                         <artifactId>asm-commons</artifactId>
                         <version>9.8</version>
                     </dependency>
+                    <!--
+                      Find Security Bugs — SAST plugin for SpotBugs.
+                      Detects security-specific issues: SQL injection, XSS, XXE, weak crypto,
+                      hardcoded secrets, path traversal, LDAP injection, CRLF injection, and
+                      130+ other vulnerability patterns from the OWASP Top 10.
+                      https://find-sec-bugs.github.io/
+                    -->
+                    <dependency>
+                        <groupId>com.h3xstream.findsecbugs</groupId>
+                        <artifactId>findsecbugs-plugin</artifactId>
+                        <version>1.13.0</version>
+                    </dependency>
                 </dependencies>
                 <executions>
                     <execution>
@@ -532,6 +555,30 @@
                     </annotationProcessorPaths>
                 </configuration>
             </plugin>
+        <!--
+          OWASP Dependency-Check — scans dependencies for known CVEs (NVD database).
+          Run manually: mvn dependency-check:check
+          Or via: ./run.sh security-check
+          Generates an HTML report at target/dependency-check-report.html
+        -->
+        <plugin>
+            <groupId>org.owasp</groupId>
+            <artifactId>dependency-check-maven</artifactId>
+            <version>12.1.1</version>
+            <configuration>
+                <failBuildOnCVSS>9</failBuildOnCVSS>
+                <formats>HTML,JSON</formats>
+                <suppressionFiles>
+                    <suppressionFile>owasp-suppressions.xml</suppressionFile>
+                </suppressionFiles>
+                <!-- Store NVD database inside the project dir so GitLab CI can cache it -->
+                <dataDirectory>${project.basedir}/.owasp-data</dataDirectory>
+                <!-- Disable analyzers not applicable to a Java-only project -->
+                <assemblyAnalyzerEnabled>false</assemblyAnalyzerEnabled>
+                <!-- Disable OSS Index — requires paid credentials; NVD covers the same CVEs -->
+                <ossindexAnalyzerEnabled>false</ossindexAnalyzerEnabled>
+            </configuration>
+        </plugin>
         </plugins>
     </build>
 
@@ -571,6 +618,238 @@
                                 </goals>
                             </execution>
                         </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!--
+          java17 profile — overrides java.version to 17 when -Djava17 is set.
+          Composable with -Dcompat or -Dsb3:
+            mvn verify -Dcompat -Djava17   → SB4 + Java 17
+            mvn verify -Dsb3 -Djava17      → SB3 + Java 17
+        -->
+        <profile>
+            <id>java17</id>
+            <activation>
+                <property>
+                    <name>java17</name>
+                </property>
+            </activation>
+            <properties>
+                <java.version>17</java.version>
+            </properties>
+        </profile>
+
+        <!--
+          sb4 profile — Spring Boot 4 (default).
+          Active when the "sb3" system property is NOT set: mvn verify (or mvn -Pnative verify).
+          Provides dependencies that exist only in Spring Boot 4:
+            spring-boot-starter-opentelemetry — unified OTEL starter (replaces micrometer-tracing bridges)
+            spring-boot-webmvc-test           — RestTestClient + SB4 AutoConfigureMockMvc package
+        -->
+        <profile>
+            <id>sb4</id>
+            <activation>
+                <property>
+                    <name>!sb3</name>
+                </property>
+            </activation>
+            <dependencies>
+                <dependency>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-starter-opentelemetry</artifactId>
+                </dependency>
+                <dependency>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-webmvc-test</artifactId>
+                    <scope>test</scope>
+                </dependency>
+            </dependencies>
+        </profile>
+
+        <!--
+          compat profile — SB4 with older Java (17 or 21).
+          Activated via: mvn verify -Dcompat       (Java 21)
+                         mvn verify -Dcompat -Djava17   (Java 17)
+
+          Applies Java-version source overlays WITHOUT changing Spring Boot version:
+            java-compat       → ScopedValue replaced by ThreadLocal (Java <25)
+            java-compat-java17 → switch pattern matching replaced by if/else (Java 17)
+        -->
+        <profile>
+            <id>compat</id>
+            <activation>
+                <property>
+                    <name>compat</name>
+                </property>
+            </activation>
+            <properties>
+                <java.version>21</java.version>
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-antrun-plugin</artifactId>
+                        <version>3.1.0</version>
+                        <executions>
+                            <execution>
+                                <id>compat-merge-sources</id>
+                                <phase>initialize</phase>
+                                <goals><goal>run</goal></goals>
+                                <configuration>
+                                    <target xmlns:if="ant:if">
+                                        <!-- Step 1: copy all main sources -->
+                                        <copy todir="${project.build.directory}/merged-sources/main">
+                                            <fileset dir="src/main/java"/>
+                                        </copy>
+                                        <!-- Step 2: Java <25 compat overlay (ScopedValue → ThreadLocal) -->
+                                        <copy todir="${project.build.directory}/merged-sources/main" overwrite="true">
+                                            <fileset dir="src/main/java-compat"/>
+                                        </copy>
+                                        <!-- Step 3: Java 17 overlay (switch pattern matching → if/else) -->
+                                        <copy todir="${project.build.directory}/merged-sources/main" overwrite="true" if:set="java17">
+                                            <fileset dir="src/main/java-compat-java17"/>
+                                        </copy>
+                                    </target>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-compiler-plugin</artifactId>
+                        <configuration>
+                            <compileSourceRoots>
+                                <compileSourceRoot>${project.build.directory}/merged-sources/main</compileSourceRoot>
+                            </compileSourceRoots>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!--
+          sb3 profile — Spring Boot 3.4.x compatibility.
+          Activated via: mvn verify -Dsb3            (SB3 + Java 21)
+                         mvn verify -Dsb3 -Djava17   (SB3 + Java 17)
+
+          Strategy:
+            1. Override Spring Boot version via BOM import (takes precedence over parent).
+            2. Default Java to 21 (virtual threads + records); override with -Djava17 for Java 17.
+            3. Replace SB4-only dependencies with SB3 equivalents.
+            4. Source overlays via maven-antrun-plugin (conditional copies):
+               - java-compat:          ScopedValue → ThreadLocal (always, since SB3 = Java <25)
+               - java-compat-java17:   switch pattern matching → if/else (only if -Djava17)
+               - java-sb3:             @GetMapping(version=...) → manual header dispatch (always)
+               - test/java-sb3:        AutoConfigureMockMvc bridge annotation (always)
+            5. Exclude RestTestClient test (SB4-only).
+        -->
+        <profile>
+            <id>sb3</id>
+            <activation>
+                <property>
+                    <name>sb3</name>
+                </property>
+            </activation>
+            <properties>
+                <java.version>21</java.version>
+            </properties>
+            <dependencyManagement>
+                <dependencies>
+                    <!-- Override the parent BOM: all Spring Boot managed versions resolve to 3.4.5 -->
+                    <dependency>
+                        <groupId>org.springframework.boot</groupId>
+                        <artifactId>spring-boot-dependencies</artifactId>
+                        <version>3.4.5</version>
+                        <type>pom</type>
+                        <scope>import</scope>
+                    </dependency>
+                </dependencies>
+            </dependencyManagement>
+            <dependencies>
+                <!-- SB3 equivalent of spring-boot-starter-opentelemetry -->
+                <dependency>
+                    <groupId>io.micrometer</groupId>
+                    <artifactId>micrometer-tracing-bridge-otel</artifactId>
+                </dependency>
+                <dependency>
+                    <groupId>io.opentelemetry</groupId>
+                    <artifactId>opentelemetry-exporter-otlp</artifactId>
+                </dependency>
+            </dependencies>
+            <build>
+                <pluginManagement>
+                    <plugins>
+                        <!-- Pin spring-boot-maven-plugin to 3.4.5 (parent resolves 4.0.5) -->
+                        <plugin>
+                            <groupId>org.springframework.boot</groupId>
+                            <artifactId>spring-boot-maven-plugin</artifactId>
+                            <version>3.4.5</version>
+                        </plugin>
+                    </plugins>
+                </pluginManagement>
+                <plugins>
+                    <!--
+                      Source overlay: copy all sources → target/merged-sources, then overwrite
+                      with version-specific alternatives. Conditional copies use Ant if:set.
+                    -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-antrun-plugin</artifactId>
+                        <version>3.1.0</version>
+                        <executions>
+                            <execution>
+                                <id>sb3-merge-sources</id>
+                                <phase>initialize</phase>
+                                <goals><goal>run</goal></goals>
+                                <configuration>
+                                    <target xmlns:if="ant:if">
+                                        <!-- Main sources -->
+                                        <copy todir="${project.build.directory}/merged-sources/main">
+                                            <fileset dir="src/main/java"/>
+                                        </copy>
+                                        <!-- Java <25 compat (ScopedValue → ThreadLocal) — always for SB3 -->
+                                        <copy todir="${project.build.directory}/merged-sources/main" overwrite="true">
+                                            <fileset dir="src/main/java-compat"/>
+                                        </copy>
+                                        <!-- Java 17 compat (switch → if/else) — only if -Djava17 -->
+                                        <copy todir="${project.build.directory}/merged-sources/main" overwrite="true" if:set="java17">
+                                            <fileset dir="src/main/java-compat-java17"/>
+                                        </copy>
+                                        <!-- SB3 overlay (@GetMapping without version=) — always for SB3 -->
+                                        <copy todir="${project.build.directory}/merged-sources/main" overwrite="true">
+                                            <fileset dir="src/main/java-sb3"/>
+                                        </copy>
+
+                                        <!-- Test sources (exclude SB4-only RestTestClient test) -->
+                                        <copy todir="${project.build.directory}/merged-sources/test">
+                                            <fileset dir="src/test/java">
+                                                <exclude name="com/example/customerservice/customer/CustomerRestClientITest.java"/>
+                                            </fileset>
+                                        </copy>
+                                        <!-- SB3 test overlay (AutoConfigureMockMvc bridge) -->
+                                        <copy todir="${project.build.directory}/merged-sources/test" overwrite="true">
+                                            <fileset dir="src/test/java-sb3"/>
+                                        </copy>
+                                    </target>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <!-- Point the compiler at the merged source directories -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-compiler-plugin</artifactId>
+                        <configuration>
+                            <compileSourceRoots>
+                                <compileSourceRoot>${project.build.directory}/merged-sources/main</compileSourceRoot>
+                            </compileSourceRoots>
+                            <testCompileSourceRoots>
+                                <testCompileSourceRoot>${project.build.directory}/merged-sources/test</testCompileSourceRoot>
+                            </testCompileSourceRoots>
+                        </configuration>
                     </plugin>
                 </plugins>
             </build>

@@ -28,14 +28,30 @@ import org.springframework.kafka.requestreply.ReplyingKafkaTemplate;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
+
+import java.io.OutputStreamWriter;
+import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.concurrent.ExecutionException;
 
@@ -87,6 +103,7 @@ public class CustomerController {
     private final ReplyingKafkaTemplate<String, CustomerEnrichRequest, CustomerEnrichReply> replyingKafkaTemplate;
     private final TodoService todoService;
     private final BioService bioService;
+    private final SseEmitterRegistry sseEmitterRegistry;
     // Injected from application.yml: app.kafka.topics.customer-request
     private final String customerRequestTopic;
     // Injected from application.yml: app.kafka.enrich-timeout-seconds
@@ -113,6 +130,7 @@ public class CustomerController {
                               ReplyingKafkaTemplate<String, CustomerEnrichRequest, CustomerEnrichReply> replyingKafkaTemplate,
                               TodoService todoService,
                               BioService bioService,
+                              SseEmitterRegistry sseEmitterRegistry,
                               @Value("${app.kafka.topics.customer-request}") String customerRequestTopic,
                               @Value("${app.kafka.enrich-timeout-seconds}") long enrichTimeoutSeconds,
                               MeterRegistry meterRegistry) {
@@ -123,6 +141,7 @@ public class CustomerController {
         this.replyingKafkaTemplate = replyingKafkaTemplate;
         this.todoService = todoService;
         this.bioService = bioService;
+        this.sseEmitterRegistry = sseEmitterRegistry;
         this.customerRequestTopic = customerRequestTopic;
         this.enrichTimeoutSeconds = enrichTimeoutSeconds;
         this.customerCreatedCounter = Counter.builder("customer.created.count")
@@ -161,10 +180,17 @@ public class CustomerController {
      * {@code spring.mvc.apiversion.*} in {@code application.yml}.
      */
     @GetMapping(version = "1.0")
-    public Page<CustomerDto> getAll(@PageableDefault(size = 20, sort = "id") Pageable pageable) {
-        return Observation.createNotStarted("customer.find-all", observationRegistry)
+    public ResponseEntity<Page<CustomerDto>> getAll(
+            @PageableDefault(size = 20, sort = "id") Pageable pageable,
+            @RequestParam(required = false) String search) {
+        Pageable capped = capPageSize(pageable);
+        Page<CustomerDto> page = Observation.createNotStarted("customer.find-all", observationRegistry)
                 .lowCardinalityKeyValue("endpoint", "/customers")
-                .observe(() -> customerFindAllTimer.record(() -> service.findAll(pageable)));
+                .observe(() -> customerFindAllTimer.record(() ->
+                        search != null ? service.search(search, capped) : service.findAll(capped)));
+        return withLinkHeaders(page, Map.of(
+                "Deprecation", "true",
+                "Sunset", "2027-01-01T00:00:00Z"));
     }
 
     /**
@@ -183,11 +209,16 @@ public class CustomerController {
      * Spring Framework 7.0 ({@code @RequestMapping#version()}).
      */
     @GetMapping(version = "2.0+")
-    public Page<CustomerDtoV2> getAllV2(@PageableDefault(size = 20, sort = "id") Pageable pageable) {
-        return Observation.createNotStarted("customer.find-all-v2", observationRegistry)
+    public ResponseEntity<Page<CustomerDtoV2>> getAllV2(
+            @PageableDefault(size = 20, sort = "id") Pageable pageable,
+            @RequestParam(required = false) String search) {
+        Pageable capped = capPageSize(pageable);
+        Page<CustomerDtoV2> page = Observation.createNotStarted("customer.find-all-v2", observationRegistry)
                 .lowCardinalityKeyValue("endpoint", "/customers")
                 .lowCardinalityKeyValue("version", "2")
-                .observe(() -> customerFindAllTimer.record(() -> service.findAllV2(pageable)));
+                .observe(() -> customerFindAllTimer.record(() ->
+                        search != null ? service.searchV2(search, capped) : service.findAllV2(capped)));
+        return withLinkHeaders(page);
     }
 
     /**
@@ -212,6 +243,40 @@ public class CustomerController {
                     customerCreatedCounter.increment();
                     return result;
                 }));
+    }
+
+    /**
+     * Returns a single customer by ID.
+     *
+     * <p>Returns HTTP 404 if the customer does not exist.
+     */
+    @GetMapping("/{id}")
+    public CustomerDto getById(@PathVariable Long id) {
+        return service.findById(id)
+                .orElseThrow(() -> new NoSuchElementException("Customer not found: " + id));
+    }
+
+    /**
+     * Updates an existing customer's name and email.
+     *
+     * <p>Returns HTTP 404 if the customer does not exist.
+     */
+    @PreAuthorize("hasRole('ADMIN')")
+    @PutMapping("/{id}")
+    public CustomerDto update(@PathVariable Long id, @Valid @RequestBody CreateCustomerRequest request) {
+        return service.update(id, request);
+    }
+
+    /**
+     * Deletes a customer by ID.
+     *
+     * <p>Returns HTTP 204 (No Content) on success, HTTP 404 if the customer does not exist.
+     */
+    @PreAuthorize("hasRole('ADMIN')")
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable Long id) {
+        service.delete(id);
     }
 
     /**
@@ -345,5 +410,142 @@ public class CustomerController {
                         throw new IllegalStateException("Enrich failed for id=" + id, e.getCause());
                     }
                 }));
+    }
+
+    // ─── SSE stream ─────────────────────────────────────────────────────────
+
+    /**
+     * Server-Sent Events stream that pushes newly created customers in real time.
+     *
+     * <p>Each new customer creation triggers a {@code customer} event containing
+     * the {@link CustomerDto} JSON payload. A {@code ping} event is sent every 30 s
+     * by {@link SseEmitterRegistry} to keep the connection alive.
+     *
+     * <p>Requires authentication (any authenticated user).
+     */
+    @GetMapping(value = "/stream", produces = org.springframework.http.MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter stream() {
+        return sseEmitterRegistry.register();
+    }
+
+    // ─── Cursor-based pagination ────────────────────────────────────────────
+
+    /**
+     * Returns a cursor-based page of customers.
+     *
+     * <p>Unlike offset-based pagination ({@code ?page=5&size=20}), cursor pagination uses
+     * the last element's ID as a bookmark: {@code ?cursor=42&size=20}. The DB query uses
+     * {@code WHERE id > 42 ORDER BY id LIMIT 21} (fetches size+1 to detect {@code hasNext}).
+     *
+     * <p>Performance advantage: offset-based pagination scans and skips rows, becoming slower
+     * as the page number increases. Cursor pagination always does an index seek.
+     */
+    @GetMapping("/cursor")
+    public CursorPage<CustomerDto> getAllCursor(
+            @RequestParam(defaultValue = "0") Long cursor,
+            @RequestParam(defaultValue = "20") int size) {
+        return service.findAllCursor(cursor, size);
+    }
+
+    // ─── Batch import ───────────────────────────────────────────────────────
+
+    /**
+     * Creates multiple customers in a single request.
+     *
+     * <p>Each entry is validated and persisted individually — a failure on one row does not
+     * abort the entire batch. Duplicate emails are detected and reported as errors.
+     * Successfully created customers trigger Kafka events and WebSocket notifications.
+     */
+    @PreAuthorize("hasRole('ADMIN')")
+    @PostMapping("/batch")
+    public BatchImportResult batchCreate(@Valid @RequestBody List<CreateCustomerRequest> requests) {
+        return Observation.createNotStarted("customer.batch-import", observationRegistry)
+                .lowCardinalityKeyValue("endpoint", "/customers/batch")
+                .observe(() -> service.batchCreate(requests));
+    }
+
+    // ─── CSV export ─────────────────────────────────────────────────────────
+
+    /**
+     * Streams all customers as a CSV file.
+     *
+     * <p>Uses {@link StreamingResponseBody} so the response is written directly to the
+     * output stream without buffering the entire result set in memory. This is observable
+     * in Tempo as a single long-running span whose duration grows with the dataset size.
+     */
+    // ─── Slow query simulation ────────────────────────────────────────────
+
+    /**
+     * Simulates a slow database query using PostgreSQL {@code pg_sleep()}.
+     *
+     * <p>Useful for observability demos: the long-running DB span is clearly visible
+     * in Tempo/Zipkin traces, and the latency spike appears in Grafana dashboards.
+     *
+     * @param seconds duration of the simulated slow query (capped at 10s)
+     */
+    @GetMapping("/slow-query")
+    public java.util.Map<String, String> slowQuery(@RequestParam(defaultValue = "2") double seconds) {
+        double capped = Math.min(seconds, 10);
+        service.simulateSlowQuery(capped);
+        return java.util.Map.of("status", "completed", "duration", capped + "s");
+    }
+
+    // ─── CSV export ─────────────────────────────────────────────────────────
+
+    @GetMapping("/export")
+    public ResponseEntity<StreamingResponseBody> exportCsv() {
+        StreamingResponseBody body = outputStream -> {
+            var writer = new PrintWriter(new OutputStreamWriter(outputStream, StandardCharsets.UTF_8));
+            writer.println("id,name,email,created_at");
+            for (Customer c : service.findAllForExport()) {
+                writer.printf("%d,\"%s\",\"%s\",%s%n",
+                        c.getId(),
+                        c.getName().replace("\"", "\"\""),
+                        c.getEmail().replace("\"", "\"\""),
+                        c.getCreatedAt());
+            }
+            writer.flush();
+        };
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=customers.csv")
+                .contentType(MediaType.parseMediaType("text/csv"))
+                .body(body);
+    }
+
+    // ─── Helpers ────────────────────────────────────────────────────────────
+
+    private static final int MAX_PAGE_SIZE = 100;
+
+    /** Caps the page size to prevent unbounded queries (e.g., ?size=999999). */
+    private Pageable capPageSize(Pageable pageable) {
+        if (pageable.getPageSize() > MAX_PAGE_SIZE) {
+            return PageRequest.of(pageable.getPageNumber(), MAX_PAGE_SIZE, pageable.getSort());
+        }
+        return pageable;
+    }
+
+    /** Adds RFC 8288 Link headers (next, prev, first, last) to paginated responses. */
+    private <T> ResponseEntity<Page<T>> withLinkHeaders(Page<T> page) {
+        return withLinkHeaders(page, Map.of());
+    }
+
+    /** Adds Link headers + optional extra headers (e.g., Deprecation, Sunset). */
+    private <T> ResponseEntity<Page<T>> withLinkHeaders(Page<T> page, Map<String, String> extraHeaders) {
+        var links = new java.util.StringJoiner(", ");
+        String base = "/customers?size=" + page.getSize();
+        if (page.hasNext()) {
+            links.add("<%s&page=%d>; rel=\"next\"".formatted(base, page.getNumber() + 1));
+        }
+        if (page.hasPrevious()) {
+            links.add("<%s&page=%d>; rel=\"prev\"".formatted(base, page.getNumber() - 1));
+        }
+        links.add("<%s&page=0>; rel=\"first\"".formatted(base));
+        links.add("<%s&page=%d>; rel=\"last\"".formatted(base, page.getTotalPages() - 1));
+
+        var builder = ResponseEntity.ok()
+                .header("Link", links.toString());
+        extraHeaders.forEach(builder::header);
+        return builder.body(page);
     }
 }

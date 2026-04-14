@@ -16,8 +16,8 @@ spring:
   # ---------------------------------------------------------------------------
   datasource:
     # Env-var override allows Docker Compose / Kubernetes to inject the real URL
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/demo}
-    username: ${DB_USERNAME:demo}
+    url: ${DB_URL:jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:customer-service}}
+    username: ${DB_USER:demo}
     password: ${DB_PASSWORD:demo}
 
   jpa:
@@ -51,6 +51,13 @@ spring:
   # ---------------------------------------------------------------------------
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    # Enable Micrometer observation for Kafka producers and consumers.
+    # This propagates trace context (traceID/spanID) through Kafka message headers,
+    # creating end-to-end distributed traces: HTTP → Kafka producer → consumer → reply.
+    listener:
+      observation-enabled: true
+    template:
+      observation-enabled: true
 
   # ---------------------------------------------------------------------------
   # Redis — distributed cache for RecentCustomerBuffer
@@ -132,6 +139,14 @@ server:
     # Never send the stack trace to the client — it reveals internal structure
     # and is a security risk (OWASP A05: Security Misconfiguration)
     include-stacktrace: never
+  tomcat:
+    # Limit request body to 1 MB — prevents payload-based DoS attacks
+    max-http-form-post-size: 1MB
+    max-swallow-size: 1MB
+  # Limit multipart uploads and overall request size
+  servlet:
+    session:
+      timeout: 30m
 
 
 # =============================================================================
@@ -141,26 +156,35 @@ management:
   endpoints:
     web:
       exposure:
-        # Expose: health (probes), prometheus (metrics scraping), metrics (raw),
-        #         info (build info), env (config), configprops (bean props)
-        # Do NOT expose: shutdown, threaddump, heapdump in production without auth
-        include: health,info,prometheus,metrics,env,configprops
+        # Expose only operational endpoints that are safe without auth.
+        # env and configprops are excluded — they leak DB credentials, JWT secrets,
+        # and full application configuration. Enable them only behind authentication.
+        # Do NOT expose: shutdown, threaddump, heapdump in production without auth.
+        include: health,info,prometheus,metrics,beans,loggers
+
+  info:
+    env:
+      enabled: true
 
   endpoint:
     health:
-      # Show DB details, custom indicators, etc. in the health response.
-      # In production, consider show-details: when-authorized to avoid data leakage.
-      show-details: always
+      # show-details: when_authorized — health details (DB host, error messages)
+      # are only visible to authenticated users. Unauthenticated callers see
+      # {"status":"UP"} without component details, preventing info disclosure.
+      show-details: when_authorized
       probes:
         # Activates /actuator/health/liveness and /actuator/health/readiness
         # Used as Kubernetes liveness/readiness probe endpoints
         enabled: true
       group:
         # readiness = application is ready to serve traffic
-        # Includes: Spring readiness state + JDBC connection pool + custom DB check
-        # If any of these are DOWN, Kubernetes removes the pod from load-balancer rotation
+        # Includes: DB, Kafka, Redis — if any are DOWN, the pod is removed from load-balancer
         readiness:
-          include: readinessState,db,dbReachability
+          include: readinessState,db,dbReachability,kafka,redis
+        # liveness = is the process alive and not stuck?
+        # Lightweight checks only — no external dependencies (avoid cascading restarts)
+        liveness:
+          include: livenessState,diskSpace
 
   # ---------------------------------------------------------------------------
   # OpenTelemetry — distributed tracing + log export
@@ -186,6 +210,7 @@ management:
       export:
         otlp:
           # Exports structured logs directly to Loki via the OpenTelemetry collector
+          enabled: true
           endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318}/v1/logs
           transport: http
 
@@ -201,6 +226,13 @@ management:
         # Enable histogram buckets for HTTP server requests — required for exemplars
         # to be attached to histogram data points by the Micrometer/OTel bridge.
         http.server.requests: true
+
+  # ---------------------------------------------------------------------------
+  # Zipkin — dual trace export (alongside OTLP → Tempo)
+  # Zipkin UI: http://localhost:9411
+  # ---------------------------------------------------------------------------
+  zipkin:
+    endpoint: ${ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}
 
 # =============================================================================
 # SpringDoc / OpenAPI / Swagger UI
@@ -230,6 +262,34 @@ logging:
     format:
       # Uncomment to emit logs as ECS JSON (Elastic Common Schema) — ideal for Loki/Kibana
       # console: ecs
+
+# =============================================================================
+# Application info — exposed via /actuator/info
+# =============================================================================
+info:
+  app:
+    name: ${spring.application.name}
+    description: "Customer management REST API with full observability, resilience patterns, and AI integration"
+    version: "1.0.0"
+  stack:
+    java: ${java.version}
+    spring-boot: "4.0.x"
+    database: "PostgreSQL 17"
+    messaging: "Apache Kafka (KRaft)"
+    cache: "Redis 7"
+    ai: "Ollama (llama3.2) via Spring AI"
+    auth: "JWT + Keycloak OAuth2"
+  features:
+    - "CRUD with pagination, search, sort, versioned API (v1/v2)"
+    - "Idempotency keys (LRU cache)"
+    - "Rate limiting (Bucket4j — 100 req/min)"
+    - "Circuit breaker + retry (Resilience4j)"
+    - "Kafka async events + request-reply enrich"
+    - "Redis ring buffer (recent customers)"
+    - "AI bio generation (Ollama / Spring AI)"
+    - "Distributed tracing (OpenTelemetry → Zipkin + Tempo)"
+    - "Structured logging (OTLP → Loki)"
+    - "Prometheus metrics + Grafana dashboards"
 
 # =============================================================================
 # Resilience4j — circuit breaker + retry for external HTTP calls
@@ -328,6 +388,13 @@ app:
   # Rate limiting — Bucket4j token-bucket algorithm, per client IP
   # Each IP gets its own bucket. When empty, requests receive HTTP 429 + Retry-After.
   # ---------------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
+  # API key — alternative M2M authentication via X-API-Key header
+  # Set via environment variable in production (secrets manager recommended).
+  # Leave empty to disable API key authentication.
+  # ---------------------------------------------------------------------------
+  api-key: ${API_KEY:demo-api-key-2026}
+
   rate-limit:
     capacity: 100         # max tokens in the bucket (burst size)
     refill-tokens: 100    # tokens added per refill cycle

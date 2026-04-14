@@ -8,9 +8,13 @@ import com.example.customerservice.customer.Customer;
 import com.example.customerservice.customer.CustomerRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 
@@ -36,18 +40,22 @@ public class CustomerService {
 
     private final CustomerRepository repository;
     private final RecentCustomerBuffer recentCustomerBuffer;
-    // Resilient publisher: retries with exponential backoff instead of plain fire-and-forget
     private final CustomerEventPublisher eventPublisher;
-    // Topic name injected from application.yml: app.kafka.topics.customer-created
+    private final SimpMessagingTemplate websocket;
+    private final SseEmitterRegistry sseEmitterRegistry;
     private final String customerCreatedTopic;
 
     public CustomerService(CustomerRepository repository,
                            RecentCustomerBuffer recentCustomerBuffer,
                            CustomerEventPublisher eventPublisher,
+                           SimpMessagingTemplate websocket,
+                           SseEmitterRegistry sseEmitterRegistry,
                            @Value("${app.kafka.topics.customer-created}") String customerCreatedTopic) {
         this.repository = repository;
         this.recentCustomerBuffer = recentCustomerBuffer;
         this.eventPublisher = eventPublisher;
+        this.websocket = websocket;
+        this.sseEmitterRegistry = sseEmitterRegistry;
         this.customerCreatedTopic = customerCreatedTopic;
     }
 
@@ -94,13 +102,98 @@ public class CustomerService {
         recentCustomerBuffer.add(dto);
 
         // Pattern 1 — publish event with resilient retry (exponential backoff + jitter)
-        // CustomerEventPublisher.publish blocks until broker ack, retrying on transient failures.
-        // The HTTP response still returns after this call — retries complete within the request.
         eventPublisher.publish(customerCreatedTopic,
                 String.valueOf(saved.getId()),
                 new CustomerCreatedEvent(saved.getId(), saved.getName(), saved.getEmail()));
 
+        // WebSocket — push real-time notification to all connected clients
+        websocket.convertAndSend("/topic/customers", dto);
+
+        // SSE — push to all active Server-Sent Events subscribers
+        sseEmitterRegistry.send("customer", dto);
+
         return dto;
+    }
+
+    /**
+     * Updates an existing customer's name and email.
+     * @throws NoSuchElementException if the customer does not exist
+     */
+    public CustomerDto update(Long id, CreateCustomerRequest request) {
+        Customer customer = repository.findById(id)
+                .orElseThrow(() -> new NoSuchElementException("Customer not found: " + id));
+        customer.setName(request.name());
+        customer.setEmail(request.email());
+        Customer saved = repository.save(customer);
+        return toDto(saved);
+    }
+
+    /**
+     * Deletes a customer by ID.
+     * @throws NoSuchElementException if the customer does not exist
+     */
+    public void delete(Long id) {
+        if (!repository.existsById(id)) {
+            throw new NoSuchElementException("Customer not found: " + id);
+        }
+        repository.deleteById(id);
+    }
+
+    /**
+     * Cursor-based pagination: returns customers whose ID is greater than {@code cursor}.
+     * Uses {@code WHERE id > :cursor ORDER BY id ASC LIMIT :size} — efficient index seek.
+     */
+    public CursorPage<CustomerDto> findAllCursor(Long cursor, int size) {
+        List<Customer> customers = repository.findByIdGreaterThanOrderByIdAsc(
+                cursor, PageRequest.of(0, size + 1));
+        boolean hasNext = customers.size() > size;
+        List<Customer> page = hasNext ? customers.subList(0, size) : customers;
+        Long nextCursor = hasNext ? page.getLast().getId() : null;
+        return new CursorPage<>(page.stream().map(this::toDto).toList(), nextCursor, hasNext, size);
+    }
+
+    /**
+     * Batch import: creates multiple customers in one request.
+     * Skips duplicates (by email) and collects errors without aborting the whole batch.
+     */
+    public BatchImportResult batchCreate(List<CreateCustomerRequest> requests) {
+        List<CustomerDto> created = new ArrayList<>();
+        List<BatchImportResult.BatchError> errors = new ArrayList<>();
+
+        for (int i = 0; i < requests.size(); i++) {
+            CreateCustomerRequest req = requests.get(i);
+            try {
+                if (repository.existsByEmail(req.email())) {
+                    errors.add(new BatchImportResult.BatchError(i, req.name(), "Email already exists"));
+                    continue;
+                }
+                created.add(create(req));
+            } catch (Exception e) {
+                errors.add(new BatchImportResult.BatchError(i, req.name(), e.getMessage()));
+            }
+        }
+
+        return new BatchImportResult(requests.size(), created.size(), errors.size(), created, errors);
+    }
+
+    /** Returns all customers as a flat list (for CSV export). */
+    public List<Customer> findAllForExport() {
+        return repository.findAll();
+    }
+
+    /** Search customers by name or email (case-insensitive). */
+    public Page<CustomerDto> search(String query, Pageable pageable) {
+        return repository.search(query, pageable).map(this::toDto);
+    }
+
+    /** Search customers by name or email — v2 shape with createdAt. */
+    public Page<CustomerDtoV2> searchV2(String query, Pageable pageable) {
+        return repository.search(query, pageable).map(this::toDtoV2);
+    }
+
+    /** Simulates a slow database query for observability demos. */
+    public void simulateSlowQuery(double seconds) {
+        repository.simulateSlowQuery(seconds);
     }
 
     /** Maps a JPA entity to a v1 DTO (id, name, email). */

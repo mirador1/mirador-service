@@ -131,10 +131,14 @@ public class KafkaConfig {
             ProducerFactory<String, Object> pf,
             ConcurrentMessageListenerContainer<String, CustomerEnrichReply> replyListenerContainer) {
         // Safe cast: the JacksonJsonSerializer handles any Object type at runtime
-        return new ReplyingKafkaTemplate<>(
+        var template = new ReplyingKafkaTemplate<>(
                 (ProducerFactory<String, CustomerEnrichRequest>) (ProducerFactory<?, ?>) pf,
                 replyListenerContainer
         );
+        // Enable Micrometer observation — generates Kafka producer spans with
+        // messaging.system=kafka and messaging.destination.name=customer.request
+        template.setObservationEnabled(true);
+        return template;
     }
 
     @Bean
@@ -143,6 +147,8 @@ public class KafkaConfig {
             @Value("${app.kafka.reply-group-id}") String replyGroupId) {
         var props = new ContainerProperties(replyTopic);
         props.setGroupId(replyGroupId);
+        // Enable observation on the reply consumer — generates Kafka consumer spans
+        props.setObservationEnabled(true);
         return new ConcurrentMessageListenerContainer<>(replyConsumerFactory(), props);
     }
 

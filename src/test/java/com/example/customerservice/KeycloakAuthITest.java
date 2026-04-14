@@ -157,11 +157,11 @@ class KeycloakAuthITest extends AbstractIntegrationTest {
                                 {"username":"admin","password":"admin"}
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.token", notNullValue()))
+                .andExpect(jsonPath("$.accessToken", notNullValue()))
                 .andReturn();
 
         String builtinToken = com.jayway.jsonpath.JsonPath.read(
-                loginResult.getResponse().getContentAsString(), "$.token");
+                loginResult.getResponse().getContentAsString(), "$.accessToken");
 
         mockMvc.perform(get("/customers")
                         .header("Authorization", "Bearer " + builtinToken))

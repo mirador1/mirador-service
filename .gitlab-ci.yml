@@ -1,5 +1,5 @@
 # ──────────────────────────────────────────────────────────────────────────────
-# Pipeline overview — two separate lanes:
+# Pipeline overview — three separate lanes:
 #
 # ┌─ REGULAR pipeline (every MR push + main branch push) — fast lane ─────────┐
 # │   lint          Dockerfile linting (hadolint)                              │
@@ -12,7 +12,18 @@
 # │   native        build-native — GraalVM AOT native image (5-15 min)        │
 # │                 skipped if Dockerfile.native, pom.xml, src/ unchanged      │
 # │                 Configure in GitLab: CI/CD > Schedules (e.g. 03:00 UTC)   │
-# │                 Can also be triggered manually from the GitLab UI           │
+# │                 Also available as ▶ manual button in every pipeline        │
+# └────────────────────────────────────────────────────────────────────────────┘
+#
+# ┌─ MANUAL / ON-DEMAND compatibility matrix ──────────────────────────────────┐
+# │   compat        4 manual jobs, each testing a different SB/Java combo:     │
+# │                   sb4-java21   Spring Boot 4 + Java 21  (-Dcompat)         │
+# │                   sb4-java17   Spring Boot 4 + Java 17  (-Dcompat -Djava17)│
+# │                   sb3-java21   Spring Boot 3 + Java 21  (-Dsb3)            │
+# │                   sb3-java17   Spring Boot 3 + Java 17  (-Dsb3 -Djava17)   │
+# │                 Trigger: click ▶ on the job in any pipeline,               │
+# │                 OR run via "Run pipeline" with variable RUN_COMPAT=true.   │
+# │                 SB4+Java25 (the default) is already covered by unit-test.  │
 # └────────────────────────────────────────────────────────────────────────────┘
 #
 # Goal: code-review feedback in < 10 minutes; GraalVM only when it matters.
@@ -33,6 +44,7 @@ stages:
   - test          # Unit tests + security scans — fast, no Docker
   - integration   # Testcontainers ITests + SpotBugs + coverage gate — needs Docker
   - package       # Produce deployable artifacts — JAR + Docker image
+  - compat        # On-demand compatibility matrix: SB3/SB4 × Java17/21/25
   - native        # GraalVM AOT native-image build (main branch + tags only)
 
 # ── shared defaults ────────────────────────────────────────────────────────────
@@ -126,6 +138,34 @@ dependency_scanning:
   stage: test
   rules:
     - when: never
+
+# OWASP Dependency-Check — SCA (Software Composition Analysis).
+# Runs the Maven plugin to scan all dependencies against the NVD for known CVEs.
+# Produces an HTML report; fails on CVSS ≥ 7 (High/Critical).
+# allow_failure: true initially — promotes awareness without blocking the pipeline.
+# Set NVD_API_KEY as a masked CI/CD variable to speed up the NVD database download.
+owasp-dependency-check:
+  stage: test
+  timeout: 2h   # NVD full download ~60 min on first run; cached runs are ~2 min
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - when: on_success
+  cache:
+    - key: "$CI_COMMIT_REF_SLUG"
+      paths:
+        - .m2/repository
+    - key: "owasp-nvd-db-v1"   # shared across all branches — survives after first download
+      paths:
+        - .owasp-data/
+  script:
+    - mvn $MAVEN_CLI_OPTS dependency-check:check
+  artifacts:
+    when: always
+    paths:
+      - target/dependency-check-report.html
+    expire_in: 1 week
+  allow_failure: true
 
 # Pull in the GitLab-managed SAST and Dependency Scanning job definitions.
 # Placed after the overrides so our `stage:` settings take effect.
@@ -230,6 +270,98 @@ docker-build:
     - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
     - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG"
 
+# ── stage: compat ─────────────────────────────────────────────────────────────
+#
+# On-demand compatibility matrix — unit + integration tests across SB/Java combos.
+# SB4 + Java 25 is the default and is already exercised by unit-test + integration-test.
+# These four jobs cover the remaining supported combinations from the README:
+#
+#   sb4-java21  → mvn verify -Dcompat             (SB4, ScopedValue→ThreadLocal)
+#   sb4-java17  → mvn verify -Dcompat -Djava17    (SB4, + switch pattern→if/else)
+#   sb3-java21  → mvn verify -Dsb3               (SB3, manual X-API-Version dispatch)
+#   sb3-java17  → mvn verify -Dsb3 -Djava17       (SB3 + Java 17 compat layers)
+#
+# Trigger options:
+#   • Click ▶ on the job in any pipeline (when: manual)
+#   • "Run pipeline" in GitLab CI/CD UI with variable RUN_COMPAT=true (runs all four)
+#
+# DinD service is included so Testcontainers integration tests run too.
+# allow_failure: true — compat failures don't block MR merge.
+
+.compat-job: &compat-job
+  stage: compat
+  services:
+    - name: docker:28-dind
+      alias: docker
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $RUN_COMPAT == "true"
+      when: on_success
+    - when: manual
+      allow_failure: true
+  allow_failure: true
+
+compat-sb4-java21:
+  <<: *compat-job
+  image: maven:3.9.14-eclipse-temurin-21-noble
+  variables:
+    MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+  script:
+    - mvn $MAVEN_CLI_OPTS verify -Dcompat
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - target/surefire-reports/*.xml
+        - target/failsafe-reports/*.xml
+    expire_in: 1 week
+
+compat-sb4-java17:
+  <<: *compat-job
+  image: maven:3.9.14-eclipse-temurin-17-noble
+  variables:
+    MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+  script:
+    - mvn $MAVEN_CLI_OPTS verify -Dcompat -Djava17
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - target/surefire-reports/*.xml
+        - target/failsafe-reports/*.xml
+    expire_in: 1 week
+
+compat-sb3-java21:
+  <<: *compat-job
+  image: maven:3.9.14-eclipse-temurin-21-noble
+  variables:
+    MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+  script:
+    - mvn $MAVEN_CLI_OPTS verify -Dsb3
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - target/surefire-reports/*.xml
+        - target/failsafe-reports/*.xml
+    expire_in: 1 week
+
+compat-sb3-java17:
+  <<: *compat-job
+  image: maven:3.9.14-eclipse-temurin-17-noble
+  variables:
+    MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+  script:
+    - mvn $MAVEN_CLI_OPTS verify -Dsb3 -Djava17
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - target/surefire-reports/*.xml
+        - target/failsafe-reports/*.xml
+    expire_in: 1 week
+
 # ── stage: native ─────────────────────────────────────────────────────────────
 
 # Build a GraalVM native image and push it to the GitLab Container Registry.
@@ -274,9 +406,11 @@ build-native:
         - Dockerfile.native
         - pom.xml
         - src/**/*
-    # Allow manual trigger (e.g. after a version bump without source changes)
-    - if: $CI_PIPELINE_SOURCE == "web" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-    - when: never
+    # Manual ▶ button in any pipeline (MR or branch) — click to trigger a native build.
+    # allow_failure: true so it never blocks a merge.
+    - when: manual
+      allow_failure: true
+  allow_failure: true   # never blocks a merge when triggered manually
   timeout: 30 minutes   # AOT compilation is CPU-intensive; default 1h is too loose
   script:
     - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"

@@ -94,7 +94,7 @@ class CustomerRestClientITest extends AbstractIntegrationTest {
                 .returnResult()
                 .getResponseBody();
 
-        String token = JsonPath.read(new String(loginBody), "$.token");
+        String token = JsonPath.read(new String(loginBody), "$.accessToken");
 
         authenticatedClient = restClient.mutate()
                 .defaultHeader("Authorization", "Bearer " + token)

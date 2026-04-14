@@ -27,7 +27,7 @@ class AuthITest extends AbstractIntegrationTest {
                                 {"username":"admin","password":"admin"}
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.token").isNotEmpty());
+                .andExpect(jsonPath("$.accessToken").isNotEmpty());
     }
 
     @Test
@@ -58,7 +58,7 @@ class AuthITest extends AbstractIntegrationTest {
                 .andReturn();
 
         String token = com.jayway.jsonpath.JsonPath.read(
-                loginResult.getResponse().getContentAsString(), "$.token");
+                loginResult.getResponse().getContentAsString(), "$.accessToken");
 
         mockMvc.perform(get("/customers")
                         .header("Authorization", "Bearer " + token))
