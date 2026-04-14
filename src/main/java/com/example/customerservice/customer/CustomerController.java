@@ -276,11 +276,11 @@ public class CustomerController {
             @ApiResponse(responseCode = "200", description = "Customer created"),
             @ApiResponse(responseCode = "400", description = "Validation failed (blank name, invalid email, etc.)", content = @Content),
             @ApiResponse(responseCode = "401", description = "Missing or invalid JWT token", content = @Content),
-            @ApiResponse(responseCode = "403", description = "Authenticated but lacks ROLE_ADMIN", content = @Content),
+            @ApiResponse(responseCode = "403", description = "Authenticated but lacks ROLE_USER or ROLE_ADMIN", content = @Content),
             @ApiResponse(responseCode = "409", description = "Email already in use", content = @Content),
             @ApiResponse(responseCode = "429", description = "Rate limit exceeded", content = @Content)
     })
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'USER')")   // ROLE_ADMIN or ROLE_USER — ROLE_READER is denied
     @PostMapping
     public CustomerDto create(@Valid @RequestBody CreateCustomerRequest request) {
         return Observation.createNotStarted("customer.create", observationRegistry)
@@ -316,15 +316,15 @@ public class CustomerController {
      *
      * <p>Returns HTTP 404 if the customer does not exist.
      */
-    @Operation(summary = "Update a customer", description = "Replaces the name and email of an existing customer. Requires ROLE_ADMIN.")
+    @Operation(summary = "Update a customer", description = "Replaces the name and email of an existing customer. Requires ROLE_USER or ROLE_ADMIN.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Customer updated"),
             @ApiResponse(responseCode = "400", description = "Validation failed", content = @Content),
             @ApiResponse(responseCode = "401", description = "Missing or invalid JWT token", content = @Content),
-            @ApiResponse(responseCode = "403", description = "Lacks ROLE_ADMIN", content = @Content),
+            @ApiResponse(responseCode = "403", description = "Lacks ROLE_USER or ROLE_ADMIN", content = @Content),
             @ApiResponse(responseCode = "404", description = "Customer not found", content = @Content)
     })
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'USER')")   // ROLE_ADMIN or ROLE_USER — ROLE_READER is denied
     @PutMapping("/{id}")
     public CustomerDto update(
             @Parameter(description = "Customer ID", example = "42") @PathVariable Long id,
@@ -581,13 +581,13 @@ public class CustomerController {
      */
     @Operation(summary = "Batch import customers",
             description = "Creates multiple customers in one request. Each entry is validated individually — a failure on one row does not abort the batch. "
-                    + "Returns a summary with `created`, `failed`, and `errors` lists. Requires ROLE_ADMIN.")
+                    + "Returns a summary with `created`, `failed`, and `errors` lists. Requires ROLE_USER or ROLE_ADMIN.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Batch result with per-row status"),
             @ApiResponse(responseCode = "401", description = "Missing or invalid JWT token", content = @Content),
-            @ApiResponse(responseCode = "403", description = "Lacks ROLE_ADMIN", content = @Content)
+            @ApiResponse(responseCode = "403", description = "Lacks ROLE_USER or ROLE_ADMIN", content = @Content)
     })
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'USER')")   // ROLE_ADMIN or ROLE_USER — ROLE_READER is denied
     @PostMapping("/batch")
     public BatchImportResult batchCreate(@Valid @RequestBody List<CreateCustomerRequest> requests) {
         return Observation.createNotStarted("customer.batch-import", observationRegistry)

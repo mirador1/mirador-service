@@ -22,7 +22,7 @@
     {
       "clientId": "monitoring-service",
       "enabled": true,
-      "description": "Confidential client — represents a caller with read-only access (ROLE_USER)",
+      "description": "Confidential client — represents a caller with read-only access (ROLE_READER)",
       "publicClient": false,
       "clientAuthenticatorType": "client-secret",
       "secret": "dev-secret-readonly",
@@ -37,12 +37,16 @@
   "roles": {
     "realm": [
       {
+        "name": "ROLE_READER",
+        "description": "Read-only access — GET endpoints only"
+      },
+      {
         "name": "ROLE_USER",
-        "description": "Read access — GET /customers"
+        "description": "Read + write access — GET, POST, PUT; cannot delete"
       },
       {
         "name": "ROLE_ADMIN",
-        "description": "Write access — POST /customers (includes ROLE_USER permissions)"
+        "description": "Full access — GET, POST, PUT, DELETE, admin endpoints"
       }
     ]
   },
@@ -58,7 +62,7 @@
       "username": "service-account-monitoring-service",
       "enabled": true,
       "serviceAccountClientId": "monitoring-service",
-      "realmRoles": ["ROLE_USER"]
+      "realmRoles": ["ROLE_READER"]
     }
   ]
 }

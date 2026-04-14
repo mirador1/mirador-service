@@ -24,8 +24,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *
  * <h3>What is tested</h3>
  * <ul>
- *   <li>A token issued to {@code monitoring-service} (ROLE_USER) grants read access (GET /customers)</li>
- *   <li>A token issued to {@code monitoring-service} (ROLE_USER) is denied write access (POST /customers)</li>
+ *   <li>A token issued to {@code monitoring-service} (ROLE_READER) grants read access (GET /customers)</li>
+ *   <li>A token issued to {@code monitoring-service} (ROLE_READER) is denied write access (POST /customers)</li>
  *   <li>A token issued to {@code api-gateway} (ROLE_ADMIN) grants write access (POST /customers)</li>
  *   <li>A built-in JWT (from POST /auth/login) still works alongside Keycloak tokens</li>
  * </ul>
@@ -90,7 +90,7 @@ class KeycloakAuthITest extends AbstractIntegrationTest {
     }
 
     // -------------------------------------------------------------------------
-    // ROLE_USER — read access
+    // ROLE_READER (monitoring-service) — read-only access
     // -------------------------------------------------------------------------
 
     @Test

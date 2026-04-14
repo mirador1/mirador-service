@@ -35,11 +35,13 @@ import java.util.List;
  * filters run (custom + resource server), the resource server filter clears a valid
  * SecurityContext set by the custom filter on built-in tokens.
  *
- * <h3>Role-based access</h3>
- * <ul>
- *   <li>{@code GET /customers} — requires {@code ROLE_USER} or {@code ROLE_ADMIN}</li>
- *   <li>{@code POST /customers} — requires {@code ROLE_ADMIN}</li>
- * </ul>
+ * <h3>Three-tier role model</h3>
+ * <table border="1">
+ *   <tr><th>Role</th><th>Credentials</th><th>Permissions</th></tr>
+ *   <tr><td>{@code ROLE_ADMIN}</td><td>admin / admin</td><td>Full access: read, write, delete, admin endpoints</td></tr>
+ *   <tr><td>{@code ROLE_USER}</td><td>user / user</td><td>Read + write: GET, POST, PUT — cannot delete</td></tr>
+ *   <tr><td>{@code ROLE_READER}</td><td>viewer / viewer</td><td>Read-only: GET endpoints only</td></tr>
+ * </table>
  *
  * <h3>Method-level security</h3>
  * <p>{@code @EnableMethodSecurity} activates {@code @PreAuthorize} on service/controller methods.
@@ -90,11 +92,15 @@ public class SecurityConfig {
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html").permitAll() // Swagger UI
                         .requestMatchers("/v3/api-docs/**").permitAll()               // OpenAPI spec
                         .requestMatchers("/ws/**").permitAll()                        // WebSocket STOMP endpoint
-                        .requestMatchers(HttpMethod.POST, "/customers").hasRole("ADMIN") // write access — ROLE_ADMIN only
-                        .requestMatchers(HttpMethod.POST, "/customers/batch").hasRole("ADMIN") // batch import — ROLE_ADMIN only
-                        .requestMatchers(HttpMethod.PUT, "/customers/**").hasRole("ADMIN")     // update — ROLE_ADMIN only
-                        .requestMatchers(HttpMethod.DELETE, "/customers/**").hasRole("ADMIN")   // delete — ROLE_ADMIN only
-                        .anyRequest().authenticated()                                 // all other endpoints require a valid JWT
+                        // Three-tier role model:
+                        //   ROLE_ADMIN  — full access (read, write, delete, admin endpoints)
+                        //   ROLE_USER   — read + write; cannot delete (POST/PUT allowed)
+                        //   ROLE_READER — read-only; falls through to anyRequest().authenticated()
+                        .requestMatchers(HttpMethod.DELETE, "/customers/**").hasRole("ADMIN")           // delete — ROLE_ADMIN only
+                        .requestMatchers(HttpMethod.POST, "/customers").hasAnyRole("ADMIN", "USER")     // create — ROLE_ADMIN or ROLE_USER
+                        .requestMatchers(HttpMethod.POST, "/customers/batch").hasAnyRole("ADMIN", "USER") // batch — ROLE_ADMIN or ROLE_USER
+                        .requestMatchers(HttpMethod.PUT, "/customers/**").hasAnyRole("ADMIN", "USER")   // update — ROLE_ADMIN or ROLE_USER
+                        .anyRequest().authenticated()                                 // GET and all other endpoints: any authenticated user (incl. ROLE_READER)
                 )
                 // Return 401 (not a redirect to a login page) for missing or invalid tokens.
                 // Spring Security's default entry point performs a redirect to /login — wrong for REST APIs.

@@ -34,8 +34,9 @@ import java.util.Map;
  * <p>The filter supports two token types:
  * <ol>
  *   <li><b>Built-in JWT</b> — issued by {@link JwtTokenProvider} via {@code POST /auth/login}.
- *       Validated by HMAC-SHA256 signature check. All authenticated users receive
- *       {@code ROLE_USER} and {@code ROLE_ADMIN} from the token subject.</li>
+ *       Validated by HMAC-SHA256 signature check. The role ({@code ROLE_ADMIN},
+ *       {@code ROLE_USER}, or {@code ROLE_READER}) is read directly from the {@code role}
+ *       claim embedded in the token at issuance.</li>
  *   <li><b>Keycloak JWT</b> — issued by Keycloak's Authorization Server.
  *       Validated by the {@link JwtDecoder} bean (JWKS signature check) when
  *       {@code KEYCLOAK_URL} is set. Roles are extracted from the
@@ -127,18 +128,23 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     /**
      * Populates the SecurityContext from a built-in JWT issued by {@link JwtTokenProvider}.
-     * All built-in users receive {@code ROLE_USER} and {@code ROLE_ADMIN}.
+     *
+     * <p>The role is read from the {@code role} claim embedded in the token at issuance
+     * (one of {@code ROLE_ADMIN}, {@code ROLE_USER}, {@code ROLE_READER}). This avoids
+     * the previous anti-pattern of granting every authenticated user both ROLE_USER and
+     * ROLE_ADMIN regardless of their actual privilege level.
      */
     private void authenticateBuiltin(String token) {
         String username = jwtTokenProvider.getUsername(token);
+        // Read the role directly from the token claim — do not re-derive from username
+        String role = jwtTokenProvider.getRole(token);
         UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
                 username,
                 null,
-                List.of(new SimpleGrantedAuthority("ROLE_USER"),
-                        new SimpleGrantedAuthority("ROLE_ADMIN"))
+                List.of(new SimpleGrantedAuthority(role))
         );
         SecurityContextHolder.getContext().setAuthentication(authentication);
-        log.debug("Authenticated user '{}' via built-in JWT", username);
+        log.debug("Authenticated user '{}' via built-in JWT with role {}", username, role);
     }
 
     /**

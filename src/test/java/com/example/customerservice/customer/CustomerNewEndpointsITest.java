@@ -175,9 +175,20 @@ class CustomerNewEndpointsITest extends AbstractIntegrationTest {
     }
 
     @Test
-    void batch_requiresAdminRole() throws Exception {
+    void batch_allowedForUser() throws Exception {
+        // ROLE_USER (read + write) can call batch — 200 with empty results
         mockMvc.perform(post("/customers/batch")
                         .with(user("user").roles("USER"))
+                        .contentType(APPLICATION_JSON)
+                        .content("[]"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void batch_forbiddenForReader() throws Exception {
+        // ROLE_READER (read-only) is denied write operations — 403 Forbidden
+        mockMvc.perform(post("/customers/batch")
+                        .with(user("viewer").roles("READER"))
                         .contentType(APPLICATION_JSON)
                         .content("[]"))
                 .andExpect(status().isForbidden());
@@ -225,13 +236,41 @@ class CustomerNewEndpointsITest extends AbstractIntegrationTest {
     }
 
     @Test
-    void update_requiresAdminRole() throws Exception {
-        mockMvc.perform(put("/customers/1")
+    void update_allowedForUser() throws Exception {
+        // ROLE_USER (read + write) can update customers — create first then update
+        createCustomer("ToUpdate", "toupdate@example.com");
+        Long id = customerRepository.findAll().getFirst().getId();
+
+        mockMvc.perform(put("/customers/{id}", id)
                         .with(user("user").roles("USER"))
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                {"name":"Updated By User","email":"updated-by-user@example.com"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Updated By User"));
+    }
+
+    @Test
+    void update_forbiddenForReader() throws Exception {
+        // ROLE_READER (read-only) is denied write operations — 403 Forbidden
+        mockMvc.perform(put("/customers/1")
+                        .with(user("viewer").roles("READER"))
                         .contentType(APPLICATION_JSON)
                         .content("""
                                 {"name":"X","email":"x@example.com"}
                                 """))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void delete_forbiddenForUser() throws Exception {
+        // ROLE_USER (read + write) cannot delete — only ROLE_ADMIN can
+        createCustomer("Protected", "protected@example.com");
+        Long id = customerRepository.findAll().getFirst().getId();
+
+        mockMvc.perform(delete("/customers/{id}", id)
+                        .with(user("user").roles("USER")))
                 .andExpect(status().isForbidden());
     }
 

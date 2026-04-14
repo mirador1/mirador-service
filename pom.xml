@@ -369,6 +369,31 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
+                <!--
+                  Spring Boot's parent POM injects JUnit 5 UID tracking via the deprecated
+                  'systemProperties' element in its 'default-test' execution. We override
+                  that execution here to:
+                    1. Replace 'systemProperties' with 'systemPropertyVariables' (non-deprecated)
+                    2. Keep the same tracking properties so JUnit behaviour is unchanged
+                  combine.self="override" on systemProperties clears the parent-injected list.
+                  See: https://issues.apache.org/jira/browse/SUREFIRE-2190
+                -->
+                <executions>
+                    <execution>
+                        <id>default-test</id>
+                        <configuration>
+                            <excludes>
+                                <exclude>**/*ITest.java</exclude>
+                            </excludes>
+                            <!-- Suppress deprecated systemProperties from parent POM -->
+                            <systemProperties combine.self="override"/>
+                            <systemPropertyVariables>
+                                <junit.platform.listeners.uid.tracking.enabled>true</junit.platform.listeners.uid.tracking.enabled>
+                                <junit.platform.listeners.uid.tracking.output.dir>${project.build.directory}/test-ids</junit.platform.listeners.uid.tracking.output.dir>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </execution>
+                </executions>
                 <configuration>
                     <excludes>
                         <exclude>**/*ITest.java</exclude>
@@ -390,6 +415,11 @@
                     <includes>
                         <include>**/*ITest.java</include>
                     </includes>
+                    <!-- Same fix as surefire above — override deprecated systemProperties from parent POM -->
+                    <systemPropertyVariables>
+                        <junit.platform.listeners.uid.tracking.enabled>true</junit.platform.listeners.uid.tracking.enabled>
+                        <junit.platform.listeners.uid.tracking.output.dir>${project.build.directory}/test-ids</junit.platform.listeners.uid.tracking.output.dir>
+                    </systemPropertyVariables>
                 </configuration>
                 <executions>
                     <execution>
@@ -602,6 +632,7 @@
         <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-surefire-report-plugin</artifactId>
+            <version>3.5.5</version>
             <executions>
                 <execution>
                     <id>test-report</id>

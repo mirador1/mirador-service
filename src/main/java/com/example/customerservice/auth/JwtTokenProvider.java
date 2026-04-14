@@ -62,14 +62,26 @@ public class JwtTokenProvider {
 
     /**
      * Generates a signed access token JWT for the given username (15 min validity).
-     * Includes a {@code role} claim so clients (Angular JWT inspector) can display
-     * the user's role without a separate API call.
+     *
+     * <p>Role assignment (three-tier model):
+     * <ul>
+     *   <li>{@code admin}  → {@code ROLE_ADMIN}  — full access (read, write, delete, admin endpoints)</li>
+     *   <li>{@code user}   → {@code ROLE_USER}   — read + write (GET, POST, PUT); cannot delete</li>
+     *   <li>any other user → {@code ROLE_READER} — read-only (GET endpoints only)</li>
+     * </ul>
+     *
+     * <p>The {@code role} claim is embedded in the token so clients (Angular JWT inspector,
+     * Swagger UI) can display the role without a separate API call.
      */
     public String generateToken(String username) {
         Date now = new Date();
         Date expiry = new Date(now.getTime() + ACCESS_TOKEN_EXPIRATION_MS);
-        // admin is the only user in this demo — everyone else gets ROLE_USER
-        String role = "admin".equals(username) ? "ROLE_ADMIN" : "ROLE_USER";
+        // Three-tier role assignment based on known usernames
+        String role = switch (username) {
+            case "admin"  -> "ROLE_ADMIN";   // full access
+            case "user"   -> "ROLE_USER";    // read + write, no delete
+            default       -> "ROLE_READER";  // read-only (e.g. viewer)
+        };
 
         return Jwts.builder()
                 .subject(username)
@@ -80,6 +92,22 @@ public class JwtTokenProvider {
                 .expiration(expiry)
                 .signWith(secretKey)
                 .compact();
+    }
+
+    /**
+     * Extracts the {@code role} claim from a previously validated access token.
+     * Returns {@code "ROLE_READER"} as a safe default if the claim is absent.
+     */
+    public String getRole(String token) {
+        Claims claims = Jwts.parser()
+                .verifyWith(secretKey)
+                .requireIssuer(ISSUER)
+                .requireAudience(AUDIENCE)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
+        // Default to ROLE_READER for tokens that pre-date this claim (safe fallback)
+        return claims.getOrDefault("role", "ROLE_READER").toString();
     }
 
     /**

@@ -41,11 +41,15 @@ import java.util.Map;
  *   <li>Input validation: {@code @NotBlank} + {@code @Size} on credentials</li>
  * </ul>
  *
- * <h3>Demo credentials</h3>
- * <p>{@code admin/admin} — hardcoded for demo purposes.
- * In production, replace with a {@code UserDetailsService} + BCrypt password hashing.
+ * <h3>Demo credentials (three-tier role model)</h3>
+ * <ul>
+ *   <li>{@code admin / admin} — {@code ROLE_ADMIN}: full access (read, write, delete)</li>
+ *   <li>{@code user / user}   — {@code ROLE_USER}: read + write (no delete)</li>
+ *   <li>{@code viewer / viewer} — {@code ROLE_READER}: read-only</li>
+ * </ul>
+ * <p>In production, replace with a {@code UserDetailsService} + BCrypt password hashing.
  */
-@Tag(name = "Authentication", description = "JWT login and token refresh. Demo credentials: admin / admin")
+@Tag(name = "Authentication", description = "JWT login and token refresh. Demo credentials: admin/admin | user/user | viewer/viewer")
 @SecurityRequirements   // these endpoints are permit-all, no JWT required
 @RestController
 @RequestMapping("/auth")
@@ -53,8 +57,16 @@ public class AuthController {
 
     private static final Logger log = LoggerFactory.getLogger(AuthController.class);
 
-    private static final String ADMIN_USERNAME = "admin";
-    private static final String ADMIN_PASSWORD = "admin";
+    /**
+     * Demo user store: username → password.
+     * Three accounts covering each role tier (ROLE_ADMIN / ROLE_USER / ROLE_READER).
+     * In production, replace with a database-backed UserDetailsService + BCrypt.
+     */
+    private static final Map<String, String> USERS = Map.of(
+            "admin",  "admin",   // ROLE_ADMIN — full access
+            "user",   "user",    // ROLE_USER  — read + write
+            "viewer", "viewer"   // ROLE_READER — read-only
+    );
 
     private final JwtTokenProvider jwtTokenProvider;
     private final LoginAttemptService loginAttemptService;
@@ -79,7 +91,9 @@ public class AuthController {
      */
     @Operation(summary = "Login — obtain access + refresh tokens",
             description = "Validates credentials and returns a signed JWT pair. "
-                    + "Demo credentials: `admin` / `admin`. "
+                    + "Demo accounts: `admin/admin` (ROLE_ADMIN — full access), "
+                    + "`user/user` (ROLE_USER — read + write), "
+                    + "`viewer/viewer` (ROLE_READER — read-only). "
                     + "Brute-force protection: after 5 failed attempts the IP is locked out for 15 minutes. "
                     + "Copy the `accessToken` and use it in the **Authorize** button above.")
     @ApiResponses({
@@ -99,7 +113,9 @@ public class AuthController {
                                  "retryAfterMinutes", LoginAttemptService.LOCKOUT_MINUTES));
         }
 
-        if (!ADMIN_USERNAME.equals(request.username()) || !ADMIN_PASSWORD.equals(request.password())) {
+        // Validate against the demo user store (username + password must both match)
+        String expectedPassword = USERS.get(request.username());
+        if (expectedPassword == null || !expectedPassword.equals(request.password())) {
             loginAttemptService.recordFailure(ip);
             int remaining = loginAttemptService.getRemainingAttempts(ip);
             log.warn("audit_login_failed ip={} username={} remaining_attempts={}", ip, request.username(), remaining);
