@@ -262,9 +262,14 @@ docker-build:
   script:
     - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
     - |
-      # Two tags: SHA (immutable, used for deploys) + ref slug (moving, e.g. "main")
-      # Note: inline comments after \ break shell line continuation — keep them here.
+      # Pull the previous main image to seed the build cache.
+      # --cache-from reuses unchanged layers (e.g. dependency download, JDK base),
+      # cutting build time from ~5 min to ~30 s when only src/ changed.
+      # `|| true` prevents failure on first run when no previous image exists.
+      docker pull "$CI_REGISTRY_IMAGE:$CI_DEFAULT_BRANCH" || true
+    - |
       docker build \
+        --cache-from "$CI_REGISTRY_IMAGE:$CI_DEFAULT_BRANCH" \
         --label "org.opencontainers.image.revision=$CI_COMMIT_SHA" \
         --label "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
         -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA" \

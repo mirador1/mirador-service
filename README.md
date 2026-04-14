@@ -5,10 +5,13 @@ The stack is built around that scenario — not around the technologies themselv
 
 ## Table of contents
 
-- [Architecture](#architecture)
+- [Architecture — dev (Docker Compose)](#architecture)
+- [Architecture — production (Kubernetes)](#architecture--production-kubernetes)
 - [Quick start](#quick-start)
 - [What this demonstrates](#what-this-demonstrates)
 - [Running locally](#running-locally)
+- [Local Kubernetes (kind)](#local-kubernetes-kind)
+- [CI/CD](#cicd)
 - [Screenshots](#screenshots)
 - [Detailed documentation](#detailed-documentation)
 
@@ -108,6 +111,62 @@ flowchart TB
     KUI -.-> KF
     RIS -.-> RD
 ```
+
+---
+
+## Architecture — production (Kubernetes)
+
+When deployed to a Kubernetes cluster (GKE Autopilot, EKS, AKS, k3s…), the two Docker
+images are served behind a single Nginx Ingress on one hostname — eliminating CORS entirely.
+
+```
+Internet
+    │  HTTPS  (TLS — cert-manager + Let's Encrypt)
+    ▼
+┌───────────────────────────────────────────────────────────┐
+│  Nginx Ingress Controller           namespace: ingress-nginx│
+│                                                           │
+│  /api/(.*)  →  strip /api  →  customer-service:8080      │
+│  /(.*)      →              →  customer-ui:80             │
+└────────────────┬──────────────────────┬───────────────────┘
+                 │                      │
+   namespace: app│                      │
+    ─────────────┼──────────────────────┼──────────────────
+                 ▼                      ▼
+    ┌─────────────────────┐   ┌──────────────────────┐
+    │  customer-service   │   │    customer-ui        │
+    │  Spring Boot 4      │   │  Angular 21 + Nginx   │
+    │  replicas: 2        │   │  replicas: 2          │
+    │  HPA: 1–5 @ 70% CPU │   │  RollingUpdate        │
+    └────────┬────────────┘   └──────────────────────┘
+             │
+   namespace: infra
+    ─────────┼─────────────────────────────────────────────
+             │
+    ┌────────┴─────────────────────────────────────┐
+    │  PostgreSQL 17          Redis 7               │
+    │  StatefulSet + PVC      Deployment            │
+    │  10 Gi storage          128 MB maxmemory      │
+    │  Flyway migrations      JWT blacklist +       │
+    │  (V1–V6)                ring buffer           │
+    │                                               │
+    │  Kafka 3.8 (KRaft)                            │
+    │  Deployment — no ZooKeeper                    │
+    │  Topics: created / request / reply            │
+    └───────────────────────────────────────────────┘
+
+Six deployment targets in CI (deploy stage):
+
+  ✓ GKE Autopilot    — auto on main push (default)
+  ▶ AWS EKS          — manual
+  ▶ Azure AKS        — manual
+  ▶ Google Cloud Run — manual (serverless, no cluster)
+  ▶ Fly.io           — manual (PaaS)
+  ▶ k3s / bare metal — manual (any kubectl-reachable cluster)
+```
+
+> **Same-origin design**: the browser always calls `https://app.example.com/api/…`.
+> Nginx strips `/api` and proxies to the backend. No CORS headers needed.
 
 ---
 
@@ -294,13 +353,71 @@ use standard Ant features supported by both Maven versions.
 
 ---
 
-## CI/CD
+## Local Kubernetes (kind)
 
-| Pipeline | Config | Trigger |
-|----------|--------|---------|
-| **GitLab CI** | `.gitlab-ci.yml` | MR push + main push |
-| **GitHub Actions** | `.github/workflows/ci.yml` | Push + PR |
+Spin up a full production-equivalent stack on your machine using
+[kind](https://kind.sigs.k8s.io/) (Kubernetes IN Docker). One command deploys
+Postgres, Redis, Kafka, the Spring Boot backend, and the Angular frontend.
 
 ```bash
-./run.sh verify   # local equivalent of the full CI pipeline
+# Prerequisites (once)
+brew install kind kubectl
+
+# Deploy everything (builds images, creates cluster, applies manifests)
+./scripts/deploy-local.sh
+
+# Re-deploy after a code change (skip the image rebuild)
+./scripts/deploy-local.sh --skip-build
+
+# Tear down
+./scripts/deploy-local.sh --delete
+```
+
+| Endpoint | URL |
+|----------|-----|
+| Frontend | http://localhost:8090 |
+| API | http://localhost:8090/api |
+| Swagger | http://localhost:8090/api/swagger-ui.html |
+| Health | http://localhost:8090/api/actuator/health |
+
+Credentials: `admin/admin` · `user/user` · `viewer/viewer`
+
+> **Note on macOS**: kind defaults to `kindest/node:v1.35.0` which has a kubelet
+> startup timeout on Docker Desktop. The config pins `v1.31.4` which is stable.
+
+---
+
+## CI/CD
+
+### GitLab pipeline stages
+
+| Stage | Jobs | Trigger |
+|-------|------|---------|
+| `lint` | Hadolint (Dockerfile) | Every push |
+| `test` | Unit tests, OWASP scan | Every push |
+| `integration` | Failsafe ITests (Testcontainers), SpotBugs, JaCoCo | Every push |
+| `package` | JAR + Docker image (`--cache-from` for fast rebuilds) | `main` + tags |
+| `compat` | 4 SB/Java combos | Manual / `RUN_COMPAT=true` |
+| `native` | GraalVM native image | Daily schedule |
+| `deploy` | 6 deployment targets (see above) | `main` |
+
+### Run CI jobs locally (free, no gitlab.com minutes)
+
+```bash
+# 1. Start the runner
+docker compose -f docker-compose.runner.yml up -d
+
+# 2. Register it (one-time — get the token from gitlab.com → Settings → CI/CD → Runners)
+./scripts/register-runner.sh glrt-xxxxxxxxxxxx
+```
+
+After registration every push triggers jobs on **your machine** instead of gitlab.com shared runners.
+
+| Pipeline | Config |
+|----------|--------|
+| GitLab CI | `.gitlab-ci.yml` |
+| GitHub Actions | `.github/workflows/ci.yml` |
+
+```bash
+./run.sh verify   # local equivalent of the full CI pipeline (no Docker needed)
 ```
