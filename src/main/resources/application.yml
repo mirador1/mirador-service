@@ -25,6 +25,13 @@ spring:
     url: ${DB_URL:jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:customer-service}}
     username: ${DB_USER:demo}
     password: ${DB_PASSWORD:demo}
+    hikari:
+      # 20 connections handles ~200 concurrent VTs (10x oversubscription rule for short OLTP queries)
+      maximum-pool-size: 20
+      minimum-idle: 5              # keep 5 connections warm during idle periods
+      connection-timeout: 20000    # 20s: max wait for a connection from the pool
+      idle-timeout: 600000         # 10min: close connections idle more than 10 minutes
+      max-lifetime: 1800000        # 30min: rotate connections to prevent stale/broken ones
 
   jpa:
     hibernate:
