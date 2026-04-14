@@ -5,11 +5,11 @@
 #
 # Services:
 #
-# LGTM all-in-one (Grafana + Loki + Tempo + Mimir)             [port 3001]
+# LGTM all-in-one (Grafana + Loki + Tempo + Mimir)             [port 3000]
 #   grafana/otel-lgtm bundles all LGTM components in a single container.
 #   Spring Boot sends traces and logs via OpenTelemetry OTLP (port 4318).
-#   Grafana: http://localhost:3001
-#   Explore traces: http://localhost:3001/explore (select Tempo datasource)
+#   Grafana: http://localhost:3000
+#   Explore traces: http://localhost:3000/explore (select Tempo datasource)
 #
 # Prometheus — scrapes /actuator/prometheus every 15s            [port 9091]
 #   Access: http://localhost:9091
@@ -30,7 +30,7 @@ services:
   # observability backend for development/demo use.
   #
   # Ports:
-  #   3001 (host) → 3000 (container): Grafana UI
+  #   3000 (host) → 3000 (container): Grafana UI
   #   4317: OTLP gRPC endpoint for traces and logs
   #   4318: OTLP HTTP endpoint for traces and logs (used by Spring Boot)
   #
@@ -41,7 +41,7 @@ services:
     image: grafana/otel-lgtm:0.22.1
     container_name: customerservice-lgtm
     ports:
-      - "3001:3000"    # Grafana UI
+      - "3000:3000"    # Grafana UI
       # Loki API (3100) is NOT exposed directly — routed through the CORS proxy instead.
       # The cors-proxy service listens on host port 3100 and forwards to lgtm:3100
       # with Access-Control-Allow-Origin headers for the Angular UI.
