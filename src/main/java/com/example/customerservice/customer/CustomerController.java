@@ -1,6 +1,8 @@
 package com.example.customerservice.customer;
 
 import com.example.customerservice.integration.TodoItem;
+import com.example.customerservice.observability.AuditEventDto;
+import com.example.customerservice.observability.AuditService;
 import com.example.customerservice.customer.CreateCustomerRequest;
 import com.example.customerservice.customer.CustomerDto;
 import com.example.customerservice.customer.CustomerDtoV2;
@@ -107,6 +109,7 @@ public class CustomerController {
     private final CustomerService service;
     private final RecentCustomerBuffer recentCustomerBuffer;
     private final AggregationService aggregationService;
+    private final AuditService auditService;  // used for GET /{id}/audit — customer-scoped audit trail
     // ObservationRegistry is the Micrometer entry point for creating spans/traces
     private final ObservationRegistry observationRegistry;
     // Typed template for Pattern 2 (synchronous Kafka request-reply)
@@ -136,6 +139,7 @@ public class CustomerController {
     public CustomerController(CustomerService service,
                               RecentCustomerBuffer recentCustomerBuffer,
                               AggregationService aggregationService,
+                              AuditService auditService,
                               ObservationRegistry observationRegistry,
                               ReplyingKafkaTemplate<String, CustomerEnrichRequest, CustomerEnrichReply> replyingKafkaTemplate,
                               TodoService todoService,
@@ -147,6 +151,7 @@ public class CustomerController {
         this.service = service;
         this.recentCustomerBuffer = recentCustomerBuffer;
         this.aggregationService = aggregationService;
+        this.auditService = auditService;
         this.observationRegistry = observationRegistry;
         this.replyingKafkaTemplate = replyingKafkaTemplate;
         this.todoService = todoService;
@@ -373,6 +378,21 @@ public class CustomerController {
     public void delete(
             @Parameter(description = "Customer ID", example = "42") @PathVariable Long id) {
         service.delete(id);
+    }
+
+    /**
+     * Returns the audit trail for a specific customer (create, update, delete, patch events).
+     *
+     * <p>Useful for compliance and debugging — shows who performed which action and when.
+     * Requires authentication (any role can view audit trail for any customer).
+     */
+    @Operation(summary = "Get audit trail for a customer",
+            description = "Returns all audit events (CREATE, UPDATE, DELETE, PATCH) for the given customer ID.")
+    @ApiResponse(responseCode = "200", description = "List of audit events")
+    @GetMapping("/{id}/audit")
+    public List<AuditEventDto> getAudit(
+            @Parameter(description = "Customer ID") @PathVariable Long id) {
+        return auditService.findByCustomerId(id);
     }
 
     /**

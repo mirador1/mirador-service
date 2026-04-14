@@ -103,6 +103,23 @@ public class AuditService {
         return new AuditPage(content, page, size, totalElements, totalPages);
     }
 
+    /**
+     * Returns all audit events related to a specific customer ID.
+     * Searches the {@code detail} column for entries containing {@code "id=<customerId>"}.
+     *
+     * @param customerId the customer whose audit trail is requested
+     * @return list of matching events ordered by creation time descending (newest first)
+     */
+    public List<AuditEventDto> findByCustomerId(Long customerId) {
+        // Pattern matches "id=42 name=..." and "id=42" at end of detail string
+        String pattern = "id=" + customerId + " %";
+        return jdbc.query(
+                "SELECT id, user_name, action, detail, ip_address, created_at " +
+                "FROM audit_event WHERE detail LIKE ? ORDER BY created_at DESC LIMIT 100",
+                (rs, rowNum) -> mapRow(rs),
+                pattern);
+    }
+
     private AuditEventDto mapRow(ResultSet rs) throws SQLException {
         return new AuditEventDto(
                 rs.getLong("id"),
