@@ -216,6 +216,29 @@ integration-test:
 
 # ── stage: package ────────────────────────────────────────────────────────────
 
+# Generate the Maven site with quality reports (Surefire, JaCoCo, SpotBugs, Javadoc).
+# Depends on the integration-test job so JaCoCo + SpotBugs data files are available.
+# The site is stored as a pipeline artifact and is browsable in the GitLab UI.
+#
+# Note: PMD, Checkstyle, and JXR are intentionally excluded from the site — they crash on
+# Java 25 pattern-guard syntax (`case X e when ...`). Their results remain at /actuator/quality.
+maven-site:
+  stage: package
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - when: on_success
+  needs:
+    - job: unit-test
+    - job: integration-test
+  script:
+    - mvn $MAVEN_CLI_OPTS site    # -DskipTests is not needed — site:site does not run tests
+  artifacts:
+    name: "maven-site-${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - target/site/    # Full Maven site HTML — browsable via "Browse" in pipeline artifacts
+    expire_in: 2 weeks
+
 # Build the executable Spring Boot fat JAR.
 # Tests are skipped here — they already passed in the test + integration stages.
 # The JAR is stored as a pipeline artifact for deployment or manual download.

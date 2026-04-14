@@ -7,25 +7,26 @@
   Format: - [ ] pending   - [~] in progress   - [x] done (keep last 10 done for context)
 -->
 
-## In Progress
-
-- [~] Maven site enrichment — `<reporting>` section added (JaCoCo, SpotBugs, PMD, Checkstyle, Javadoc, JXR, Surefire). Site generation pending; need to verify output and add `mvn site` to CI pipeline.
-
 ## Pending
 
-- [ ] Add `mvn site` step to GitLab CI pipeline (was requested: "fait la modif dans la CI") — generate site on every `verify` run and publish as job artifact
-- [ ] Verify Maven site renders correctly: JaCoCo coverage, SpotBugs, PMD, Checkstyle, Javadoc, Surefire reports all visible
-- [ ] Add `site:stage` to CI to publish the site HTML as a browsable GitLab Pages artifact
+- [ ] Add `mvn site` step to GitLab CI pipeline — generate and publish the Maven site HTML
+  as a browsable GitLab Pages or job artifact (user said: "fait la modif dans la CI")
+  Command: `./mvnw site` (already works — generates Surefire, JaCoCo, SpotBugs, Javadoc)
+  Note: PMD, Checkstyle and JXR omitted from site — they crash on Java 25 syntax;
+  their results are still available at /actuator/quality
 
 ## Recently Completed
 
+- [x] Maven site: <reporting> section added and working — generates Surefire, Failsafe,
+      JaCoCo, SpotBugs, Javadoc reports; PMD/Checkstyle/JXR excluded (Java 25 incompatible)
+- [x] TASKS.md + CLAUDE.md rule created in both repos for persistent task tracking
 - [x] CVE upgrades: Tomcat 11.0.21, springdoc 3.0.3 / swagger-ui 5.32.2, protobuf 4.34.1
 - [x] OWASP report embedded in JAR + `report` profile for on-demand full scan
 - [x] Quality report tabbed UI (Overview / Tests / Static Analysis / Security / Mutation / Build)
-- [x] Health aggregation fixed: Keycloak + Ollama → UNKNOWN when not running (no longer breaks overall UP)
+- [x] Health aggregation fixed: Keycloak + Ollama → UNKNOWN when not running
 - [x] IdempotencyFilter bug fix: now caches 2xx (not just 200), stores status+body pair
-- [x] JwtTokenProvider: `catch (JwtException | IllegalArgumentException e)` — replaced broad `catch (Exception e)`
-- [x] Zero `any` types across all Angular components (typed interfaces for all external API shapes)
+- [x] JwtTokenProvider: catch (JwtException | IllegalArgumentException e)
+- [x] Zero `any` types across all Angular components
 - [x] CustomerStatsSchedulerTest + QualityReportEndpoint constructor injection
 - [x] TodoServiceTest (4 cases), BioServiceTest (3 cases), IdempotencyFilterTest 201-case
 - [x] CLAUDE.md created in both repos with full workflow rules
