@@ -80,7 +80,7 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       # Auto-create topics: KafkaAdmin also creates them at app startup (KafkaConfig)
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-      # ACL authorizer — required to manage ACLs via Kafka UI / AKHQ
+      # ACL authorizer — required to manage ACLs via Kafka UI
       # StandardAuthorizer is the KRaft-native authorizer (replaces AclAuthorizer)
       # allow.everyone.if.no.acl.found=true preserves open access (no ACL = allow all)
       KAFKA_AUTHORIZER_CLASS_NAME: org.apache.kafka.metadata.authorizer.StandardAuthorizer
@@ -309,29 +309,6 @@ services:
       REDIS_HOSTS: "local:redis:6379"
     ports:
       - "8082:8081"
-    restart: unless-stopped
-
-  # ---------------------------------------------------------------------------
-  # AKHQ — full-featured Kafka UI (alternative to Kafka UI)
-  # Provides live tail of messages, consumer group management, schema registry
-  # support, topic creation/deletion, and ACL management.
-  # Access: http://localhost:8083
-  # ---------------------------------------------------------------------------
-  akhq:
-    image: tchiotludo/akhq:0.27.0
-    container_name: akhq
-    depends_on:
-      kafka:
-        condition: service_healthy
-    environment:
-      AKHQ_CONFIGURATION: |
-        akhq:
-          connections:
-            local:
-              properties:
-                bootstrap.servers: "kafka:29092"
-    ports:
-      - "8083:8080"
     restart: unless-stopped
 
 volumes:

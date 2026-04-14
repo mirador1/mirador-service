@@ -302,7 +302,6 @@ Pre-push hook (via lefthook) runs unit tests automatically before every `git pus
 | pgAdmin | 5050 | http://localhost:5050 (no login) |
 | pgweb | 8081 | http://localhost:8081 |
 | Kafka UI | 9080 | http://localhost:9080 |
-| AKHQ | 8083 | http://localhost:8083 |
 | Redis Commander | 8082 | http://localhost:8082 |
 | RedisInsight | 5540 | http://localhost:5540 |
 
