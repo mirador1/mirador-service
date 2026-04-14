@@ -1,4 +1,13 @@
 spring:
+  # Enforce Caffeine as the cache backend in tests too.
+  # Without this, Spring Boot may choose RedisCacheManager when both Redis and Caffeine
+  # are on the classpath, causing SerializationException on Optional<CustomerDto> cache values.
+  cache:
+    type: caffeine
+    caffeine:
+      spec: maximumSize=1000,expireAfterWrite=5m
+    cache-names: customer-by-id
+
   mvc:
     apiversion:
       use:

@@ -82,6 +82,18 @@ spring:
       port: ${REDIS_PORT:6379}
 
   # ---------------------------------------------------------------------------
+  # Caffeine — application-level entity cache (L1, in-process)
+  # Caches individual customer lookups (findById) for 5 minutes / 1000 entries max.
+  # No overlap with Redis: Redis handles the recent-customers ring buffer (10 items),
+  # while Caffeine caches arbitrary entity fetches transparently via @Cacheable.
+  # ---------------------------------------------------------------------------
+  cache:
+    type: caffeine
+    caffeine:
+      spec: maximumSize=1000,expireAfterWrite=5m
+    cache-names: customer-by-id
+
+  # ---------------------------------------------------------------------------
   # Spring AI — Ollama (local LLM)                              [Spring AI 1.0]
   # Ollama must be running locally (or via Docker) before calling /customers/{id}/bio.
   # Model is downloaded automatically by the docker-compose entrypoint.

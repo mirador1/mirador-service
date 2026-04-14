@@ -9,6 +9,8 @@ import com.example.customerservice.customer.CustomerRepository;
 import com.example.customerservice.observability.AuditService;
 import io.micrometer.observation.annotation.Observed;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -89,7 +91,15 @@ public class CustomerService {
         return repository.findAllProjectedBy(pageable);
     }
 
-    /** Returns the customer with the given ID, or {@code Optional.empty()} if not found. */
+    /**
+     * Returns the customer with the given ID, or {@code Optional.empty()} if not found.
+     *
+     * <p>Results are cached in the Caffeine {@code customer-by-id} cache (max 1000 entries,
+     * 5-minute TTL). The cache is evicted on {@link #update} and {@link #delete} to ensure
+     * reads reflect the latest data. {@link #create} does not populate the cache because the
+     * entity ID is only known after save.
+     */
+    @Cacheable(value = "customer-by-id", key = "#id")  // cache hit skips DB round-trip
     public Optional<CustomerDto> findById(Long id) {
         return repository.findById(id).map(this::toDto);
     }
@@ -133,8 +143,12 @@ public class CustomerService {
 
     /**
      * Updates an existing customer's name and email.
+     * The Caffeine cache entry for this customer is evicted so the next {@link #findById}
+     * fetches fresh data from the database.
+     *
      * @throws NoSuchElementException if the customer does not exist
      */
+    @CacheEvict(value = "customer-by-id", key = "#id")  // evict stale cache entry on write
     public CustomerDto update(Long id, CreateCustomerRequest request) {
         Customer customer = repository.findById(id)
                 .orElseThrow(() -> new NoSuchElementException("Customer not found: " + id));
@@ -151,8 +165,12 @@ public class CustomerService {
 
     /**
      * Deletes a customer by ID.
+     * The Caffeine cache entry for this customer is evicted so subsequent reads do not return
+     * stale data for a deleted entity.
+     *
      * @throws NoSuchElementException if the customer does not exist
      */
+    @CacheEvict(value = "customer-by-id", key = "#id")  // evict stale cache entry on delete
     public void delete(Long id) {
         if (!repository.existsById(id)) {
             throw new NoSuchElementException("Customer not found: " + id);

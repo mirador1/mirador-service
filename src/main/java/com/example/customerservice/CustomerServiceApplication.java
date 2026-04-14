@@ -3,6 +3,7 @@ package com.example.customerservice;
 import net.javacrumbs.shedlock.spring.annotation.EnableSchedulerLock;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
@@ -29,6 +30,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * (Actuator, JPA, Kafka, OpenTelemetry, etc.) and wires them automatically.
  */
 @SpringBootApplication
+@EnableCaching                                             // activates @Cacheable / @CacheEvict / @CachePut on beans
 @EnableScheduling                                          // activates @Scheduled method processing
 @EnableSchedulerLock(defaultLockAtMostFor = "PT10M")      // [ShedLock] distributed lock for schedulers
 public class CustomerServiceApplication {

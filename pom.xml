@@ -254,6 +254,17 @@
             <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
 
+        <!-- Application-level entity cache — individual customer lookups (findById).
+             No overlap with Redis which handles the recent-customers ring buffer only. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-cache</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
+
         <!-- Bucket4j — in-memory token-bucket rate limiting (100 req/min per IP) -->
         <dependency>
             <groupId>com.bucket4j</groupId>

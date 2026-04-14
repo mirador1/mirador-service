@@ -344,6 +344,25 @@ class CustomerNewEndpointsITest extends AbstractIntegrationTest {
                 .andExpect(header().string("Link", containsString("rel=\"last\"")));
     }
 
+    // ─── Cache eviction ─────────────────────────────────────────────────────
+
+    @Test
+    void update_evictsCacheOnWrite() throws Exception {
+        createCustomer("Cached", "cached@example.com");
+        Long id = customerRepository.findAll().getFirst().getId();
+        // Read to populate the Caffeine cache
+        mockMvc.perform(get("/customers/{id}", id).with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.name").value("Cached"));
+        // Update — should evict the cache entry for this customer
+        mockMvc.perform(put("/customers/{id}", id).with(user("admin").roles("ADMIN"))
+                .contentType(APPLICATION_JSON)
+                .content("{\"name\":\"Updated\",\"email\":\"updated@example.com\"}"))
+                .andExpect(status().isOk());
+        // Read again — must reflect the updated name (not the cached stale value)
+        mockMvc.perform(get("/customers/{id}", id).with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.name").value("Updated"));
+    }
+
     // ─── API key auth ───────────────────────────────────────────────────────
 
     @Test
