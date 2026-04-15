@@ -64,11 +64,12 @@
         <tomcat.version>11.0.21</tomcat.version>
 
         <!--
-          SonarQube analysis configuration.
-          sonar.host.url  — local Docker container (change for CI: http://sonarqube:9000)
-          sonar.token     — generate in SonarQube UI: My Account → Security → Generate Token
-                            Set SONAR_TOKEN env var or pass -Dsonar.token=<token> on CLI.
-          sonar.coverage.jacoco.xmlReportPaths — SonarQube accepts multiple comma-separated
+          SonarCloud analysis configuration (sonarcloud.io — free for public repos).
+          sonar.host.url  — overridden at runtime to https://sonarcloud.io (CI sets it via -D flag)
+          sonar.organization — required by SonarCloud; must match the org created at sonarcloud.io
+          sonar.token     — generate at https://sonarcloud.io/account/security
+                            Set SONAR_TOKEN in GitLab group CI/CD variables.
+          sonar.coverage.jacoco.xmlReportPaths — SonarCloud accepts multiple comma-separated
             JaCoCo XML files and merges them. Providing both unit and IT reports gives Sonar
             the full picture: CustomerController, AuthController, messaging classes etc. are
             only exercised by @SpringBootTest ITests, not by pure unit tests.
@@ -77,8 +78,9 @@
           sonar.coverage.exclusions — mirrors JaCoCo <excludes>: Spring wiring, compat shims,
             bootstrap classes and observability infrastructure that have no business logic.
         -->
-        <sonar.host.url>http://localhost:9000</sonar.host.url>
-        <sonar.projectKey>mirador</sonar.projectKey>
+        <sonar.host.url>https://sonarcloud.io</sonar.host.url>
+        <sonar.organization>mirador1</sonar.organization>
+        <sonar.projectKey>mirador1_mirador-service</sonar.projectKey>
         <sonar.projectName>Mirador Service</sonar.projectName>
         <sonar.coverage.jacoco.xmlReportPaths>
             ${project.reporting.outputDirectory}/jacoco/jacoco.xml,

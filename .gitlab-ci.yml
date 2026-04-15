@@ -228,15 +228,19 @@ integration-test:
 
 # ── stage: sonar ──────────────────────────────────────────────────────────────
 
-# SonarQube static analysis — runs after integration so JaCoCo XML is available.
-# Requires SONAR_TOKEN CI/CD variable (Project → Settings → CI/CD → Variables).
-# SONAR_HOST_URL defaults to the Docker local instance; override for a remote server.
-# Community Edition: analyzes the default branch only (no branch comparison or PR decoration).
-# The job is allow_failure:true so a SonarQube outage doesn't block deployments.
+# SonarCloud static analysis — runs after integration so JaCoCo XML is available.
+# SonarCloud is the SaaS version of SonarQube — free for public repos on sonarcloud.io.
+#
+# Prerequisites (one-time setup):
+#   1. Create org at https://sonarcloud.io (log in with GitLab → import mirador1 group)
+#   2. Import the mirador-service project
+#   3. Generate a token at https://sonarcloud.io/account/security
+#   4. Set SONAR_TOKEN in GitLab group CI/CD variables (mirador1 → Settings → CI/CD)
+#
+# sonar.organization and sonar.projectKey are set in pom.xml sonar properties.
 sonar-analysis:
   stage: sonar
   variables:
-    SONAR_HOST_URL: "${SONAR_HOST_URL:-http://localhost:9000}"
     # Allow JVM to self-attach (Mockito byte-buddy requirement on Java 25)
     MAVEN_OPTS: >-
       -XX:+EnableDynamicAgentLoading
@@ -248,7 +252,7 @@ sonar-analysis:
     # messaging…) is included — without ITs only ~32% coverage would be reported instead of ~80%.
     - mvn $MAVEN_CLI_OPTS sonar:sonar
       -Dsonar.token="$SONAR_TOKEN"
-      -Dsonar.host.url="$SONAR_HOST_URL"
+      -Dsonar.host.url="https://sonarcloud.io"
   needs:
     - job: integration-test
       artifacts: true   # inherit target/ artifacts (JaCoCo XML, bytecode) from integration stage
@@ -259,7 +263,7 @@ sonar-analysis:
     # Skip entirely if SONAR_TOKEN is not configured (avoids failing new environments)
     - if: '$SONAR_TOKEN == null || $SONAR_TOKEN == ""'
       when: never
-  allow_failure: true   # SonarQube outage must not block deployments
+  allow_failure: true   # SonarCloud outage must not block deployments
   cache:
     key: "$CI_COMMIT_REF_SLUG"
     paths:
