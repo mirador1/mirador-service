@@ -72,11 +72,17 @@ variables:
   # Docker-in-dind: plain TCP, no TLS (safe because it is only reachable within the GitLab runner network)
   DOCKER_HOST: "tcp://docker:2375"
   DOCKER_TLS_CERTDIR: ""    # empty string disables TLS certificate generation in the DinD service
-  # Testcontainers: disable Ryuk resource reaper.
-  # In DinD environments the Ryuk container binds to 172.17.0.1 (Docker bridge) which is not
-  # reachable from the runner, causing a 30-second timeout and test failure. Resource cleanup
-  # is handled automatically when the job exits and the DinD daemon stops anyway.
+  # Testcontainers in Docker-in-Docker (DinD) requires two overrides:
+  #
+  # 1. TESTCONTAINERS_RYUK_DISABLED — Ryuk container binds to 172.17.0.1 (Docker bridge) which
+  #    is not reachable from the runner. Cleanup happens naturally when the DinD daemon stops.
+  #
+  # 2. TESTCONTAINERS_HOST_OVERRIDE — Testcontainers auto-detects the Docker host IP as
+  #    172.17.0.1 (Docker bridge inside DinD), which is unreachable from the CI job container.
+  #    Override to "docker" so port bindings are resolved via the DinD service alias,
+  #    which is reachable from the CI job. E.g.: Kafka at docker:52020 instead of 172.17.0.1:52020.
   TESTCONTAINERS_RYUK_DISABLED: "true"
+  TESTCONTAINERS_HOST_OVERRIDE: "docker"
 
 cache:
   # One cache bucket per branch — avoids cross-branch dependency pollution
