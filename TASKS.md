@@ -65,11 +65,14 @@ These were proposed at 2026-04-14T20:56 in response to "d'autres idées pour ép
 
 ## Pending — Kubernetes & Cloud deployment (session 2026-04-15)
 
-- [ ] **deploy:gke first run** — MR !33 pipeline must pass (terraform-plan + sonar now
-      allow_failure). Once merged to main, deploy:gke triggers automatically and pushes
-      the app to GKE at http://mirador1.duckdns.org.
-- [ ] **HTTPS + cert-manager** — install cert-manager on GKE cluster (already in k8s/ingress.yaml),
-      configure letsencrypt-prod ClusterIssuer. Currently HTTP only.
+- [~] **deploy:gke first run** — MR !33 auto-merge set, pipeline #241 running. Once merged
+      to main, deploy:gke triggers automatically and pushes the app to GKE.
+      URL: https://mirador1.duckdns.org (HTTPS via cert-manager Let's Encrypt).
+- [ ] **HTTPS + cert-manager** — cert-manager installed + GKE Autopilot RBAC patches applied
+      (k8s/gke/cert-manager-gke-fix.yaml + --leader-election-namespace=cert-manager).
+      letsencrypt-prod ClusterIssuer READY=True. TLS cert will be issued on first deploy:gke
+      run (Ingress annotation cert-manager.io/cluster-issuer already set in k8s/ingress.yaml).
+      CORS_ALLOWED_ORIGINS must switch from http:// to https:// after cert is issued.
 - [ ] **Cloud SQL Auth Proxy** — enable Workload Identity and add sidecar to backend Deployment
       (see k8s/gke/cloud-sql-proxy.yaml); set DB_HOST=127.0.0.1 in ConfigMap.
       Currently: postgres.yaml used (in-cluster PostgreSQL pod — not production-grade).
