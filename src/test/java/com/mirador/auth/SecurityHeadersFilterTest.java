@@ -66,20 +66,6 @@ class SecurityHeadersFilterTest {
     }
 
     @Test
-    void mavenSitePath_hasNoXFrameOptions_and_frameAncestorsCsp() throws Exception {
-        var req = new MockHttpServletRequest("GET", "/maven-site/index.html");
-        var res = new MockHttpServletResponse();
-
-        filter.doFilter(req, res, chain);
-
-        // Maven site is intentionally embedded as an iframe in the Angular quality page.
-        assertThat(res.getHeader("X-Frame-Options")).isNull();
-        assertThat(res.getHeader("Content-Security-Policy"))
-                .contains("frame-ancestors")
-                .contains("'self'");
-    }
-
-    @Test
     void swaggerPath_hasXFrameOptions_butNoCSP() throws Exception {
         var req = new MockHttpServletRequest("GET", "/swagger-ui/index.html");
         var res = new MockHttpServletResponse();

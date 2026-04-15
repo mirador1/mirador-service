@@ -76,7 +76,7 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 // Disable Spring Security's default security headers (X-Frame-Options, CSP, etc.)
                 // because SecurityHeadersFilter manages all OWASP headers with path-aware logic:
-                // - /maven-site/** and /reports/** get frame-ancestors CSP (embeddable in Angular iframe)
+                // - /reports/** gets frame-ancestors CSP (embeddable in Angular iframe)
                 // - all other paths get X-Frame-Options: DENY + frame-ancestors 'none'
                 // Spring Security's blanket DENY would override those per-path decisions.
                 .headers(AbstractHttpConfigurer::disable)
@@ -97,7 +97,6 @@ public class SecurityConfig {
                                 "/actuator/prometheus", "/actuator/metrics/**",
                                 "/actuator/loggers", "/actuator/loggers/**").permitAll()
                         .requestMatchers("/actuator/**").hasRole("ADMIN")             // heapdump, env, beans, etc. require ADMIN
-                        .requestMatchers("/maven-site/**").permitAll()  // Maven site static HTML — no auth needed
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html").permitAll() // Swagger UI
                         .requestMatchers("/v3/api-docs/**").permitAll()               // OpenAPI spec
                         .requestMatchers("/ws/**").permitAll()                        // WebSocket STOMP endpoint

@@ -48,12 +48,13 @@ public class SecurityHeadersFilter extends OncePerRequestFilter {
 
         String path = request.getRequestURI();
 
-        // /maven-site/** and /reports/** are intentionally embedded as iframes in the Angular
-        // frontend (quality page). X-Frame-Options must be absent (not DENY) so browsers allow
-        // cross-origin framing from http://localhost:4200 in dev and from the same origin in prod.
+        // /reports/** is intentionally embedded as an iframe in the Angular frontend (quality page).
+        // X-Frame-Options must be absent (not DENY) so browsers allow cross-origin framing from
+        // http://localhost:4200 in dev and from the same origin in prod.
         // frame-ancestors is set to 'self' so only same-origin pages can embed them — tighter
         // than a wildcard but still allows the Angular app (same host, different port in dev).
-        boolean isEmbeddable = path.startsWith("/maven-site/") || path.startsWith("/reports/");
+        // Note: the Maven site is served by a dedicated nginx container (port 8083), not by this app.
+        boolean isEmbeddable = path.startsWith("/reports/");
 
         if (!isEmbeddable) {
             response.setHeader("X-Frame-Options", "DENY");
