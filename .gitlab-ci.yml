@@ -202,8 +202,19 @@ include:
 
 # ── stage: integration ────────────────────────────────────────────────────────
 
-# Integration tests (*ITest) via maven-failsafe, with Docker-in-dind for Testcontainers.
-# Testcontainers spins up real PostgreSQL 17 and Kafka containers during the test run.
+# Integration tests (*ITest) via maven-failsafe, with Docker socket binding for Testcontainers.
+# Testcontainers spins up real PostgreSQL 17, Redis, Kafka and Keycloak containers.
+#
+# WHY NOT DinD: DinD creates an isolated Docker daemon inside a service container. When
+# Testcontainers starts inner containers, their ports are bound on the DinD container's
+# bridge network (172.17.0.1), which is NOT accessible from the CI job container. Setting
+# TESTCONTAINERS_HOST_OVERRIDE=docker doesn't help because the DinD container only publishes
+# port 2375 (the Docker API) — inner container ports are trapped inside DinD.
+#
+# FIX: Use Docker socket binding instead. GitLab SaaS shared runners mount the host Docker
+# socket at /var/run/docker.sock. Testcontainers uses this socket to start containers on
+# the HOST Docker daemon. Container ports are on the Docker bridge (172.17.0.1), which IS
+# accessible from the CI job container (it's the container's default gateway).
 #
 # At the verify phase Maven also runs:
 #   • SpotBugs:check   — static bytecode analysis (fails on Medium+ findings)
@@ -217,12 +228,17 @@ integration-test:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
     - when: on_success
+  variables:
+    # Override the global DOCKER_HOST (set for DinD) to empty so Testcontainers falls
+    # back to the Unix socket at /var/run/docker.sock (available on GitLab SaaS runners).
+    # With socket binding, inner containers are on the host Docker daemon and their ports
+    # are accessible via 172.17.0.1 (Docker bridge gateway, the container's default route).
+    DOCKER_HOST: ""
+    TESTCONTAINERS_HOST_OVERRIDE: ""
   needs:
     - job: unit-test
       artifacts: true   # downloads target/jacoco.exec so JaCoCo:merge can combine unit + IT coverage
-  services:
-    - name: docker:28-dind    # Docker daemon required by Testcontainers (unlike GitHub-hosted runners, GitLab runners don't include Docker)
-      alias: docker            # alias used by DOCKER_HOST=tcp://docker:2375 above
+  # No DinD service — Testcontainers uses /var/run/docker.sock directly
   script:
     # -Dsurefire.skip=true: unit tests already validated in the previous stage,
     # no need to repeat them. Failsafe, SpotBugs and JaCoCo still run at verify.
