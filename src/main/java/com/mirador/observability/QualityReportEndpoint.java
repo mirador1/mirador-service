@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -19,11 +20,14 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -43,18 +47,41 @@ import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 
 /**
- * Actuator endpoint exposing a Maven quality report at /actuator/quality.
+ * Actuator endpoint exposing a Maven quality report at {@code /actuator/quality}.
  *
- * <p>Aggregates data from:
+ * <p>Aggregates build and quality data into a single JSON response consumed by the
+ * Angular quality dashboard ({@code /quality} route in mirador-ui). Each section is
+ * built by a private {@code build*Section()} method and returns either the data map
+ * (with {@code available: true}) or {@code {available: false, reason: "..."}} when the
+ * data source is absent or unreachable — so the UI can show a helpful message instead
+ * of an error.
+ *
+ * <h3>Sections returned by {@link #report()}</h3>
  * <ul>
- *   <li>Surefire XML reports (META-INF/build-reports/surefire/TEST-*.xml)</li>
- *   <li>JaCoCo CSV report (META-INF/build-reports/jacoco.csv)</li>
- *   <li>SpotBugs XML report (META-INF/build-reports/spotbugsXml.xml)</li>
- *   <li>Build info properties (META-INF/build-info.properties)</li>
+ *   <li><b>tests</b>        — Surefire XML: test counts, failures, slowest tests</li>
+ *   <li><b>coverage</b>     — JaCoCo CSV: line/branch coverage %, per-class table</li>
+ *   <li><b>bugs</b>         — SpotBugs XML: bug count, rank, category breakdown</li>
+ *   <li><b>pmd</b>          — PMD XML: rule violation count and category breakdown</li>
+ *   <li><b>checkstyle</b>   — Checkstyle XML: violation count by severity</li>
+ *   <li><b>owasp</b>        — OWASP Dependency-Check JSON: CVE list with CVSS scores</li>
+ *   <li><b>pitest</b>       — PIT XML: mutation test strength %</li>
+ *   <li><b>sonar</b>        — SonarCloud REST API: bug/vuln/smell counts, ratings A–E</li>
+ *   <li><b>build</b>        — build-info.properties: version, artifact, build time</li>
+ *   <li><b>git</b>          — git log: last commit, branch, remote URL</li>
+ *   <li><b>api</b>          — Spring MVC handler mappings: endpoint count, method breakdown</li>
+ *   <li><b>dependencies</b> — pom.xml: direct dependency count, Spring Boot version</li>
+ *   <li><b>metrics</b>      — Micrometer registry: metric count, key gauges/counters</li>
+ *   <li><b>runtime</b>      — JVM: uptime, active profiles, heap, JAR layer list</li>
+ *   <li><b>pipeline</b>     — GitLab API: last 10 CI/CD pipeline runs with status/duration</li>
+ *   <li><b>branches</b>     — git for-each-ref: 20 most recently active remote branches</li>
  * </ul>
  *
- * <p>Falls back to target/ directory paths when classpath resources are not present
- * (useful during local development before packaging).
+ * <p>Data sources in priority order:
+ * <ol>
+ *   <li>Classpath resources (META-INF/build-reports/...) — present when the JAR was built with
+ *       {@code mvn verify} and the reports were copied by the Antrun plugin.</li>
+ *   <li>Filesystem fallback (target/...) — used during local development without packaging.</li>
+ * </ol>
  */
 @Component
 @Endpoint(id = "quality")
@@ -67,6 +94,9 @@ public class QualityReportEndpoint {
     private static final String CP_JACOCO = "META-INF/build-reports/jacoco.csv";
     private static final String CP_POM = "META-INF/build-reports/pom.xml";
     private static final String CP_SPOTBUGS = "META-INF/build-reports/spotbugsXml.xml";
+    private static final String CP_DEP_TREE     = "META-INF/build-reports/dependency-tree.txt";
+    private static final String CP_DEP_ANALYZE  = "META-INF/build-reports/dependency-analysis.txt";
+    private static final String CP_THIRD_PARTY  = "META-INF/build-reports/THIRD-PARTY.txt";
     private static final String CP_SUREFIRE_PATTERN = "META-INF/build-reports/surefire/TEST-*.xml";
     private static final String CP_BUILD_INFO = "META-INF/build-info.properties";
     private static final String CP_PMD        = "META-INF/build-reports/pmd.xml";
@@ -135,13 +165,27 @@ public class QualityReportEndpoint {
 
     private final RequestMappingHandlerMapping requestMappingHandlerMapping;
     private final Environment environment;
+    private final StartupTimeTracker startupTimeTracker;
 
     public QualityReportEndpoint(RequestMappingHandlerMapping requestMappingHandlerMapping,
-                                 Environment environment) {
+                                 Environment environment,
+                                 StartupTimeTracker startupTimeTracker) {
         this.requestMappingHandlerMapping = requestMappingHandlerMapping;
         this.environment = environment;
+        this.startupTimeTracker = startupTimeTracker;
     }
 
+    /**
+     * Builds and returns the full quality report as a JSON map.
+     *
+     * <p>Each section is computed independently; a failure in one section (e.g., SonarCloud
+     * unreachable, GitLab token missing) returns {@code {available: false}} for that section
+     * only — it does not prevent the other sections from being included.
+     *
+     * @apiNote The response is not cached. Each {@code GET /actuator/quality} call re-reads
+     *          all data sources. For the Angular dashboard this is acceptable because the
+     *          endpoint is only polled on explicit navigation to the quality page.
+     */
     @ReadOperation
     public Map<String, Object> report() {
         Map<String, Object> result = new LinkedHashMap<>();
@@ -158,6 +202,7 @@ public class QualityReportEndpoint {
         result.put("git", buildGitSection());
         result.put("api", buildApiSection());
         result.put(K_DEPENDENCIES, buildDependenciesSection());
+        result.put("licenses", buildLicensesSection());
         result.put("metrics", buildMetricsSection());
         result.put("runtime", buildRuntimeSection());
         result.put("pipeline", buildPipelineSection());
@@ -581,14 +626,45 @@ public class QualityReportEndpoint {
     // Dependencies section
     // -------------------------------------------------------------------------
 
+    /**
+     * Parses direct dependencies from pom.xml, resolves {@code ${property}} version references,
+     * then checks Maven Central for each pinned dependency to see if a newer version is available.
+     *
+     * <p>Freshness checks use the Maven Central Solr API in parallel (up to 20 deps, 8 s total timeout).
+     * Managed dependencies ({@code version = "(managed)"}) are skipped — their version is controlled
+     * by the Spring Boot BOM and upgrading them is a Spring Boot upgrade, not a direct dep change.
+     *
+     * @apiNote The total wall-clock time is bounded by 8 seconds regardless of how many deps are checked.
+     *          Partial results are returned if some futures time out; those entries will lack
+     *          {@code latestVersion} and {@code outdated} fields.
+     */
+    @SuppressWarnings("java:S3776") // multi-step parsing + parallel HTTP: complexity is inherent
     private Map<String, Object> buildDependenciesSection() {
         InputStream is = loadResource(CP_POM, "pom.xml");
         if (is == null) return Map.of(K_AVAILABLE, false);
 
+        // Step 1: Parse pom.xml — extract properties + direct dependencies
+        Map<String, String> pomProperties = new HashMap<>();
         List<Map<String,Object>> deps = new ArrayList<>();
         try (is) {
             DocumentBuilder db = secureNamespaceAwareDocumentBuilder();
             Document doc = db.parse(is);
+
+            // Collect <properties> values to resolve ${property} version references
+            NodeList propNodes = doc.getElementsByTagName("properties");
+            for (int i = 0; i < propNodes.getLength(); i++) {
+                Element propsEl = (Element) propNodes.item(i);
+                // Only the top-level <properties> block (parent is <project>)
+                if (!"project".equals(propsEl.getParentNode().getNodeName())) continue;
+                NodeList children = propsEl.getChildNodes();
+                for (int j = 0; j < children.getLength(); j++) {
+                    if (children.item(j) instanceof Element propEl) {
+                        pomProperties.put(propEl.getTagName(), propEl.getTextContent().trim());
+                    }
+                }
+            }
+
+            // Collect direct dependencies
             NodeList depNodes = doc.getElementsByTagName("dependency");
             for (int i = 0; i < depNodes.getLength(); i++) {
                 Element dep = (Element) depNodes.item(i);
@@ -596,24 +672,181 @@ public class QualityReportEndpoint {
                 if (!"dependencies".equals(dep.getParentNode().getNodeName())) continue;
                 String groupId    = getTagText(dep, "groupId");
                 String artifactId = getTagText(dep, "artifactId");
-                String version    = getTagText(dep, "version");
+                String rawVersion = getTagText(dep, "version");
                 String scope      = getTagText(dep, "scope");
                 if (scope.isEmpty()) scope = "compile";
+
+                // Resolve ${property} references
+                String resolvedVersion = rawVersion;
+                if (rawVersion.startsWith("${") && rawVersion.endsWith("}")) {
+                    String key = rawVersion.substring(2, rawVersion.length() - 1);
+                    resolvedVersion = pomProperties.getOrDefault(key, rawVersion);
+                }
+
                 Map<String,Object> d = new LinkedHashMap<>();
                 d.put("groupId", groupId);
                 d.put("artifactId", artifactId);
-                d.put(K_VERSION, version.isEmpty() ? "(managed)" : version);
+                d.put(K_VERSION, resolvedVersion.isEmpty() ? "(managed)" : resolvedVersion);
                 d.put("scope", scope);
                 deps.add(d);
             }
         } catch (Exception e) {
             return Map.of(K_AVAILABLE, false, K_ERROR, e.getMessage());
         }
+
+        // Step 2: Check Maven Central for each dep with a resolvable version (skip managed + properties)
+        // Limit to first 25 deps to keep total latency manageable
+        HttpClient freshClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(3))
+                .build();
+
+        // Use a single shared log instance to avoid Sonar S1312 per-call
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
+        for (Map<String,Object> dep : deps) {
+            String version = (String) dep.get(K_VERSION);
+            // Skip: managed by BOM, unresolved property reference, or non-release versions
+            if (version == null || version.startsWith("(") || version.startsWith("${")) continue;
+            if (futures.size() >= 25) break; // cap to avoid excessive parallel calls
+
+            String g = (String) dep.get("groupId");
+            String a = (String) dep.get("artifactId");
+            String url = "https://search.maven.org/solrsearch/select?rows=1&wt=json&q="
+                    + URLEncoder.encode("g:" + g + " AND a:" + a, StandardCharsets.UTF_8);
+
+            CompletableFuture<Void> f = CompletableFuture.runAsync(() -> {
+                try {
+                    HttpRequest req = HttpRequest.newBuilder()
+                            .uri(URI.create(url))
+                            .timeout(Duration.ofSeconds(5))
+                            .header("Accept", "application/json")
+                            .GET()
+                            .build();
+                    HttpResponse<String> resp = freshClient.send(req, HttpResponse.BodyHandlers.ofString());
+                    if (resp.statusCode() == 200) {
+                        JsonNode root = MAPPER.readTree(resp.body());
+                        JsonNode docs = root.path("response").path("docs");
+                        if (docs.isArray() && !docs.isEmpty()) {
+                            String latest = docs.get(0).path("latestVersion").asText("");
+                            if (!latest.isBlank()) {
+                                dep.put("latestVersion", latest);
+                                // Outdated = current version differs from latest AND current is not a SNAPSHOT/milestone
+                                boolean outdated = !latest.equals(version)
+                                        && !version.contains("SNAPSHOT")
+                                        && !version.contains("-M")
+                                        && !version.contains("-RC")
+                                        && !version.contains("-alpha")
+                                        && !version.contains("-beta");
+                                dep.put("outdated", outdated);
+                            }
+                        }
+                    }
+                } catch (Exception ignored) {
+                    // Freshness check failure is non-critical — dep appears without latestVersion field
+                }
+            });
+            futures.add(f);
+        }
+
+        // Wait up to 8 s for all freshness checks (partial results if some time out)
+        try {
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
+                    .get(8, TimeUnit.SECONDS);
+        } catch (Exception ignored) {
+            // Timeout or interruption — return whatever was collected so far
+        }
+
+        long outdatedCount = deps.stream()
+                .filter(d -> Boolean.TRUE.equals(d.get("outdated")))
+                .count();
+
+        // Step 3: Dependency tree (generated by maven-dependency-plugin:tree at build time)
+        Map<String,Object> treeResult = null;
+        InputStream treeIs = loadResource(CP_DEP_TREE, "target/dependency-tree.txt");
+        if (treeIs != null) {
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(treeIs, StandardCharsets.UTF_8))) {
+                List<String> lines = new ArrayList<>();
+                String line;
+                while ((line = br.readLine()) != null) {
+                    lines.add(line);
+                }
+                String rawTree = String.join("\n", lines);
+                treeResult = new LinkedHashMap<>();
+                treeResult.put(K_AVAILABLE, true);
+                treeResult.put("tree", rawTree);
+                // Transitive lines start with space/pipe/backslash/plus in the text tree format
+                long transitiveCount = lines.stream()
+                        .filter(l -> l.startsWith("   ") || l.startsWith("\\-") || l.startsWith("+"))
+                        .count();
+                treeResult.put("totalTransitive", transitiveCount);
+            } catch (IOException ignored) {
+                // tree unavailable — report without it
+            }
+        }
+
+        // Step 4: Dependency analysis (maven-dependency-plugin:analyze-only) — used-undeclared
+        //         and unused-declared dependencies. Helps identify dependency hygiene issues.
+        Map<String,Object> analyzeResult = parseDependencyAnalysis();
+
         Map<String,Object> r = new LinkedHashMap<>();
         r.put(K_AVAILABLE, true);
         r.put(K_TOTAL, deps.size());
+        r.put("outdatedCount", outdatedCount);
+        if (treeResult != null) r.put("dependencyTree", treeResult);
+        if (analyzeResult != null) r.put("dependencyAnalysis", analyzeResult);
         r.put(K_DEPENDENCIES, deps);
         return r;
+    }
+
+    /**
+     * Parses the output of {@code maven-dependency-plugin:analyze-only} packaged at
+     * {@value #CP_DEP_ANALYZE}. The file contains two sections separated by blank lines:
+     * <pre>
+     *   Used undeclared dependencies found:
+     *      group:artifact:jar:version:scope
+     *   Unused declared dependencies found:
+     *      group:artifact:jar:version:scope
+     * </pre>
+     *
+     * @return map with {@code usedUndeclared} and {@code unusedDeclared} lists, or {@code null}
+     *         if the file is absent (not generated yet / build skipped analyze phase).
+     */
+    @SuppressWarnings("java:S3776") // cognitive complexity — linear parsing, not reducible
+    private Map<String,Object> parseDependencyAnalysis() {
+        InputStream is = loadResource(CP_DEP_ANALYZE, "target/dependency-analysis.txt");
+        if (is == null) return null;
+
+        List<String> usedUndeclared = new ArrayList<>();
+        List<String> unusedDeclared = new ArrayList<>();
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
+            String section = null;
+            String line;
+            while ((line = br.readLine()) != null) {
+                String trimmed = line.trim();
+                if (trimmed.isEmpty()) continue;
+                if (trimmed.contains("Used undeclared")) {
+                    section = "used";
+                } else if (trimmed.contains("Unused declared")) {
+                    section = "unused";
+                } else if (trimmed.startsWith("com.") || trimmed.startsWith("org.") ||
+                           trimmed.startsWith("io.") || trimmed.startsWith("net.") ||
+                           trimmed.startsWith("jakarta.") || trimmed.startsWith("javax.") ||
+                           trimmed.startsWith("ch.") || trimmed.startsWith("de.")) {
+                    // Dependency coordinate line: group:artifact:jar:version:scope
+                    if ("used".equals(section))   usedUndeclared.add(trimmed);
+                    if ("unused".equals(section)) unusedDeclared.add(trimmed);
+                }
+            }
+        } catch (IOException e) {
+            return null;
+        }
+
+        Map<String,Object> result = new LinkedHashMap<>();
+        result.put(K_AVAILABLE, true);
+        result.put("usedUndeclared", usedUndeclared);
+        result.put("usedUndeclaredCount", usedUndeclared.size());
+        result.put("unusedDeclared", unusedDeclared);
+        result.put("unusedDeclaredCount", unusedDeclared.size());
+        return result;
     }
 
     private String getTagText(Element parent, String tag) {
@@ -625,15 +858,120 @@ public class QualityReportEndpoint {
     }
 
     // -------------------------------------------------------------------------
+    // Licenses section
+    // -------------------------------------------------------------------------
+
+    /**
+     * Parses the THIRD-PARTY.txt generated by {@code license-maven-plugin:add-third-party}
+     * (packaged at {@value #CP_THIRD_PARTY}). Each line has the format:
+     * <pre>
+     *   (License Name) groupId:artifactId:version - Display Name
+     * </pre>
+     *
+     * <p>Returns a map with:
+     * <ul>
+     *   <li>{@code total} — total number of third-party dependencies listed</li>
+     *   <li>{@code licenses} — list of {@code {license, count, incompatible}} grouped by license name</li>
+     *   <li>{@code incompatibleCount} — count of GPL/AGPL/CDDL/EPL dependencies</li>
+     *   <li>{@code dependencies} — flat list of each dep with {@code group}, {@code artifact},
+     *       {@code version}, {@code license}, {@code incompatible}</li>
+     * </ul>
+     *
+     * <p>Incompatible licenses for commercial projects: GPL, AGPL, LGPL, CDDL, EPL.
+     */
+    @SuppressWarnings("java:S3776") // cognitive complexity — linear parsing, not reducible
+    private Map<String,Object> buildLicensesSection() {
+        InputStream is = loadResource(CP_THIRD_PARTY, "target/THIRD-PARTY.txt");
+        if (is == null) return Map.of(K_AVAILABLE, false);
+
+        // Licenses that may be incompatible with proprietary/commercial use
+        List<String> restrictedKeywords = List.of("GPL", "AGPL", "LGPL", "CDDL", "EPL");
+
+        List<Map<String,Object>> deps = new ArrayList<>();
+        Map<String,Integer> licenseCounts = new LinkedHashMap<>();
+        int incompatibleCount = 0;
+
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                String trimmed = line.trim();
+                // THIRD-PARTY.txt lines: "(License Name) group:artifact:version - Name"
+                if (!trimmed.startsWith("(")) continue;
+                int closeIdx = trimmed.indexOf(')');
+                if (closeIdx < 0) continue;
+                String licenseStr = trimmed.substring(1, closeIdx).trim();
+                String rest = trimmed.substring(closeIdx + 1).trim();
+                // rest: "group:artifact:version - Display Name" or just coords
+                String coords = rest.contains(" - ") ? rest.substring(0, rest.indexOf(" - ")).trim() : rest.trim();
+                String[] parts = coords.split(":");
+                if (parts.length < 2) continue;
+                String groupId    = parts[0];
+                String artifactId = parts[1];
+                String version    = parts.length >= 3 ? parts[2] : "";
+                boolean incompatible = restrictedKeywords.stream()
+                        .anyMatch(kw -> licenseStr.toUpperCase().contains(kw));
+                if (incompatible) incompatibleCount++;
+                licenseCounts.merge(licenseStr, 1, Integer::sum);
+                Map<String,Object> dep = new LinkedHashMap<>();
+                dep.put("group", groupId);
+                dep.put("artifact", artifactId);
+                dep.put("version", version);
+                dep.put("license", licenseStr);
+                dep.put("incompatible", incompatible);
+                deps.add(dep);
+            }
+        } catch (IOException e) {
+            return Map.of(K_AVAILABLE, false, K_ERROR, e.getMessage());
+        }
+
+        // Build license summary sorted by count desc
+        List<Map<String,Object>> licenseSummary = licenseCounts.entrySet().stream()
+                .sorted(Map.Entry.<String,Integer>comparingByValue().reversed())
+                .map(e -> {
+                    boolean restricted = restrictedKeywords.stream()
+                            .anyMatch(kw -> e.getKey().toUpperCase().contains(kw));
+                    return Map.<String,Object>of("license", e.getKey(), "count", e.getValue(), "incompatible", restricted);
+                })
+                .toList();
+
+        Map<String,Object> result = new LinkedHashMap<>();
+        result.put(K_AVAILABLE, true);
+        result.put(K_TOTAL, deps.size());
+        result.put("incompatibleCount", incompatibleCount);
+        result.put("licenses", licenseSummary);
+        result.put("dependencies", deps);
+        return result;
+    }
+
+    // -------------------------------------------------------------------------
     // Metrics section
     // -------------------------------------------------------------------------
 
+    /**
+     * Reads JaCoCo CSV to compute:
+     * <ul>
+     *   <li>Totals: class/method/line/complexity counts across the whole project.</li>
+     *   <li>Package-level summary sorted by complexity (for the Metrics tab).</li>
+     *   <li>Top-10 most complex classes (for the Cyclomatic Complexity view).</li>
+     *   <li>Classes with 0% method coverage (potential gap in test suite).</li>
+     * </ul>
+     *
+     * <p>JaCoCo CSV columns (0-indexed):
+     * GROUP(0), PACKAGE(1), CLASS(2), INSTRUCTION_MISSED(3), INSTRUCTION_COVERED(4),
+     * BRANCH_MISSED(5), BRANCH_COVERED(6), LINE_MISSED(7), LINE_COVERED(8),
+     * COMPLEXITY_MISSED(9), COMPLEXITY_COVERED(10), METHOD_MISSED(11), METHOD_COVERED(12)
+     */
     private Map<String, Object> buildMetricsSection() {
         InputStream is = loadResource(CP_JACOCO, DEV_JACOCO);
         if (is == null) return Map.of(K_AVAILABLE, false);
 
         long totalClasses = 0, totalMethods = 0, totalLines = 0, totalComplexity = 0;
         Map<String, long[]> pkgMetrics = new LinkedHashMap<>(); // [classes, lines, methods, complexity]
+        // Class-level complexity for top-10 view
+        List<long[]> classComplexity = new ArrayList<>(); // [complexity, classNameIndex]
+        List<String> classNames = new ArrayList<>();
+        // Classes with 0% method coverage (METHOD_COVERED=0, METHOD_TOTAL>0)
+        List<String> untestedClasses = new ArrayList<>();
 
         try (BufferedReader br = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
             String line;
@@ -658,11 +996,26 @@ public class QualityReportEndpoint {
                     totalLines      += lines;
                     totalComplexity += complexity;
 
+                    // Package-level aggregate
                     String pkg = cols[1].trim();
                     String[] parts = pkg.replace('/', '.').split("\\.");
                     String pkgShort = parts[parts.length - 1];
                     pkgMetrics.merge(pkgShort, new long[]{1, lines, methods, complexity},
                         (a, b) -> new long[]{a[0]+1, a[1]+b[1], a[2]+b[2], a[3]+b[3]});
+
+                    // Class-level record for top-10 most complex
+                    String rawClass = cols[2].trim();
+                    // Use simple class name (strip inner class separators like $1, $Companion)
+                    String simpleClass = rawClass.contains("$") ? rawClass.substring(0, rawClass.indexOf('$')) : rawClass;
+                    int idx = classNames.size();
+                    classNames.add(simpleClass);
+                    classComplexity.add(new long[]{complexity, idx});
+
+                    // Untested class: has methods but 0 are covered (METHOD_MISSED > 0 && METHOD_COVERED == 0)
+                    // Excludes pure data classes (records, DTOs) with 0 methods — they have no logic to test.
+                    if (methodCovered == 0 && methods > 0) {
+                        untestedClasses.add(simpleClass);
+                    }
                 } catch (NumberFormatException ignored) {}
             }
         } catch (IOException e) {
@@ -683,6 +1036,20 @@ public class QualityReportEndpoint {
         // Sort by complexity desc (top 10 most complex packages first)
         packages.sort((a, b) -> Long.compare((Long)b.get(K_COMPLEXITY), (Long)a.get(K_COMPLEXITY)));
 
+        // Top-10 most complex classes — sorted desc, deduplicated by simple name (inner classes merged)
+        classComplexity.sort((a, b) -> Long.compare(b[0], a[0]));
+        List<Map<String,Object>> topComplex = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.LinkedHashSet<>();
+        for (long[] cc : classComplexity) {
+            String name = classNames.get((int) cc[1]);
+            if (seen.add(name) && topComplex.size() < 10) {
+                Map<String,Object> entry = new LinkedHashMap<>();
+                entry.put("class", name);
+                entry.put(K_COMPLEXITY, cc[0]);
+                topComplex.add(entry);
+            }
+        }
+
         Map<String,Object> r = new LinkedHashMap<>();
         r.put(K_AVAILABLE, true);
         r.put("totalClasses", totalClasses);
@@ -690,6 +1057,12 @@ public class QualityReportEndpoint {
         r.put("totalLines", totalLines);
         r.put("totalComplexity", totalComplexity);
         r.put("packages", packages);
+        // Top-10 most complex classes by cyclomatic complexity (COMPLEXITY_MISSED + COMPLEXITY_COVERED)
+        r.put("topComplexClasses", topComplex);
+        // Classes with 0% method coverage — potential test gaps (deduplicated, sorted alphabetically)
+        java.util.Set<String> untestedSet = new java.util.TreeSet<>(untestedClasses);
+        r.put("untestedClasses", new ArrayList<>(untestedSet));
+        r.put("untestedCount", untestedSet.size());
         return r;
     }
 
@@ -1203,6 +1576,14 @@ public class QualityReportEndpoint {
         r.put("startedAt", java.time.Instant.ofEpochMilli(startMs)
                 .atZone(java.time.ZoneId.systemDefault())
                 .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+
+        // Spring Boot startup duration — time from JVM launch to ApplicationReady event.
+        // Matches "Started MiradorApplication in X.XXX seconds" in the boot log.
+        long startupMs = startupTimeTracker.getStartupDurationMs();
+        if (startupMs > 0) {
+            r.put("startupDurationMs", startupMs);
+            r.put("startupDurationSeconds", startupMs / 1000.0);
+        }
 
         // JAR layer sizes — read BOOT-INF/layers.idx from the running JAR
         r.put("jarLayers", buildJarLayersSection());

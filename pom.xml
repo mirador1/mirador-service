@@ -777,24 +777,12 @@
                 </execution>
             </executions>
         </plugin>
-        <!-- HTML test report: generated during mvn site at target/site/surefire-report.html.
-             Phase is "site" (not "verify") — report-only requires the Doxia site lifecycle
-             for skin resolution; running it at verify phase fails with "skin cannot be null". -->
-        <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-surefire-report-plugin</artifactId>
-            <version>3.5.5</version>
-            <executions>
-                <execution>
-                    <id>test-report</id>
-                    <phase>site</phase>
-                    <goals>
-                        <goal>report</goal>            <!-- unit tests (site lifecycle) -->
-                        <goal>failsafe-report</goal>   <!-- integration tests (site lifecycle) -->
-                    </goals>
-                </execution>
-            </executions>
-        </plugin>
+        <!-- surefire-report-plugin: no <build> executions needed.
+             Reports are generated via the <reporting> section (report-only + failsafe-report-only)
+             which runs during mvn site with proper Doxia skin resolution.
+             A <build> execution with goal "report" would re-fork surefire:test and then
+             fail with "skin cannot be null" because skin context is not available outside
+             the Doxia site lifecycle. -->
         <!--
           maven-pmd-plugin — static code analysis (code smells, dead code, complexity).
           failOnViolation=false so it never breaks the build; reports are copied to the
@@ -1074,6 +1062,27 @@
                         </resources>
                     </configuration>
                 </execution>
+                <!-- Dependency reports — tree, analyze and license outputs packaged for QualityReportEndpoint. -->
+                <execution>
+                    <id>copy-dependency-tree</id>
+                    <phase>prepare-package</phase>
+                    <goals><goal>copy-resources</goal></goals>
+                    <configuration>
+                        <outputDirectory>${project.build.outputDirectory}/META-INF/build-reports</outputDirectory>
+                        <overwrite>true</overwrite>
+                        <resources>
+                            <resource>
+                                <directory>${project.build.directory}</directory>
+                                <includes>
+                                    <include>dependency-tree.txt</include>
+                                    <include>dependency-analysis.txt</include>
+                                    <include>THIRD-PARTY.txt</include>
+                                </includes>
+                                <filtering>false</filtering>
+                            </resource>
+                        </resources>
+                    </configuration>
+                </execution>
                 <execution>
                     <id>copy-test-reports-to-static</id>
                     <phase>verify</phase>
@@ -1153,6 +1162,73 @@
             <groupId>org.sonarsource.scanner.maven</groupId>
             <artifactId>sonar-maven-plugin</artifactId>
             <version>5.1.0.4751</version>
+        </plugin>
+
+        <!--
+          maven-dependency-plugin — two build-time reports:
+          1. dependency:tree (text format) → target/dependency-tree.txt
+          2. dependency:analyze (used/unused/undeclared) → target/dependency-analysis.txt
+          Both are packaged into META-INF/build-reports/ and read by QualityReportEndpoint
+          at /actuator/quality to provide dependency insights.
+        -->
+        <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-dependency-plugin</artifactId>
+            <executions>
+                <execution>
+                    <id>dependency-tree</id>
+                    <phase>generate-resources</phase>
+                    <goals><goal>tree</goal></goals>
+                    <configuration>
+                        <outputFile>${project.build.directory}/dependency-tree.txt</outputFile>
+                        <outputType>text</outputType>
+                        <!-- appendOutput: false — one clean report per build -->
+                    </configuration>
+                </execution>
+                <execution>
+                    <!-- dependency:analyze-only does not compile — runs after test-compile
+                         so all classes are available. Outputs used-undeclared and
+                         unused-declared deps to a file for QualityReportEndpoint. -->
+                    <id>dependency-analyze</id>
+                    <phase>test-compile</phase>
+                    <goals><goal>analyze-only</goal></goals>
+                    <configuration>
+                        <outputFile>${project.build.directory}/dependency-analysis.txt</outputFile>
+                        <!-- failOnWarning: false — we report, we don't fail the build -->
+                        <failOnWarning>false</failOnWarning>
+                        <ignoreNonCompile>true</ignoreNonCompile>
+                    </configuration>
+                </execution>
+            </executions>
+        </plugin>
+
+        <!--
+          license-maven-plugin — generates THIRD-PARTY.txt listing every dependency with its
+          declared license. Packaged into META-INF/build-reports/THIRD-PARTY.txt and exposed
+          by QualityReportEndpoint.buildLicensesSection() at /actuator/quality.
+          The add-third-party goal resolves license metadata from each dependency's POM.
+          GPL/AGPL licenses are flagged as "incompatible" for commercial projects.
+        -->
+        <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>license-maven-plugin</artifactId>
+            <version>2.5.0</version>
+            <executions>
+                <execution>
+                    <id>third-party-licenses</id>
+                    <phase>generate-resources</phase>
+                    <goals><goal>add-third-party</goal></goals>
+                    <configuration>
+                        <outputDirectory>${project.build.directory}</outputDirectory>
+                        <thirdPartyFilename>THIRD-PARTY.txt</thirdPartyFilename>
+                        <!-- Include all scopes except system (not downloadable) -->
+                        <excludedScopes>system</excludedScopes>
+                        <!-- Don't fail on unknown licenses — we report them, not block build -->
+                        <failOnMissing>false</failOnMissing>
+                        <sortArtifactByName>true</sortArtifactByName>
+                    </configuration>
+                </execution>
+            </executions>
         </plugin>
         </plugins>
     </build>
@@ -1642,7 +1718,12 @@
                  Java 25 pattern guards (`case X e when ...`). Results available at /actuator/quality.
                  Re-add when checkstyle-plugin bundles an Antlr grammar for Java 25. -->
 
-            <!-- Javadoc API reference -->
+            <!-- Javadoc API reference with inline source code.
+                 linksource=true: generates src-html/ pages for every class — each Javadoc
+                 page gets a "View Source" link showing the raw Java with line numbers.
+                 This is the Compodoc equivalent for Java: browse classes + read source
+                 without leaving the browser. Uses the JDK javadoc tool (Java 25 native),
+                 unlike JXR which is disabled due to its Java 25 parser bug. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-javadoc-plugin</artifactId>
@@ -1652,6 +1733,8 @@
                     <doclint>none</doclint>
                     <failOnError>false</failOnError>
                     <quiet>true</quiet>
+                    <!-- Generate HTML source pages linked from each Javadoc class page -->
+                    <linksource>true</linksource>
                 </configuration>
                 <reportSets>
                     <reportSet>
@@ -1662,8 +1745,26 @@
                 </reportSets>
             </plugin>
 
-            <!-- JXR omitted: fails to parse Java 25 syntax (ParseLock#doParse StackOverflowError).
-                 Re-add when JXR 3.x adds Java 25 language support. -->
+            <!-- JXR cross-referenced HTML source browser.
+                 Generates xref/ directory: every .java file rendered as hyperlinked HTML,
+                 with class/method references cross-linked to their declarations.
+                 PMD and Checkstyle reports also link to the JXR source pages.
+                 Note: older JXR versions crashed on Java 25 pattern-matching
+                 (ParseLock#doParse StackOverflowError). Using 3.6.0 which has an improved
+                 parser. If it fails on specific constructs, the site will still build
+                 (the antrun copy step tolerates missing xref/ gracefully). -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jxr-plugin</artifactId>
+                <version>3.6.0</version>
+                <reportSets>
+                    <reportSet>
+                        <reports>
+                            <report>jxr</report>
+                        </reports>
+                    </reportSet>
+                </reportSets>
+            </plugin>
 
             <!-- OWASP Dependency-Check: omitted from <reporting> because dependency-check-maven
                  12.x does not implement the Maven site reporting interface (AbstractMethodError

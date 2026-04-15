@@ -64,6 +64,9 @@ stages:
 default:
   image: maven:3.9.14-eclipse-temurin-25-noble   # JDK 25 + Maven 3.9 — mirrors the pom.xml java.version
   interruptible: true   # MR pipelines can be cancelled when a new commit is pushed
+  # No global runner tag — jobs run on any available runner (local Mac runner or SaaS).
+  # Jobs that need DinD (docker-build, trivy) or Linux Docker networking (integration-test)
+  # carry their own `tags: [saas-linux-medium-amd64]` to target GitLab SaaS Linux runners.
 
 variables:
   # Keep the local Maven repo inside the project dir so it is cached across jobs
@@ -72,6 +75,17 @@ variables:
   # Docker-in-dind: plain TCP, no TLS (safe because it is only reachable within the GitLab runner network)
   DOCKER_HOST: "tcp://docker:2375"
   DOCKER_TLS_CERTDIR: ""    # empty string disables TLS certificate generation in the DinD service
+  # Testcontainers in Docker-in-Docker (DinD) requires two overrides:
+  #
+  # 1. TESTCONTAINERS_RYUK_DISABLED — Ryuk container binds to 172.17.0.1 (Docker bridge) which
+  #    is not reachable from the runner. Cleanup happens naturally when the DinD daemon stops.
+  #
+  # 2. TESTCONTAINERS_HOST_OVERRIDE — Testcontainers auto-detects the Docker host IP as
+  #    172.17.0.1 (Docker bridge inside DinD), which is unreachable from the CI job container.
+  #    Override to "docker" so port bindings are resolved via the DinD service alias,
+  #    which is reachable from the CI job. E.g.: Kafka at docker:52020 instead of 172.17.0.1:52020.
+  TESTCONTAINERS_RYUK_DISABLED: "true"
+  TESTCONTAINERS_HOST_OVERRIDE: "docker"
 
 cache:
   # One cache bucket per branch — avoids cross-branch dependency pollution
@@ -191,8 +205,19 @@ include:
 
 # ── stage: integration ────────────────────────────────────────────────────────
 
-# Integration tests (*ITest) via maven-failsafe, with Docker-in-dind for Testcontainers.
-# Testcontainers spins up real PostgreSQL 17 and Kafka containers during the test run.
+# Integration tests (*ITest) via maven-failsafe, with Docker socket binding for Testcontainers.
+# Testcontainers spins up real PostgreSQL 17, Redis, Kafka and Keycloak containers.
+#
+# WHY NOT DinD: DinD creates an isolated Docker daemon inside a service container. When
+# Testcontainers starts inner containers, their ports are bound on the DinD container's
+# bridge network (172.17.0.1), which is NOT accessible from the CI job container. Setting
+# TESTCONTAINERS_HOST_OVERRIDE=docker doesn't help because the DinD container only publishes
+# port 2375 (the Docker API) — inner container ports are trapped inside DinD.
+#
+# FIX: Use Docker socket binding instead. GitLab SaaS shared runners mount the host Docker
+# socket at /var/run/docker.sock. Testcontainers uses this socket to start containers on
+# the HOST Docker daemon. Container ports are on the Docker bridge (172.17.0.1), which IS
+# accessible from the CI job container (it's the container's default gateway).
 #
 # At the verify phase Maven also runs:
 #   • SpotBugs:check   — static bytecode analysis (fails on Medium+ findings)
@@ -202,16 +227,34 @@ include:
 # The unit-test artifact (target/jacoco.exec) is pulled automatically via `needs`.
 integration-test:
   stage: integration
+  # No runner tag — runs on any available runner (local Mac or SaaS Linux).
+  # TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal makes Testcontainers connect to
+  # published container ports via the Docker host hostname instead of 172.17.0.1.
+  #
+  # Why this is needed on Mac Docker Desktop:
+  #   Testcontainers auto-detects the host as 172.17.0.1 (Docker bridge gateway inside
+  #   the LinuxKit VM). But on Mac, published ports are bound to 127.0.0.1 (Mac host),
+  #   not 172.17.0.1 — causing ContainerLaunchException.
+  #   `host.docker.internal` is injected into every container by Docker Desktop and
+  #   resolves to the Mac host where the published ports ARE accessible.
+  #
+  # On GitLab SaaS Linux runners (native Docker):
+  #   Docker 20.10+ also injects `host.docker.internal` (resolves to 172.17.0.1 on Linux).
+  #   So the same override works correctly on both platforms.
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
     - when: on_success
+  variables:
+    # Use Unix socket directly (disables the global DinD DOCKER_HOST tcp://docker:2375).
+    DOCKER_HOST: ""
+    # Tell Testcontainers to check published ports on host.docker.internal instead of
+    # auto-detected 172.17.0.1. Works on both Mac Docker Desktop and Linux Docker 20.10+.
+    TESTCONTAINERS_HOST_OVERRIDE: "host.docker.internal"
   needs:
     - job: unit-test
       artifacts: true   # downloads target/jacoco.exec so JaCoCo:merge can combine unit + IT coverage
-  services:
-    - name: docker:28-dind    # Docker daemon required by Testcontainers (unlike GitHub-hosted runners, GitLab runners don't include Docker)
-      alias: docker            # alias used by DOCKER_HOST=tcp://docker:2375 above
+  # No DinD service — Testcontainers uses /var/run/docker.sock mounted by the runner
   script:
     # -Dsurefire.skip=true: unit tests already validated in the previous stage,
     # no need to repeat them. Failsafe, SpotBugs and JaCoCo still run at verify.
@@ -310,6 +353,10 @@ build-jar:
 docker-build:
   stage: package
   image: docker:28    # standalone Docker client — the DinD service provides the daemon
+  tags:
+    # DinD requires privileged mode, only available on GitLab SaaS Linux runners.
+    # Local Mac runner has privileged=false and cannot run DinD services.
+    - saas-linux-medium-amd64
   needs:
     - job: unit-test        # both test gates must pass before producing the image
     - job: integration-test
@@ -344,6 +391,56 @@ docker-build:
         .
     - docker push "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA"
     - docker push "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_REF_SLUG"
+
+trivy:scan:
+  # Scans the freshly built Docker image for OS + Java CVEs using Trivy.
+  # Runs only on main/tags after docker-build succeeds. allow_failure:true —
+  # we track CVEs as informational; blocking releases on new CVEs creates friction.
+  stage: package
+  image: aquasec/trivy:latest
+  tags:
+    # DinD is used to pull the image for scanning — requires privileged mode.
+    - saas-linux-medium-amd64
+  needs:
+    - job: docker-build
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+  allow_failure: true
+  variables:
+    # Use the same Docker host as docker-build so Trivy can pull the image
+    DOCKER_HOST: "tcp://docker:2375"
+  services:
+    - name: docker:28-dind
+      alias: docker
+  script:
+    - |
+      # Wait for DinD to be ready before pulling the scanned image
+      for i in $(seq 1 30); do
+        docker info >/dev/null 2>&1 && break
+        sleep 2
+      done
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+    - |
+      trivy image \
+        --exit-code 0 \
+        --severity HIGH,CRITICAL \
+        --format json \
+        --output trivy-report.json \
+        "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA"
+    - |
+      # Human-readable summary to CI log
+      trivy image \
+        --exit-code 0 \
+        --severity HIGH,CRITICAL \
+        "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA"
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - trivy-report.json
 
 # ── stage: compat ─────────────────────────────────────────────────────────────
 #
@@ -590,14 +687,17 @@ build-native:
 #   terraform-plan   — always runs on main/MR to show what would change
 #   terraform-apply  — manual trigger only — provisions/updates GCP resources
 #
-# Required GitLab CI/CD variables (masked + protected):
-#   GCP_SA_KEY         base64-encoded service-account JSON with roles:
-#                        container.admin, cloudsql.admin, redis.admin,
-#                        iam.serviceAccountAdmin, compute.networkAdmin
+# Required GitLab CI/CD variables (group level — Settings → CI/CD → Variables):
+#   GCP_WIF_PROVIDER   WIF provider full resource name (set at group level)
+#   GCP_SERVICE_ACCOUNT service account email (set at group level)
 #   TF_VAR_project_id  GCP project ID
 #   TF_VAR_app_host    public hostname (e.g. mirador.example.com)
 #   TF_VAR_db_password Cloud SQL app user password (sensitive)
 #   TF_STATE_BUCKET    GCS bucket name for Terraform state
+#
+# Auth: OIDC Workload Identity Federation (no long-lived service account key).
+# The gitlab-ci-deployer SA needs: container.admin, cloudsql.admin, redis.admin,
+# iam.serviceAccountAdmin, compute.networkAdmin, storage.admin (for GCS state).
 
 .terraform-base:
   stage: infra
@@ -607,9 +707,28 @@ build-native:
     # shell execution (it would run "terraform sh -c ..." instead of "sh -c ...").
     # Override entrypoint so GitLab's default shell wrapper works correctly.
     entrypoint: [""]
+  id_tokens:
+    # GitLab generates a short-lived OIDC JWT for this job.
+    # GCP STS exchanges it for a temporary access token via Workload Identity Federation.
+    GCP_OIDC_TOKEN:
+      aud: "https://iam.googleapis.com/$GCP_WIF_PROVIDER"
   before_script:
-    - echo "$GCP_SA_KEY" | base64 -d > /tmp/sa.json
-    - export GOOGLE_APPLICATION_CREDENTIALS=/tmp/sa.json
+    # Write the OIDC token to a file; the external_account credential config references it.
+    # Terraform's Google provider reads GOOGLE_APPLICATION_CREDENTIALS automatically —
+    # no gcloud needed; the provider handles STS exchange natively.
+    - echo "$GCP_OIDC_TOKEN" > /tmp/gcp_oidc_token.txt
+    - |
+      cat > /tmp/gcp_credentials.json <<EOF
+      {
+        "type": "external_account",
+        "audience": "//iam.googleapis.com/${GCP_WIF_PROVIDER}",
+        "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+        "token_url": "https://sts.googleapis.com/v1/token",
+        "credential_source": {"file": "/tmp/gcp_oidc_token.txt", "format": {"type": "text"}},
+        "service_account_impersonation_url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${GCP_SERVICE_ACCOUNT}:generateAccessToken"
+      }
+      EOF
+    - export GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp_credentials.json
     - cd terraform/gcp
     - terraform init
         -backend-config="bucket=${TF_STATE_BUCKET}"
@@ -659,16 +778,16 @@ terraform-apply:
 #
 # Provider         Image used              Required GitLab CI/CD variables
 # ──────────────── ─────────────────────── ────────────────────────────────────────────────────────
-# GKE Autopilot ✓  google/cloud-sdk:alpine GCP_SA_KEY¹, GCP_PROJECT, GKE_CLUSTER, GKE_REGION
+# GKE Autopilot ✓  google/cloud-sdk:alpine GCP_WIF_PROVIDER, GCP_SERVICE_ACCOUNT, GCP_PROJECT, GKE_CLUSTER, GKE_REGION
 # AWS EKS          alpine/k8s:1.30.2       AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, EKS_CLUSTER
 # Azure AKS        mcr.microsoft.com/azure-cli AZURE_APP_ID, AZURE_PASSWORD, AZURE_TENANT, AKS_RG, AKS_CLUSTER
-# Google Cloud Run google/cloud-sdk:alpine GCP_SA_KEY¹, GCP_PROJECT, GCP_REGION
+# Google Cloud Run google/cloud-sdk:alpine GCP_WIF_PROVIDER, GCP_SERVICE_ACCOUNT, GCP_PROJECT, GCP_REGION
 # Fly.io           flyio/flyctl:latest     FLY_API_TOKEN
-# k3s / bare metal bitnami/kubectl:latest  K8S_SERVER, K8S_TOKEN, K8S_CA_CERT²
+# k3s / bare metal bitnami/kubectl:latest  K8S_SERVER, K8S_TOKEN, K8S_CA_CERT¹
 #
 # All kubectl targets also need: K8S_HOST (public hostname), DB_PASSWORD
-# ¹ base64-encoded service-account JSON (roles/container.developer or roles/run.admin)
-# ² base64-encoded cluster CA certificate
+# GKE + Cloud Run use OIDC Workload Identity Federation — no long-lived SA key required.
+# ¹ base64-encoded cluster CA certificate
 #
 # Set variables in GitLab → Settings → CI/CD → Variables (masked + protected).
 # ──────────────────────────────────────────────────────────────────────────────
@@ -708,14 +827,16 @@ terraform-apply:
         --namespace=app --dry-run=client -o yaml | kubectl apply -f -
     - |
       # Apply all manifests — envsubst replaces ${K8S_HOST}, ${IMAGE_REGISTRY}, ${IMAGE_TAG},
-      # ${UI_IMAGE_TAG}, ${CORS_ALLOWED_ORIGINS} with CI variable values.
+      # ${CORS_ALLOWED_ORIGINS} with CI variable values.
       # GKE production skips k8s/infra/postgres.yaml — use Cloud SQL + Cloud SQL Auth Proxy instead.
       # For non-GKE targets (EKS, k3s) postgres.yaml provides an in-cluster PostgreSQL StatefulSet.
+      # NOTE: k8s/frontend/ manifests are NOT applied here — the frontend (mirador-ui) image is
+      # built and deployed by the mirador-ui CI pipeline (registry.gitlab.com/mirador1/mirador-ui).
+      # Applying them from the service pipeline would use the wrong image tag.
       for f in k8s/namespace.yaml \
                 k8s/infra/redis.yaml k8s/infra/kafka.yaml \
                 k8s/backend/configmap.yaml \
                 k8s/backend/deployment.yaml k8s/backend/service.yaml k8s/backend/hpa.yaml \
-                k8s/frontend/deployment.yaml k8s/frontend/service.yaml \
                 k8s/ingress.yaml; do
         [ -f "$f" ] && envsubst < "$f" | kubectl apply -f -
       done
@@ -832,6 +953,9 @@ deploy:aks:
 deploy:cloud-run:
   stage: deploy
   image: google/cloud-sdk:alpine
+  id_tokens:
+    GCP_OIDC_TOKEN:
+      aud: "https://iam.googleapis.com/$GCP_WIF_PROVIDER"
   needs:
     - job: docker-build
       artifacts: false
@@ -844,11 +968,22 @@ deploy:cloud-run:
   environment:
     name: production/cloud-run
   script:
-    - echo "$GCP_SA_KEY" | base64 -d > /tmp/sa.json
-    - gcloud auth activate-service-account --key-file=/tmp/sa.json
+    - echo "$GCP_OIDC_TOKEN" > /tmp/gcp_oidc_token.txt
+    - |
+      cat > /tmp/gcp_credentials.json <<EOF
+      {
+        "type": "external_account",
+        "audience": "//iam.googleapis.com/${GCP_WIF_PROVIDER}",
+        "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+        "token_url": "https://sts.googleapis.com/v1/token",
+        "credential_source": {"file": "/tmp/gcp_oidc_token.txt", "format": {"type": "text"}},
+        "service_account_impersonation_url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${GCP_SERVICE_ACCOUNT}:generateAccessToken"
+      }
+      EOF
+    - gcloud auth login --cred-file=/tmp/gcp_credentials.json --quiet
     - gcloud config set project "$GCP_PROJECT"
     - |
-      gcloud run deploy customer-service \
+      gcloud run deploy mirador-service \
         --image "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA" \
         --region "${GCP_REGION:-europe-west1}" \
         --platform managed \
@@ -856,7 +991,7 @@ deploy:cloud-run:
         --port 8080 \
         --cpu 1 --memory 512Mi \
         --set-env-vars "SPRING_PROFILES_ACTIVE=cloud-run" \
-        --set-secrets "DB_PASSWORD=customer-service-db-password:latest" \
+        --set-secrets "DB_PASSWORD=mirador-db-password:latest" \
         --quiet
 
 # ── Fly.io — manual ───────────────────────────────────────────────────────────

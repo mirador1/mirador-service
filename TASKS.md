@@ -14,8 +14,10 @@
       reports/ branch (orphan), exposes pipeline artifact (30 days).
       TODO: create GitLab schedule in UI (CI/CD → Schedules, 02:00 UTC, REPORT_PIPELINE=true)
       and GITLAB_REPORTS_TOKEN CI variable (project access token, Reporter + write_repository).
-- [ ] **Javadoc enrichment** — Javadoc is already in `<reporting>`, but add `@apiNote` / `@implNote`
-      tags to non-obvious public methods so the generated site is useful, not just structural.
+- [x] **Javadoc enrichment** — @apiNote/@implNote added to: LoginAttemptService, JwtTokenProvider,
+      AuditService.log(), MaintenanceEndpoint.run(), KafkaHealthIndicator.health(),
+      JwtAuthenticationFilter (class + 2 private methods), ApiKeyAuthenticationFilter (class),
+      QualityReportEndpoint (class + report()). All other classes already had adequate documentation.
 
 ## Pending — Maven site integration in Angular UI
 
@@ -27,30 +29,44 @@
 These were proposed at 2026-04-14T20:56 in response to "d'autres idées pour épaissir Maven site":
 
 ### Sécurité
-- [ ] **Trivy** — scan de l'image Docker (CVE dans les couches OS + dépendances Java).
-      `trivy image <image>` → JSON → parser et afficher dans /actuator/quality
-- [ ] **License compliance** — `maven-license-plugin` pour lister les licences des dépendances
-      et alerter sur GPL/AGPL incompatibles avec un projet commercial
+- [x] **Trivy** — trivy:scan CI job added to service and UI .gitlab-ci.yml.
+      Runs after docker-build on main/tags using aquasec/trivy image.
+      Scans for HIGH/CRITICAL CVEs. allow_failure:true. Output: trivy-report.json (30-day artifact).
+      Note: CI-only (not in /actuator/quality — Trivy scan happens after JAR is built and cannot
+      be embedded in the JAR at build time without running Trivy inside the Maven build).
+- [x] **License compliance** — license-maven-plugin:add-third-party generates target/THIRD-PARTY.txt
+      at generate-resources phase. Packaged into META-INF/build-reports/THIRD-PARTY.txt.
+      QualityReportEndpoint.buildLicensesSection() returns license summary + per-dep details.
+      Flags GPL/AGPL/LGPL/CDDL/EPL as incompatible for commercial use.
+      UI: ⚖️ License Compliance section with distribution grid and incompatible-dep table.
 
 ### Métriques de code avancées
-- [ ] **Complexité cyclomatique** — les données sont dans `jacoco.csv` (colonne COMPLEXITY) ;
-      exposer le top-10 des classes les plus complexes dans la page quality
-- [ ] **Tests les plus lents** — parser les Surefire XML (`time` par test case) et afficher
-      le top-10 des tests les plus lents dans l'onglet Tests
-- [ ] **Classes sans tests** — croiser la liste des classes (JaCoCo) avec les suites de test
-      pour identifier les classes avec 0% de couverture intentionnelle vs oubliées
+- [x] **Complexité cyclomatique** — buildMetricsSection() now returns topComplexClasses (top 10
+      by COMPLEXITY_MISSED+COMPLEXITY_COVERED). UI: table in metrics tab, amber > 15, red > 30.
+- [x] **Tests les plus lents** — Already implemented: buildTestsSection() parses Surefire XML
+      time attributes, sorts allTestCases by duration desc, returns top-10 slowest tests
+      with name + time (formatted) + timeMs fields.
+- [x] **Classes sans tests** — buildMetricsSection() returns untestedClasses (METHOD_COVERED=0,
+      METHOD_TOTAL>0) + untestedCount. UI: table in metrics tab, sorted alphabetically.
 
 ### Dépendances enrichies
-- [ ] **Fraîcheur des dépendances** — appel à `search.maven.org` pour vérifier si une version
-      plus récente existe pour chaque dépendance directe ; afficher un badge "outdated"
-- [ ] **Arbre de dépendances** — `mvn dependency:tree -DoutputType=json` parsé et affiché
-      comme un arbre interactif dans la page quality
-- [ ] **Conflits de version** — `mvn dependency:analyze` (dépendances déclarées non utilisées
-      et utilisées non déclarées) ; exposer dans /actuator/quality
+- [x] **Fraîcheur des dépendances** — buildDependenciesSection() resolves ${property} references
+      from pom.xml <properties>, calls Maven Central Solr API in parallel (25 deps max, 8s timeout).
+      Adds latestVersion + outdated to each dep, outdatedCount to section root.
+      UI: Latest column, amber row highlight, outdated count badge in section header.
+- [x] **Arbre de dépendances** — maven-dependency-plugin:tree generates target/dependency-tree.txt
+      at generate-resources phase. Packaged into META-INF/build-reports/dependency-tree.txt.
+      QualityReportEndpoint returns dependencyTree.tree (raw text) + totalTransitive count.
+      UI: collapsible <pre class="dep-tree"> in Dependencies section.
+- [x] **Conflits de version** — maven-dependency-plugin:analyze-only runs at test-compile phase,
+      writes target/dependency-analysis.txt. Packaged into META-INF/build-reports/.
+      QualityReportEndpoint.parseDependencyAnalysis() returns usedUndeclared + unusedDeclared lists.
+      UI: lists with amber (used-undeclared) and grey (unused-declared) styling + count badges.
 
 ### Build & Infra
-- [ ] **Temps de startup** — extraire depuis les logs Spring Boot (`Started MiradorApplication
-      in X.XXX seconds`) et afficher dans le dashboard comme métrique de performance
+- [x] **Temps de startup** — StartupTimeTracker @Component captures ApplicationReadyEvent timestamp
+      minus JVM start time. Exposed as startupDurationMs + startupDurationSeconds in runtime section.
+      UI: "Startup Time: X.XXs" row in runtime tab.
 - [x] **Pipeline history** — buildPipelineSection() calls GitLab API, /actuator/quality returns
       last 10 pipelines. Angular 🚀 Pipelines tab with colored status badges.
 - [x] **Branches actives** — buildBranchesSection() uses git for-each-ref refs/remotes
@@ -67,11 +83,12 @@ These were proposed at 2026-04-14T20:56 in response to "d'autres idées pour ép
 
 ## Pending — Kubernetes & Cloud deployment (session 2026-04-15)
 
-- [~] **deploy:gke first run** — MR !33 merged. Pipeline #248 on main failed: kubectl not found
-      in google/cloud-sdk:alpine. Fix in MR !34 (before_script: gcloud components install kubectl
-      gke-gcloud-auth-plugin). Also: mirador-ui docker-build fails (COPY path customer-observability-ui
-      → mirador-ui, fixed in MR !6). Waiting for MR !34 + !6 to merge then re-check deploy:gke.
-      URL: https://mirador1.duckdns.org (HTTPS via cert-manager Let's Encrypt).
+- [~] **deploy:gke first run** — CI fixes applied: removed saas-linux-medium-amd64 from default
+      (quota exhaustion), integration-test now runs on local runner via socket binding (no DinD).
+      OIDC Workload Identity Federation applied to all GCP jobs (deploy:gke, terraform, cloud-run).
+      WIF pool gitlab-pool + provider gitlab-provider already exist in GCP. gitlab-ci-deployer SA
+      has roles/container.admin + storage.admin + iam.serviceAccountUser. GCP_SA_KEY removed.
+      Pipeline #280 running (MR !36). URL: https://mirador1.duckdns.org.
 - [ ] **HTTPS + cert-manager** — cert-manager installed + GKE Autopilot RBAC patches applied
       (k8s/gke/cert-manager-gke-fix.yaml + --leader-election-namespace=cert-manager).
       letsencrypt-prod ClusterIssuer READY=True. TLS cert will be issued on first deploy:gke
