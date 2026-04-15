@@ -31,8 +31,11 @@ These were proposed at 2026-04-14T20:56 in response to "d'autres idées pour ép
 ### Sécurité
 - [ ] **Trivy** — scan de l'image Docker (CVE dans les couches OS + dépendances Java).
       `trivy image <image>` → JSON → parser et afficher dans /actuator/quality
-- [ ] **License compliance** — `maven-license-plugin` pour lister les licences des dépendances
-      et alerter sur GPL/AGPL incompatibles avec un projet commercial
+- [x] **License compliance** — license-maven-plugin:add-third-party generates target/THIRD-PARTY.txt
+      at generate-resources phase. Packaged into META-INF/build-reports/THIRD-PARTY.txt.
+      QualityReportEndpoint.buildLicensesSection() returns license summary + per-dep details.
+      Flags GPL/AGPL/LGPL/CDDL/EPL as incompatible for commercial use.
+      UI: ⚖️ License Compliance section with distribution grid and incompatible-dep table.
 
 ### Métriques de code avancées
 - [x] **Complexité cyclomatique** — buildMetricsSection() now returns topComplexClasses (top 10
