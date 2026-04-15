@@ -350,6 +350,53 @@ docker-build:
     - docker push "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA"
     - docker push "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_REF_SLUG"
 
+trivy:scan:
+  # Scans the freshly built Docker image for OS + Java CVEs using Trivy.
+  # Runs only on main/tags after docker-build succeeds. allow_failure:true —
+  # we track CVEs as informational; blocking releases on new CVEs creates friction.
+  stage: package
+  image: aquasec/trivy:latest
+  needs:
+    - job: docker-build
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+  allow_failure: true
+  variables:
+    # Use the same Docker host as docker-build so Trivy can pull the image
+    DOCKER_HOST: "tcp://docker:2375"
+  services:
+    - name: docker:28-dind
+      alias: docker
+  script:
+    - |
+      # Wait for DinD to be ready before pulling the scanned image
+      for i in $(seq 1 30); do
+        docker info >/dev/null 2>&1 && break
+        sleep 2
+      done
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+    - |
+      trivy image \
+        --exit-code 0 \
+        --severity HIGH,CRITICAL \
+        --format json \
+        --output trivy-report.json \
+        "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA"
+    - |
+      # Human-readable summary to CI log
+      trivy image \
+        --exit-code 0 \
+        --severity HIGH,CRITICAL \
+        "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA"
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - trivy-report.json
+
 # ── stage: compat ─────────────────────────────────────────────────────────────
 #
 # On-demand compatibility matrix — unit + integration tests across SB/Java combos.
