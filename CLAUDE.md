@@ -6,6 +6,9 @@
 - **Read it at the start of every session** — before doing anything else.
 - **Update it immediately** when a task is added, started, or completed.
 - This file survives context window resets; the conversation history does not.
+- **When all tasks are done**: delete `TASKS.md` and commit the deletion. Do not keep an empty file.
+- **When new tasks arrive**: recreate `TASKS.md` from scratch and commit. The file either exists with real pending work, or it does not exist at all.
+- **When adding a general rule** (workflow, style, architecture): also add it to `~/.claude/CLAUDE.md` so it applies globally across all projects.
 
 ## Claude workflow rules (apply to every session)
 
