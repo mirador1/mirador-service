@@ -91,6 +91,7 @@ public class SecurityConfig {
                                 "/actuator/prometheus", "/actuator/metrics/**",
                                 "/actuator/loggers", "/actuator/loggers/**").permitAll()
                         .requestMatchers("/actuator/**").hasRole("ADMIN")             // heapdump, env, beans, etc. require ADMIN
+                        .requestMatchers("/maven-site/**").permitAll()  // Maven site static HTML — no auth needed
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html").permitAll() // Swagger UI
                         .requestMatchers("/v3/api-docs/**").permitAll()               // OpenAPI spec
                         .requestMatchers("/ws/**").permitAll()                        // WebSocket STOMP endpoint

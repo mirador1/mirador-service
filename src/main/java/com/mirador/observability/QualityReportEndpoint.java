@@ -20,8 +20,10 @@ import java.util.Properties;
 import java.util.Set;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
+import java.lang.management.ManagementFactory;
 import org.springframework.boot.actuate.endpoint.annotation.Endpoint;
 import org.springframework.boot.actuate.endpoint.annotation.ReadOperation;
+import org.springframework.core.env.Environment;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
@@ -75,9 +77,12 @@ public class QualityReportEndpoint {
     private static final String DEV_PITEST     = "target/pit-reports/mutations.xml";
 
     private final RequestMappingHandlerMapping requestMappingHandlerMapping;
+    private final Environment environment;
 
-    public QualityReportEndpoint(RequestMappingHandlerMapping requestMappingHandlerMapping) {
+    public QualityReportEndpoint(RequestMappingHandlerMapping requestMappingHandlerMapping,
+                                 Environment environment) {
         this.requestMappingHandlerMapping = requestMappingHandlerMapping;
+        this.environment = environment;
     }
 
     @ReadOperation
@@ -96,6 +101,7 @@ public class QualityReportEndpoint {
         result.put("api", buildApiSection());
         result.put("dependencies", buildDependenciesSection());
         result.put("metrics", buildMetricsSection());
+        result.put("runtime", buildRuntimeSection());
         return result;
     }
 
@@ -987,5 +993,79 @@ public class QualityReportEndpoint {
                 .replaceAll("<[^>]+>", "")
                 .trim();
         return result.length() > 200 ? result.substring(0, 200) + "…" : result;
+    }
+
+    // -------------------------------------------------------------------------
+    // Runtime section — active profiles, JVM uptime, Spring Boot startup time
+    // -------------------------------------------------------------------------
+
+    private Map<String, Object> buildRuntimeSection() {
+        Map<String, Object> r = new LinkedHashMap<>();
+        r.put("available", true);
+
+        // Active Spring profiles (e.g., ["dev", "docker"] or ["default"])
+        String[] active = environment.getActiveProfiles();
+        r.put("activeProfiles", active.length == 0 ? new String[]{"default"} : active);
+
+        // JVM uptime — how long the process has been running
+        long uptimeMs = ManagementFactory.getRuntimeMXBean().getUptime();
+        long uptimeSec = uptimeMs / 1000;
+        r.put("uptimeSeconds", uptimeSec);
+        r.put("uptimeHuman", formatUptime(uptimeSec));
+
+        // JVM start time
+        long startMs = ManagementFactory.getRuntimeMXBean().getStartTime();
+        r.put("startedAt", java.time.Instant.ofEpochMilli(startMs)
+                .atZone(java.time.ZoneId.systemDefault())
+                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+
+        // JAR layer sizes — read BOOT-INF/layers.idx from the running JAR
+        r.put("jarLayers", buildJarLayersSection());
+
+        return r;
+    }
+
+    private String formatUptime(long seconds) {
+        if (seconds < 60) return seconds + "s";
+        if (seconds < 3600) return (seconds / 60) + "m " + (seconds % 60) + "s";
+        return (seconds / 3600) + "h " + ((seconds % 3600) / 60) + "m";
+    }
+
+    private List<Map<String, Object>> buildJarLayersSection() {
+        // Spring Boot fat JARs contain BOOT-INF/layers.idx listing each layer.
+        // We read it from the classpath (it's present both when running from JAR and exploded).
+        try (InputStream is = getClass().getClassLoader().getResourceAsStream("BOOT-INF/layers.idx")) {
+            if (is == null) return List.of();
+            List<Map<String, Object>> layers = new ArrayList<>();
+            String current = null;
+            int count = 0;
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = br.readLine()) != null) {
+                    if (line.startsWith("- ")) {
+                        // Layer header: "- 'dependencies':"
+                        if (current != null) {
+                            Map<String, Object> l = new LinkedHashMap<>();
+                            l.put("name", current);
+                            l.put("entries", count);
+                            layers.add(l);
+                        }
+                        current = line.substring(3, line.length() - 2); // strip "- '" and "':"
+                        count = 0;
+                    } else if (line.startsWith("  - ")) {
+                        count++;
+                    }
+                }
+            }
+            if (current != null) {
+                Map<String, Object> l = new LinkedHashMap<>();
+                l.put("name", current);
+                l.put("entries", count);
+                layers.add(l);
+            }
+            return layers;
+        } catch (Exception e) {
+            return List.of();
+        }
     }
 }
