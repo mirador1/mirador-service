@@ -240,10 +240,10 @@ management:
         otlp:
           endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318}/v1/traces
           transport: http
-          headers:
-            # OTEL_EXPORTER_OTLP_AUTH = base64(instanceId:token) — injected from K8s Secret in prod.
-            # Empty string locally (LGTM on :4318 accepts anonymous traffic).
-            Authorization: "Basic ${OTEL_EXPORTER_OTLP_AUTH:}"
+          # Authorization header is NOT set here to avoid sending "Basic " (empty credentials)
+          # to the local LGTM container. In production, the K8s Deployment injects:
+          #   MANAGEMENT_TRACING_EXPORT_OTLP_HEADERS_AUTHORIZATION = "Basic <base64-token>"
+          # which Spring Boot's relaxed binding maps to this headers map automatically.
     logging:
       export:
         otlp:
@@ -251,8 +251,7 @@ management:
           enabled: true
           endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318}/v1/logs
           transport: http
-          headers:
-            Authorization: "Basic ${OTEL_EXPORTER_OTLP_AUTH:}"
+          # Same pattern as tracing above — Authorization injected via K8s env var in prod only.
 
   # Exemplars: links Prometheus metric data points to specific Tempo trace IDs.
   # In Grafana, clicking a metric spike jumps straight to the matching trace.
