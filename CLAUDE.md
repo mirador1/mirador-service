@@ -55,6 +55,7 @@ Always run the default `./mvnw verify` after any change unless testing a specifi
 | Resource | Value |
 |---|---|
 | Project ID | `project-8d6ea68c-33ac-412b-8aa` |
+| Project display name | `Mirador` |
 | Project number | `32654862595` |
 | GKE cluster | `mirador-prod` (europe-west1) |
 | Ingress IP | `34.52.233.183` |
@@ -62,6 +63,28 @@ Always run the default `./mvnw verify` after any change unless testing a specifi
 | GCP Console | https://console.cloud.google.com/home/dashboard?project=project-8d6ea68c-33ac-412b-8aa |
 | WIF Provider | `projects/32654862595/locations/global/workloadIdentityPools/gitlab-pool/providers/gitlab-provider` |
 | CI Service Account | `gitlab-ci-deployer@project-8d6ea68c-33ac-412b-8aa.iam.gserviceaccount.com` |
+
+## Managed Services (Production)
+
+Keycloak and LGTM are replaced by managed services in production — no self-hosted auth or observability stack to maintain.
+
+| Service | Provider | Free tier | Notes |
+|---|---|---|---|
+| OAuth2/OIDC | Auth0 | 7 500 MAU | Replaces Keycloak :9090; same Spring Security config, only issuer URI changes |
+| Traces | Grafana Cloud (Tempo) | 50 GB/month | OTLP/HTTP push from Spring Boot via `OTEL_EXPORTER_OTLP_ENDPOINT` |
+| Metrics | Grafana Cloud (Mimir) | 10 k active series | Prometheus remote_write |
+| Logs | Grafana Cloud (Loki) | 50 GB/month | OTLP/HTTP push |
+| Dashboards | Grafana Cloud | Free | Same dashboards as local Grafana |
+
+**GitLab CI variables to set:**
+- `GRAFANA_OTLP_ENDPOINT` — e.g. `https://otlp-gateway-prod-eu-west-0.grafana.net/otlp`
+- `GRAFANA_OTLP_TOKEN` — base64(`instanceId:apiKey`)
+- `AUTH0_DOMAIN` — e.g. `mirador.eu.auth0.com`
+- `AUTH0_CLIENT_ID` / `AUTH0_CLIENT_SECRET` / `AUTH0_AUDIENCE`
+
+**Grafana Cloud region**: EU (Germany / Frankfurt) — closest to GKE europe-west1 (Belgium).
+
+**Auth0 tenant region**: EU — create tenant with region `EU` at signup to keep data in Europe.
 
 ## Port map (local Docker)
 
