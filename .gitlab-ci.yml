@@ -227,26 +227,26 @@ include:
 # The unit-test artifact (target/jacoco.exec) is pulled automatically via `needs`.
 integration-test:
   stage: integration
-  tags:
-    # Force this job to run on GitLab SaaS Linux runners, not on local dev runners.
-    # On Mac (Docker Desktop), 172.17.0.1 is unreachable from containers; the SaaS
-    # Linux runners use native Docker where bridge networking works correctly.
-    - saas-linux-medium-amd64
+  # No runner tag — runs on any available runner (local Mac or SaaS).
+  # Socket binding (DOCKER_HOST="") works on both:
+  #   • Mac Docker Desktop: all containers share the LinuxKit VM bridge (172.17.0.1 reachable)
+  #   • SaaS Linux runner: native Docker bridge (172.17.0.1 reachable as default gateway)
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
     - when: on_success
   variables:
     # Override the global DOCKER_HOST (set for DinD) to empty so Testcontainers falls
-    # back to the Unix socket at /var/run/docker.sock (available on GitLab SaaS runners).
+    # back to /var/run/docker.sock (mounted by the runner from the host).
     # With socket binding, inner containers are on the host Docker daemon and their ports
     # are accessible via 172.17.0.1 (Docker bridge gateway, the container's default route).
+    # This works on both Mac Docker Desktop (LinuxKit VM bridge) and Linux SaaS runners.
     DOCKER_HOST: ""
     TESTCONTAINERS_HOST_OVERRIDE: ""
   needs:
     - job: unit-test
       artifacts: true   # downloads target/jacoco.exec so JaCoCo:merge can combine unit + IT coverage
-  # No DinD service — Testcontainers uses /var/run/docker.sock directly
+  # No DinD service — Testcontainers uses /var/run/docker.sock mounted by the runner
   script:
     # -Dsurefire.skip=true: unit tests already validated in the previous stage,
     # no need to repeat them. Failsafe, SpotBugs and JaCoCo still run at verify.
