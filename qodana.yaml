@@ -1,0 +1,32 @@
+# Qodana analysis configuration
+# See: https://www.jetbrains.com/help/qodana/configure-qodana-yaml.html
+#
+# Run locally with Docker:
+#   docker run --rm -it -v $(pwd):/data/project -v $(pwd)/qodana-report:/data/results \
+#     jetbrains/qodana-jvm:2024.3 --save-report
+#
+# Or via the Qodana CLI:
+#   brew install jetbrains/utils/qodana  (macOS)
+#   qodana scan --project-dir=. --results-dir=./qodana-report
+version: "1.0"
+linter: jetbrains/qodana-jvm:2024.3
+
+# Disable inspections that produce too many false-positives in a Spring Boot project
+# or conflict with the project's intentional design choices.
+exclude:
+  # Spring Boot uses field injection with @Autowired (replaced by constructor injection
+  # where possible, but auto-wired test fields are fine)
+  - name: SpringJavaAutowiredFieldsWarningInspection
+  # Lombok generates equals/hashCode — IntelliJ sees the abstract method as missing
+  - name: EqualsAndHashcode
+  # Deliberate SQL injection demo endpoints (marked @SuppressWarnings in code)
+  - name: SqlInjection
+    paths:
+      - src/main/java/com/mirador/security
+
+# Project uses Java 21 for analysis (avoids Java 25 pattern-matching parser issues
+# in some IntelliJ inspections)
+projectJDK: "21"
+
+# Send results to Qodana Cloud for trend tracking (requires QODANA_TOKEN variable)
+# Comment out if running in offline mode
