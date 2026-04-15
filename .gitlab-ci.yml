@@ -227,27 +227,30 @@ include:
 # The unit-test artifact (target/jacoco.exec) is pulled automatically via `needs`.
 integration-test:
   stage: integration
-  tags:
-    # Must run on a native Linux Docker host (not Mac Docker Desktop).
-    # On Mac Docker Desktop, Testcontainers auto-detects the host IP as 172.17.0.1 (bridge
-    # gateway inside the LinuxKit VM), but published container ports are only accessible on
-    # 127.0.0.1 (Mac host) — not on 172.17.0.1. This causes ContainerLaunchException:
-    # "Timed out waiting for container port to open (172.17.0.1 ports: [N] should be listening)".
-    # On a native Linux host the Docker bridge (172.17.0.1) IS the container's default gateway
-    # and published ports are accessible there, so Testcontainers works correctly.
-    - saas-linux-medium-amd64
+  # No runner tag — runs on any available runner (local Mac or SaaS Linux).
+  # TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal makes Testcontainers connect to
+  # published container ports via the Docker host hostname instead of 172.17.0.1.
+  #
+  # Why this is needed on Mac Docker Desktop:
+  #   Testcontainers auto-detects the host as 172.17.0.1 (Docker bridge gateway inside
+  #   the LinuxKit VM). But on Mac, published ports are bound to 127.0.0.1 (Mac host),
+  #   not 172.17.0.1 — causing ContainerLaunchException.
+  #   `host.docker.internal` is injected into every container by Docker Desktop and
+  #   resolves to the Mac host where the published ports ARE accessible.
+  #
+  # On GitLab SaaS Linux runners (native Docker):
+  #   Docker 20.10+ also injects `host.docker.internal` (resolves to 172.17.0.1 on Linux).
+  #   So the same override works correctly on both platforms.
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
     - when: on_success
   variables:
-    # Override the global DOCKER_HOST (set for DinD) to empty so Testcontainers falls
-    # back to /var/run/docker.sock (mounted by the runner from the host).
-    # With socket binding, inner containers are on the host Docker daemon and their ports
-    # are accessible via 172.17.0.1 (Docker bridge gateway, the container's default route).
-    # This works on both Mac Docker Desktop (LinuxKit VM bridge) and Linux SaaS runners.
+    # Use Unix socket directly (disables the global DinD DOCKER_HOST tcp://docker:2375).
     DOCKER_HOST: ""
-    TESTCONTAINERS_HOST_OVERRIDE: ""
+    # Tell Testcontainers to check published ports on host.docker.internal instead of
+    # auto-detected 172.17.0.1. Works on both Mac Docker Desktop and Linux Docker 20.10+.
+    TESTCONTAINERS_HOST_OVERRIDE: "host.docker.internal"
   needs:
     - job: unit-test
       artifacts: true   # downloads target/jacoco.exec so JaCoCo:merge can combine unit + IT coverage
