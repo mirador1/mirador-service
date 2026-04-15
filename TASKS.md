@@ -35,8 +35,8 @@ These were proposed at 2026-04-14T20:56 in response to "d'autres idées pour ép
       et alerter sur GPL/AGPL incompatibles avec un projet commercial
 
 ### Métriques de code avancées
-- [ ] **Complexité cyclomatique** — les données sont dans `jacoco.csv` (colonne COMPLEXITY) ;
-      exposer le top-10 des classes les plus complexes dans la page quality
+- [x] **Complexité cyclomatique** — buildMetricsSection() now returns topComplexClasses (top 10
+      by COMPLEXITY_MISSED+COMPLEXITY_COVERED). UI: table in metrics tab, amber > 15, red > 30.
 - [ ] **Tests les plus lents** — parser les Surefire XML (`time` par test case) et afficher
       le top-10 des tests les plus lents dans l'onglet Tests
 - [ ] **Classes sans tests** — croiser la liste des classes (JaCoCo) avec les suites de test

@@ -781,6 +781,7 @@ public class QualityReportEndpoint {
      *   <li>Totals: class/method/line/complexity counts across the whole project.</li>
      *   <li>Package-level summary sorted by complexity (for the Metrics tab).</li>
      *   <li>Top-10 most complex classes (for the Cyclomatic Complexity view).</li>
+     *   <li>Classes with 0% method coverage (potential gap in test suite).</li>
      * </ul>
      *
      * <p>JaCoCo CSV columns (0-indexed):
@@ -794,9 +795,11 @@ public class QualityReportEndpoint {
 
         long totalClasses = 0, totalMethods = 0, totalLines = 0, totalComplexity = 0;
         Map<String, long[]> pkgMetrics = new LinkedHashMap<>(); // [classes, lines, methods, complexity]
-        // Class-level complexity for top-10 view: Map<simpleClassName, complexity>
+        // Class-level complexity for top-10 view
         List<long[]> classComplexity = new ArrayList<>(); // [complexity, classNameIndex]
         List<String> classNames = new ArrayList<>();
+        // Classes with 0% method coverage (METHOD_COVERED=0, METHOD_TOTAL>0)
+        List<String> untestedClasses = new ArrayList<>();
 
         try (BufferedReader br = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
             String line;
@@ -835,6 +838,12 @@ public class QualityReportEndpoint {
                     int idx = classNames.size();
                     classNames.add(simpleClass);
                     classComplexity.add(new long[]{complexity, idx});
+
+                    // Untested class: has methods but 0 are covered (METHOD_MISSED > 0 && METHOD_COVERED == 0)
+                    // Excludes pure data classes (records, DTOs) with 0 methods — they have no logic to test.
+                    if (methodCovered == 0 && methods > 0) {
+                        untestedClasses.add(simpleClass);
+                    }
                 } catch (NumberFormatException ignored) {}
             }
         } catch (IOException e) {
@@ -878,6 +887,10 @@ public class QualityReportEndpoint {
         r.put("packages", packages);
         // Top-10 most complex classes by cyclomatic complexity (COMPLEXITY_MISSED + COMPLEXITY_COVERED)
         r.put("topComplexClasses", topComplex);
+        // Classes with 0% method coverage — potential test gaps (deduplicated, sorted alphabetically)
+        java.util.Set<String> untestedSet = new java.util.TreeSet<>(untestedClasses);
+        r.put("untestedClasses", new ArrayList<>(untestedSet));
+        r.put("untestedCount", untestedSet.size());
         return r;
     }
 
