@@ -65,27 +65,16 @@ default:
   image: maven:3.9.14-eclipse-temurin-25-noble   # JDK 25 + Maven 3.9 — mirrors the pom.xml java.version
   interruptible: true   # MR pipelines can be cancelled when a new commit is pushed
   # No global runner tag — jobs run on any available runner (local Mac runner or SaaS).
-  # Jobs that need DinD (docker-build, trivy) or Linux Docker networking (integration-test)
-  # carry their own `tags: [saas-linux-medium-amd64]` to target GitLab SaaS Linux runners.
+  # docker-build uses Kaniko (no DinD, no privileged mode) — runs on any runner.
+  # trivy scans the registry image directly (no DinD needed either).
 
 variables:
   # Keep the local Maven repo inside the project dir so it is cached across jobs
   MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
   MAVEN_CLI_OPTS: "--batch-mode --errors --fail-at-end --show-version --no-transfer-progress"
-  # Docker-in-dind: plain TCP, no TLS (safe because it is only reachable within the GitLab runner network)
-  DOCKER_HOST: "tcp://docker:2375"
-  DOCKER_TLS_CERTDIR: ""    # empty string disables TLS certificate generation in the DinD service
-  # Testcontainers in Docker-in-Docker (DinD) requires two overrides:
-  #
-  # 1. TESTCONTAINERS_RYUK_DISABLED — Ryuk container binds to 172.17.0.1 (Docker bridge) which
-  #    is not reachable from the runner. Cleanup happens naturally when the DinD daemon stops.
-  #
-  # 2. TESTCONTAINERS_HOST_OVERRIDE — Testcontainers auto-detects the Docker host IP as
-  #    172.17.0.1 (Docker bridge inside DinD), which is unreachable from the CI job container.
-  #    Override to "docker" so port bindings are resolved via the DinD service alias,
-  #    which is reachable from the CI job. E.g.: Kafka at docker:52020 instead of 172.17.0.1:52020.
+  # Testcontainers default: Ryuk disabled so cleanup doesn't bind 172.17.0.1.
+  # TESTCONTAINERS_HOST_OVERRIDE is overridden per-job (integration-test uses host.docker.internal).
   TESTCONTAINERS_RYUK_DISABLED: "true"
-  TESTCONTAINERS_HOST_OVERRIDE: "docker"
 
 cache:
   # One cache bucket per branch — avoids cross-branch dependency pollution
@@ -246,7 +235,7 @@ integration-test:
       when: never
     - when: on_success
   variables:
-    # Use Unix socket directly (disables the global DinD DOCKER_HOST tcp://docker:2375).
+    # Use Unix socket directly — no global DOCKER_HOST override to clear.
     DOCKER_HOST: ""
     # Tell Testcontainers to check published ports on host.docker.internal instead of
     # auto-detected 172.17.0.1. Works on both Mac Docker Desktop and Linux Docker 20.10+.
@@ -351,56 +340,49 @@ build-jar:
 # Only runs on the default branch and on tags — skip on every MR to
 # avoid flooding the registry with images that are never deployed.
 docker-build:
+  # Kaniko builds the Docker image without Docker daemon — no DinD, no privileged mode.
+  # Runs on any runner (local Mac or SaaS) without exhausting CI quota.
+  # Kaniko reads the Dockerfile and pushes directly to the registry in one step.
+  # Cache: --cache=true + --cache-repo stores layer snapshots in the registry,
+  # equivalent to --cache-from in Docker buildx (first run is slow, subsequent runs fast).
   stage: package
-  image: docker:28    # standalone Docker client — the DinD service provides the daemon
-  tags:
-    # DinD requires privileged mode, only available on GitLab SaaS Linux runners.
-    # Local Mac runner has privileged=false and cannot run DinD services.
-    - saas-linux-medium-amd64
+  image:
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
   needs:
     - job: unit-test        # both test gates must pass before producing the image
     - job: integration-test
-  services:
-    - name: docker:28-dind
-      alias: docker
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH    # push to registry on main
     - if: $CI_COMMIT_TAG                             # push to registry on version tags (e.g. v1.2.0)
   script:
-    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
     - |
-      # Pull the previous main image to seed the build cache.
-      # --cache-from reuses unchanged layers (e.g. dependency download, JDK base),
-      # cutting build time from ~5 min to ~30 s when only src/ changed.
-      # `|| true` prevents failure on first run when no previous image exists.
-      # The backend image is pushed as a sub-image path:
-      #   $CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA
-      # This matches ${IMAGE_REGISTRY}/backend:${IMAGE_TAG} in k8s/backend/deployment.yaml
-      # and allows a future frontend image at $CI_REGISTRY_IMAGE/frontend:$CI_COMMIT_SHA
-      # to share the same GitLab registry project.
-      docker pull "$CI_REGISTRY_IMAGE/backend:$CI_DEFAULT_BRANCH" || true
+      # Write registry auth for Kaniko (base64-encoded JSON, same format as ~/.docker/config.json)
+      mkdir -p /kaniko/.docker
+      printf '{"auths":{"%s":{"auth":"%s"}}}' \
+        "$CI_REGISTRY" \
+        "$(printf '%s:%s' "$CI_REGISTRY_USER" "$CI_REGISTRY_PASSWORD" | base64 | tr -d '\n')" \
+        > /kaniko/.docker/config.json
     - |
-      docker build \
-        --cache-from "$CI_REGISTRY_IMAGE/backend:$CI_DEFAULT_BRANCH" \
+      /kaniko/executor \
+        --context "$CI_PROJECT_DIR" \
+        --dockerfile "$CI_PROJECT_DIR/Dockerfile" \
+        --destination "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA" \
+        --destination "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_REF_SLUG" \
+        --cache=true \
+        --cache-repo "$CI_REGISTRY_IMAGE/backend/cache" \
         --label "org.opencontainers.image.revision=$CI_COMMIT_SHA" \
-        --label "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-        -t "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA" \
-        -t "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_REF_SLUG" \
-        .
-    - docker push "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA"
-    - docker push "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_REF_SLUG"
+        --label "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 trivy:scan:
   # Scans the freshly built Docker image for OS + Java CVEs using Trivy.
+  # Trivy pulls directly from the registry — no DinD or privileged mode needed.
   # Runs only on main/tags after docker-build succeeds. allow_failure:true —
   # we track CVEs as informational; blocking releases on new CVEs creates friction.
   stage: package
   image: aquasec/trivy:latest
-  tags:
-    # DinD is used to pull the image for scanning — requires privileged mode.
-    - saas-linux-medium-amd64
   needs:
     - job: docker-build
   rules:
@@ -409,26 +391,15 @@ trivy:scan:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_COMMIT_TAG
   allow_failure: true
-  variables:
-    # Use the same Docker host as docker-build so Trivy can pull the image
-    DOCKER_HOST: "tcp://docker:2375"
-  services:
-    - name: docker:28-dind
-      alias: docker
   script:
-    - |
-      # Wait for DinD to be ready before pulling the scanned image
-      for i in $(seq 1 30); do
-        docker info >/dev/null 2>&1 && break
-        sleep 2
-      done
-    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
     - |
       trivy image \
         --exit-code 0 \
         --severity HIGH,CRITICAL \
         --format json \
         --output trivy-report.json \
+        --username "$CI_REGISTRY_USER" \
+        --password "$CI_REGISTRY_PASSWORD" \
         "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA"
     - |
       # Human-readable summary to CI log
@@ -457,14 +428,14 @@ trivy:scan:
 #   • Click ▶ on the job in any pipeline (when: manual)
 #   • "Run pipeline" in GitLab CI/CD UI with variable RUN_COMPAT=true (runs all four)
 #
-# DinD service is included so Testcontainers integration tests run too.
+# Testcontainers uses the host Docker socket (mounted by the runner) — no DinD needed.
 # allow_failure: true — compat failures don't block MR merge.
 
 .compat-job: &compat-job
   stage: compat
-  services:
-    - name: docker:28-dind
-      alias: docker
+  variables:
+    DOCKER_HOST: ""
+    TESTCONTAINERS_HOST_OVERRIDE: "host.docker.internal"
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -635,13 +606,14 @@ generate-reports:
 #
 # [GraalVM Community 25 / Spring Boot 4 AOT] — -Pnative profile in pom.xml.
 build-native:
+  # Builds the GraalVM native image using Kaniko — no DinD, no privileged mode.
+  # AOT compilation is CPU-intensive (up to 30 min) so this only runs on schedule or manually.
   stage: native
-  image: docker:28
+  image:
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
   # No `needs:` — runs independently on the scheduled pipeline, not after unit/integration.
   # The source is already tested by the regular pipeline before it lands on main.
-  services:
-    - name: docker:28-dind
-      alias: docker
   rules:
     # Only on the native-build schedule (REPORT_PIPELINE must NOT be set).
     # The report schedule sets REPORT_PIPELINE=true — that triggers generate-reports instead.
@@ -658,17 +630,22 @@ build-native:
   allow_failure: true   # never blocks a merge when triggered manually
   timeout: 30 minutes   # AOT compilation is CPU-intensive; default 1h is too loose
   script:
-    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
     - |
-      docker build \
-        -f Dockerfile.native \
+      mkdir -p /kaniko/.docker
+      printf '{"auths":{"%s":{"auth":"%s"}}}' \
+        "$CI_REGISTRY" \
+        "$(printf '%s:%s' "$CI_REGISTRY_USER" "$CI_REGISTRY_PASSWORD" | base64 | tr -d '\n')" \
+        > /kaniko/.docker/config.json
+    - |
+      /kaniko/executor \
+        --context "$CI_PROJECT_DIR" \
+        --dockerfile "$CI_PROJECT_DIR/Dockerfile.native" \
+        --destination "$CI_REGISTRY_IMAGE:native-$CI_COMMIT_SHA" \
+        --destination "$CI_REGISTRY_IMAGE:native-$CI_COMMIT_REF_SLUG" \
+        --cache=true \
+        --cache-repo "$CI_REGISTRY_IMAGE/cache" \
         --label "org.opencontainers.image.revision=$CI_COMMIT_SHA" \
-        --label "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-        -t "$CI_REGISTRY_IMAGE:native-$CI_COMMIT_SHA" \
-        -t "$CI_REGISTRY_IMAGE:native-$CI_COMMIT_REF_SLUG" \
-        .
-    - docker push "$CI_REGISTRY_IMAGE:native-$CI_COMMIT_SHA"
-    - docker push "$CI_REGISTRY_IMAGE:native-$CI_COMMIT_REF_SLUG"
+        --label "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   artifacts:
     # Expose image tags as a dotenv artifact so downstream jobs (e.g. deploy)
     # can reference the exact tag without re-computing it.
