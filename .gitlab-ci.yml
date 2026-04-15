@@ -227,10 +227,15 @@ include:
 # The unit-test artifact (target/jacoco.exec) is pulled automatically via `needs`.
 integration-test:
   stage: integration
-  # No runner tag — runs on any available runner (local Mac or SaaS).
-  # Socket binding (DOCKER_HOST="") works on both:
-  #   • Mac Docker Desktop: all containers share the LinuxKit VM bridge (172.17.0.1 reachable)
-  #   • SaaS Linux runner: native Docker bridge (172.17.0.1 reachable as default gateway)
+  tags:
+    # Must run on a native Linux Docker host (not Mac Docker Desktop).
+    # On Mac Docker Desktop, Testcontainers auto-detects the host IP as 172.17.0.1 (bridge
+    # gateway inside the LinuxKit VM), but published container ports are only accessible on
+    # 127.0.0.1 (Mac host) — not on 172.17.0.1. This causes ContainerLaunchException:
+    # "Timed out waiting for container port to open (172.17.0.1 ports: [N] should be listening)".
+    # On a native Linux host the Docker bridge (172.17.0.1) IS the container's default gateway
+    # and published ports are accessible there, so Testcontainers works correctly.
+    - saas-linux-medium-amd64
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
