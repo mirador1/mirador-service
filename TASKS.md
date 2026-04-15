@@ -29,8 +29,11 @@
 These were proposed at 2026-04-14T20:56 in response to "d'autres idées pour épaissir Maven site":
 
 ### Sécurité
-- [ ] **Trivy** — scan de l'image Docker (CVE dans les couches OS + dépendances Java).
-      `trivy image <image>` → JSON → parser et afficher dans /actuator/quality
+- [x] **Trivy** — trivy:scan CI job added to service and UI .gitlab-ci.yml.
+      Runs after docker-build on main/tags using aquasec/trivy image.
+      Scans for HIGH/CRITICAL CVEs. allow_failure:true. Output: trivy-report.json (30-day artifact).
+      Note: CI-only (not in /actuator/quality — Trivy scan happens after JAR is built and cannot
+      be embedded in the JAR at build time without running Trivy inside the Maven build).
 - [x] **License compliance** — license-maven-plugin:add-third-party generates target/THIRD-PARTY.txt
       at generate-resources phase. Packaged into META-INF/build-reports/THIRD-PARTY.txt.
       QualityReportEndpoint.buildLicensesSection() returns license summary + per-dep details.
