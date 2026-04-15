@@ -738,6 +738,14 @@
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-surefire-report-plugin</artifactId>
             <version>3.5.5</version>
+            <dependencies>
+                <!-- report-only goal needs a Doxia skin when run outside the site lifecycle -->
+                <dependency>
+                    <groupId>org.apache.maven.skins</groupId>
+                    <artifactId>maven-default-skin</artifactId>
+                    <version>1.3</version>
+                </dependency>
+            </dependencies>
             <executions>
                 <execution>
                     <id>test-report</id>
@@ -821,12 +829,13 @@
         <plugin>
             <groupId>org.pitest</groupId>
             <artifactId>pitest-maven</artifactId>
-            <version>1.17.4</version>
+            <!-- 1.23.x bundles ASM 9.8 which supports Java 25 class files (version 69) -->
+            <version>1.23.0</version>
             <dependencies>
                 <dependency>
                     <groupId>org.pitest</groupId>
                     <artifactId>pitest-junit5-plugin</artifactId>
-                    <version>1.2.1</version>
+                    <version>1.2.3</version>
                 </dependency>
             </dependencies>
             <configuration>
@@ -837,6 +846,17 @@
                 <targetTests>
                     <param>com.mirador.*</param>
                 </targetTests>
+                <!--
+                  Exclude compatibility shim classes that only exist on specific Java/SB versions.
+                  These are unreachable in the default Java 25 / SB4 test run and would show
+                  as "no coverage" mutations rather than meaningful quality gaps.
+                -->
+                <excludedClasses>
+                    <param>com.mirador.compat.*</param>
+                    <param>com.mirador.*.sb3.*</param>
+                    <param>com.mirador.*.java17.*</param>
+                    <param>com.mirador.*.java21.*</param>
+                </excludedClasses>
                 <outputFormats>
                     <outputFormat>XML</outputFormat>
                 </outputFormats>
@@ -845,6 +865,11 @@
                     <mutator>DEFAULTS</mutator>
                 </mutators>
                 <reportsDirectory>${project.build.directory}/pit-reports</reportsDirectory>
+                <!--
+                  pitest 1.23.0 bundles ASM 9.8 which supports Java 25 class files (version 69).
+                  No JVM override needed — MINION runs on the same Java 25 JVM as Maven so it
+                  can load both production and test classes compiled at class version 69.
+                -->
             </configuration>
         </plugin>
         <!--
