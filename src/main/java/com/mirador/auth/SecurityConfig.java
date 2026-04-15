@@ -74,6 +74,12 @@ public class SecurityConfig {
                 // CSRF protection is irrelevant for stateless REST APIs authenticated via Bearer tokens:
                 // there is no session cookie that a CSRF attack could hijack.
                 .csrf(AbstractHttpConfigurer::disable)
+                // Disable Spring Security's default security headers (X-Frame-Options, CSP, etc.)
+                // because SecurityHeadersFilter manages all OWASP headers with path-aware logic:
+                // - /maven-site/** and /reports/** get frame-ancestors CSP (embeddable in Angular iframe)
+                // - all other paths get X-Frame-Options: DENY + frame-ancestors 'none'
+                // Spring Security's blanket DENY would override those per-path decisions.
+                .headers(AbstractHttpConfigurer::disable)
                 // Never create an HttpSession — every request must carry its own JWT.
                 // STATELESS also prevents Spring Security from storing the SecurityContext between requests.
                 .sessionManagement(session ->

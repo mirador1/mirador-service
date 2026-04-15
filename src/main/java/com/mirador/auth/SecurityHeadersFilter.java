@@ -48,16 +48,26 @@ public class SecurityHeadersFilter extends OncePerRequestFilter {
 
         String path = request.getRequestURI();
 
-        // /reports/** pages are intentionally embedded as iframes in the Angular frontend.
-        // X-Frame-Options is relaxed (removed) so the browser allows cross-origin framing.
-        // Content-Security-Policy frame-ancestors is also skipped for these paths.
-        if (!path.startsWith("/reports/")) {
+        // /maven-site/** and /reports/** are intentionally embedded as iframes in the Angular
+        // frontend (quality page). X-Frame-Options must be absent (not DENY) so browsers allow
+        // cross-origin framing from http://localhost:4200 in dev and from the same origin in prod.
+        // frame-ancestors is set to 'self' so only same-origin pages can embed them — tighter
+        // than a wildcard but still allows the Angular app (same host, different port in dev).
+        boolean isEmbeddable = path.startsWith("/maven-site/") || path.startsWith("/reports/");
+
+        if (!isEmbeddable) {
             response.setHeader("X-Frame-Options", "DENY");
         }
 
-        // CSP only on API endpoints — Swagger UI needs inline scripts and external resources.
-        // /reports/** is also excluded so browsers allow iframe embedding from Angular.
-        if (!path.startsWith("/swagger-ui") && !path.startsWith("/v3/api-docs") && !path.startsWith("/reports/")) {
+        // CSP: skip Swagger UI (needs inline scripts) and embeddable report paths.
+        // For embeddable paths, send a narrow frame-ancestors CSP instead of the full policy —
+        // the Maven site HTML has its own inline styles that a 'self' default-src would block.
+        if (isEmbeddable) {
+            // Allow embedding from same origin and localhost:4200 (Angular dev server).
+            // In production both are on the same origin so 'self' alone is sufficient.
+            response.setHeader("Content-Security-Policy",
+                    "frame-ancestors 'self' http://localhost:4200");
+        } else if (!path.startsWith("/swagger-ui") && !path.startsWith("/v3/api-docs")) {
             response.setHeader("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'");
         }
 

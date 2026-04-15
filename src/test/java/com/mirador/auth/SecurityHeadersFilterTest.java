@@ -51,15 +51,32 @@ class SecurityHeadersFilterTest {
     }
 
     @Test
-    void reportsPath_hasNoXFrameOptions_and_noCSP() throws Exception {
+    void reportsPath_hasNoXFrameOptions_and_frameAncestorsCsp() throws Exception {
         var req = new MockHttpServletRequest("GET", "/reports/dependency-check");
         var res = new MockHttpServletResponse();
 
         filter.doFilter(req, res, chain);
 
-        // iframes must be allowed for Angular embedding
+        // X-Frame-Options must be absent so browsers allow iframe embedding from Angular.
         assertThat(res.getHeader("X-Frame-Options")).isNull();
-        assertThat(res.getHeader("Content-Security-Policy")).isNull();
+        // frame-ancestors restricts embedding to same origin + Angular dev server only.
+        assertThat(res.getHeader("Content-Security-Policy"))
+                .contains("frame-ancestors")
+                .contains("'self'");
+    }
+
+    @Test
+    void mavenSitePath_hasNoXFrameOptions_and_frameAncestorsCsp() throws Exception {
+        var req = new MockHttpServletRequest("GET", "/maven-site/index.html");
+        var res = new MockHttpServletResponse();
+
+        filter.doFilter(req, res, chain);
+
+        // Maven site is intentionally embedded as an iframe in the Angular quality page.
+        assertThat(res.getHeader("X-Frame-Options")).isNull();
+        assertThat(res.getHeader("Content-Security-Policy"))
+                .contains("frame-ancestors")
+                .contains("'self'");
     }
 
     @Test
