@@ -90,6 +90,12 @@ spec:
               value: "Basic $(OTEL_EXPORTER_OTLP_AUTH)"
             - name: MANAGEMENT_LOGGING_EXPORT_OTLP_HEADERS_AUTHORIZATION
               value: "Basic $(OTEL_EXPORTER_OTLP_AUTH)"
+            # GitLab API token (read_api scope) for /actuator/quality pipeline history section.
+            - name: GITLAB_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: customer-service-secrets
+                  key: GITLAB_API_TOKEN
           resources:
             # GKE Autopilot: request = limit for deterministic pod sizing and billing.
             # Autopilot rounds up to the nearest resource class; 512Mi/500m is efficient.

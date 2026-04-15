@@ -699,6 +699,7 @@ terraform-apply:
         --from-literal=JWT_SECRET="$JWT_SECRET" \
         --from-literal=API_KEY="${API_KEY:-}" \
         --from-literal=OTEL_EXPORTER_OTLP_AUTH="${GRAFANA_OTLP_AUTH:-}" \
+        --from-literal=GITLAB_API_TOKEN="${GITLAB_API_TOKEN:-}" \
         --namespace=app --dry-run=client -o yaml | kubectl apply -f -
     - |
       # Apply all manifests — envsubst replaces ${K8S_HOST}, ${IMAGE_REGISTRY}, ${IMAGE_TAG},

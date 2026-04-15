@@ -121,6 +121,18 @@ public class QualityReportEndpoint {
     @Value("${sonar.token:}")
     private String sonarToken;
 
+    // GitLab pipeline history — calls GET /projects/:id/pipelines to fetch the last 10 runs.
+    // In production the GitLab project ID is injected from the CI variable GITLAB_PROJECT_ID.
+    // GITLAB_API_TOKEN requires read_api scope (never write). Both default to blank = section disabled.
+    @Value("${gitlab.host.url:https://gitlab.com}")
+    private String gitlabHostUrl;
+
+    @Value("${gitlab.project.id:}")
+    private String gitlabProjectId;
+
+    @Value("${gitlab.api.token:}")
+    private String gitlabApiToken;
+
     private final RequestMappingHandlerMapping requestMappingHandlerMapping;
     private final Environment environment;
 
@@ -148,6 +160,7 @@ public class QualityReportEndpoint {
         result.put(K_DEPENDENCIES, buildDependenciesSection());
         result.put("metrics", buildMetricsSection());
         result.put("runtime", buildRuntimeSection());
+        result.put("pipeline", buildPipelineSection());
         return result;
     }
 
@@ -1271,6 +1284,80 @@ public class QualityReportEndpoint {
             return layers;
         } catch (Exception e) {
             return List.of();
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Pipeline history section — GitLab API
+    // -------------------------------------------------------------------------
+
+    /**
+     * Fetches the last 10 CI/CD pipeline runs from the GitLab API.
+     *
+     * <p>Requires {@code GITLAB_PROJECT_ID} and {@code GITLAB_API_TOKEN} (read_api scope)
+     * to be set. Returns {@code available=false} gracefully when either is blank,
+     * so local dev mode works without configuring GitLab credentials.
+     *
+     * <p>The GitLab REST API path is:
+     * {@code GET /api/v4/projects/:id/pipelines?per_page=10&order_by=id&sort=desc}
+     */
+    private Map<String, Object> buildPipelineSection() {
+        if (gitlabProjectId.isBlank()) {
+            return Map.of(K_AVAILABLE, false, "reason", "GITLAB_PROJECT_ID not configured");
+        }
+
+        String url = gitlabHostUrl + "/api/v4/projects/" + gitlabProjectId
+                + "/pipelines?per_page=10&order_by=id&sort=desc";
+        HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(5))
+                .build();
+        HttpRequest.Builder reqBuilder = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .timeout(Duration.ofSeconds(10))
+                .GET();
+        if (!gitlabApiToken.isBlank()) {
+            reqBuilder.header("PRIVATE-TOKEN", gitlabApiToken);
+        }
+
+        try {
+            HttpResponse<String> resp = client.send(reqBuilder.build(),
+                    HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() != 200) {
+                return Map.of(K_AVAILABLE, false, K_ERROR,
+                        "GitLab API returned HTTP " + resp.statusCode());
+            }
+            JsonNode root = MAPPER.readTree(resp.body());
+            List<Map<String, Object>> pipelines = new ArrayList<>();
+            for (JsonNode p : root) {
+                Map<String, Object> entry = new LinkedHashMap<>();
+                entry.put("id",        p.path("iid").asInt());
+                entry.put("ref",       p.path("ref").asText("-"));
+                entry.put("status",    p.path("status").asText("-"));
+                entry.put("createdAt", p.path("created_at").asText("-"));
+                // Duration — only available after pipeline completes
+                JsonNode startedAt  = p.path("started_at");
+                JsonNode finishedAt = p.path("finished_at");
+                if (!startedAt.isNull() && !finishedAt.isNull()
+                        && !startedAt.isMissingNode() && !finishedAt.isMissingNode()) {
+                    try {
+                        Instant start  = Instant.parse(startedAt.asText());
+                        Instant finish = Instant.parse(finishedAt.asText());
+                        entry.put("durationSeconds", Duration.between(start, finish).getSeconds());
+                    } catch (Exception ignored) {
+                        // Malformed timestamp — omit duration rather than break the section
+                    }
+                }
+                entry.put("webUrl", p.path("web_url").asText(""));
+                pipelines.add(entry);
+            }
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put(K_AVAILABLE, true);
+            result.put("projectId", gitlabProjectId);
+            result.put("host", gitlabHostUrl);
+            result.put("pipelines", pipelines);
+            return result;
+        } catch (Exception e) {
+            return Map.of(K_AVAILABLE, false, K_ERROR, e.getMessage());
         }
     }
 }
