@@ -1,5 +1,5 @@
 # ──────────────────────────────────────────────────────────────────────────────
-# Pipeline overview — three separate lanes:
+# Pipeline overview — four separate lanes:
 #
 # ┌─ REGULAR pipeline (every MR push + main branch push) — fast lane ─────────┐
 # │   lint          Dockerfile linting (hadolint)                              │
@@ -8,11 +8,18 @@
 # │   package       build-jar + docker-build (main/tags only)                  │
 # └────────────────────────────────────────────────────────────────────────────┘
 #
-# ┌─ SCHEDULED pipeline (once per day, main branch only) — slow lane ─────────┐
+# ┌─ NATIVE schedule (once per day) — slow lane ───────────────────────────────┐
 # │   native        build-native — GraalVM AOT native image (5-15 min)        │
-# │                 skipped if Dockerfile.native, pom.xml, src/ unchanged      │
 # │                 Configure in GitLab: CI/CD > Schedules (e.g. 03:00 UTC)   │
 # │                 Also available as ▶ manual button in every pipeline        │
+# └────────────────────────────────────────────────────────────────────────────┘
+#
+# ┌─ REPORTS schedule (once per day, set REPORT_PIPELINE=true) ────────────────┐
+# │   reports       generate-reports — Maven site + push to reports/ branch    │
+# │                 Configure in GitLab: CI/CD > Schedules (e.g. 02:00 UTC),  │
+# │                 add variable REPORT_PIPELINE=true                          │
+# │                 Requires: GITLAB_REPORTS_TOKEN CI variable (project access │
+# │                 token — Reporter role, write_repository scope, 90-day exp) │
 # └────────────────────────────────────────────────────────────────────────────┘
 #
 # ┌─ MANUAL / ON-DEMAND compatibility matrix ──────────────────────────────────┐
@@ -26,7 +33,7 @@
 # │                 SB4+Java25 (the default) is already covered by unit-test.  │
 # └────────────────────────────────────────────────────────────────────────────┘
 #
-# Goal: code-review feedback in < 10 minutes; GraalVM only when it matters.
+# Goal: code-review feedback in < 10 minutes; heavy generation only on schedule.
 # ──────────────────────────────────────────────────────────────────────────────
 
 workflow:
@@ -34,8 +41,9 @@ workflow:
     # Regular pipelines: code-review feedback on MRs + artifact production on main.
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE != "schedule"
-    # Scheduled pipelines: daily GraalVM native build (separate slow lane).
-    # Configure in GitLab → CI/CD → Schedules: run once per day at a low-traffic hour.
+    # Scheduled pipelines: two named schedules (native build + report generation).
+    # Configure each in GitLab → CI/CD → Schedules. The REPORT_PIPELINE variable
+    # distinguishes the report schedule from the native-build schedule.
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - when: never
 
@@ -45,7 +53,8 @@ stages:
   - integration   # Testcontainers ITests + SpotBugs + coverage gate — needs Docker
   - package       # Produce deployable artifacts — JAR + Docker image
   - compat        # On-demand compatibility matrix: SB3/SB4 × Java17/21/25
-  - native        # GraalVM AOT native-image build (main branch + tags only)
+  - native        # GraalVM AOT native-image build (native-build schedule only)
+  - reports       # Maven site + docs generation (report schedule only — REPORT_PIPELINE=true)
   - deploy        # Deploy to Kubernetes / PaaS (6 targets — see below)
 
 # ── shared defaults ────────────────────────────────────────────────────────────
@@ -217,27 +226,9 @@ integration-test:
 # ── stage: package ────────────────────────────────────────────────────────────
 
 # Generate the Maven site with quality reports (Surefire, JaCoCo, SpotBugs, Javadoc).
-# Depends on the integration-test job so JaCoCo + SpotBugs data files are available.
-# The site is stored as a pipeline artifact and is browsable in the GitLab UI.
-#
-# Note: PMD, Checkstyle, and JXR are intentionally excluded from the site — they crash on
-# Java 25 pattern-guard syntax (`case X e when ...`). Their results remain at /actuator/quality.
-maven-site:
-  stage: package
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-      when: never
-    - when: on_success
-  needs:
-    - job: unit-test
-    - job: integration-test
-  script:
-    - mvn $MAVEN_CLI_OPTS site    # -DskipTests is not needed — site:site does not run tests
-  artifacts:
-    name: "maven-site-${CI_COMMIT_SHORT_SHA}"
-    paths:
-      - target/site/    # Full Maven site HTML — browsable via "Browse" in pipeline artifacts
-    expire_in: 2 weeks
+# Maven site generation — moved to the dedicated reports stage (REPORT_PIPELINE=true schedule).
+# Removed from the regular pipeline to keep push feedback fast (mvn site takes ~3 min).
+# The generate-reports job below does this + commits the result to the reports/ branch.
 
 # Build the executable Spring Boot fat JAR.
 # Tests are skipped here — they already passed in the test + integration stages.
@@ -393,6 +384,80 @@ compat-sb3-java17:
         - target/failsafe-reports/*.xml
     expire_in: 1 week
 
+# ── stage: reports ────────────────────────────────────────────────────────────
+
+# Generates the full quality report suite and pushes it to the `reports/` branch.
+#
+# Why a separate scheduled pipeline?
+#   `mvn site` + TypeDoc take ~3-5 minutes; running them on every push would double
+#   the pipeline time and block the fast-feedback loop for developers. Instead this
+#   job runs once a day (or on demand) so the reports are always fresh without
+#   slowing regular code-review pipelines.
+#
+# How to enable:
+#   1. In GitLab → Settings → CI/CD → Project Access Tokens, create a token with:
+#        Role: Reporter, Scopes: api + write_repository, Expiry: 90 days
+#      Save the token value as CI variable GITLAB_REPORTS_TOKEN (masked, protected).
+#   2. In GitLab → CI/CD → Schedules, add a new schedule:
+#        Description: "Daily report generation"
+#        Cron: 0 2 * * *   (02:00 UTC — low-traffic hour)
+#        Branch: main
+#        Variable: REPORT_PIPELINE = true
+#
+# What it generates:
+#   - Maven site: Surefire, Failsafe, JaCoCo, SpotBugs, Javadoc (target/site/)
+#   - These are pushed to the `reports/` branch as static files browsable via GitLab
+#     Pages or served by the optional nginx container in docker-compose.yml.
+#
+# TypeDoc (Angular/TypeScript docs) is a future addition tracked in TASKS.md —
+# the Angular frontend repo needs `typedoc` added to its package.json first.
+generate-reports:
+  stage: reports
+  # Only run on the dedicated report schedule (distinguished by REPORT_PIPELINE=true).
+  # NEVER runs on regular push pipelines or the native-build schedule.
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $REPORT_PIPELINE == "true"
+      when: on_success
+    - when: never
+  # No `needs:` — the reports schedule runs independently of regular pipeline jobs.
+  # The code on main is already tested by the regular pipeline; this job just generates docs.
+  script:
+    # Run tests first so JaCoCo + SpotBugs data files exist for the site reports.
+    # -q suppresses verbose output; the reports are what matter, not the build log.
+    - mvn $MAVEN_CLI_OPTS verify -q
+    # Generate the full Maven site (Surefire, Failsafe, JaCoCo, SpotBugs, Javadoc).
+    # PMD / Checkstyle / JXR are intentionally excluded — they crash on Java 25 pattern guards.
+    - mvn $MAVEN_CLI_OPTS site
+    # Push the generated site to the `reports/` branch so it is browsable in GitLab
+    # and can be served by the nginx container in docker-compose.yml.
+    # GITLAB_REPORTS_TOKEN must be a project access token (Reporter, write_repository).
+    - |
+      git config user.email "ci-reports@mirador-service"
+      git config user.name "CI Reports Bot"
+      # Create or reset the reports/ branch to an orphan (no history — keeps the branch small).
+      git fetch origin reports || true
+      git checkout -B reports origin/reports 2>/dev/null || git checkout --orphan reports
+      # Clear everything except the generated site and keep a README at the root.
+      git rm -rf . --quiet 2>/dev/null || true
+      cp -r target/site/* .
+      echo "# Mirador Service — Generated Reports" > README.md
+      echo "" >> README.md
+      echo "Generated: $(date -u '+%Y-%m-%d %H:%M UTC') from commit [\`${CI_COMMIT_SHORT_SHA}\`](${CI_PROJECT_URL}/-/commit/${CI_COMMIT_SHA}) on \`${CI_COMMIT_BRANCH}\`." >> README.md
+      echo "" >> README.md
+      echo "Browse: Surefire · Failsafe · JaCoCo · SpotBugs · Javadoc" >> README.md
+      git add -A
+      git diff --cached --quiet && echo "No changes to reports — skipping commit" && exit 0
+      git commit -m "chore(reports): regenerate quality site [skip ci]"
+      git remote set-url origin "https://ci-reports:${GITLAB_REPORTS_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+      git push origin reports
+  # Also expose the generated site as a pipeline artifact for direct browsing.
+  artifacts:
+    name: "reports-${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - target/site/    # Full Maven site HTML — browsable via "Browse" in pipeline artifacts
+    expire_in: 30 days
+    when: always
+
 # ── stage: native ─────────────────────────────────────────────────────────────
 
 # Build a GraalVM native image and push it to the GitLab Container Registry.
@@ -428,11 +493,10 @@ build-native:
     - name: docker:28-dind
       alias: docker
   rules:
-    # Only on the daily scheduled pipeline AND only when native-relevant files changed.
-    # `changes:` compares against the previous pipeline on this branch.
-    # If nothing changed since the last build, the job is skipped (status: skipped),
-    # saving 5–15 minutes of CI time per day.
-    - if: $CI_PIPELINE_SOURCE == "schedule" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    # Only on the native-build schedule (REPORT_PIPELINE must NOT be set).
+    # The report schedule sets REPORT_PIPELINE=true — that triggers generate-reports instead.
+    # `changes:` compares against the previous pipeline on this branch; skips if nothing changed.
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $REPORT_PIPELINE != "true"
       changes:
         - Dockerfile.native
         - pom.xml
