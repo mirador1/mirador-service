@@ -66,95 +66,66 @@ The stack is built around that scenario — not around the technologies themselv
 
 ```mermaid
 flowchart LR
-    Client(["Browser / curl"])
+    Browser(["Browser / curl"])
 
-    subgraph App["🔭 Mirador Service (Spring Boot 4 / Java 25)"]
-        Filter["🛡️ Security Filters\nRate limit · Idempotency · JWT/Keycloak"]
-        API["🔌 REST API\nCustomers (v1/v2) · Auth · Jobs"]
-        Domain["⚙️ Domain\nCustomerService · Scheduler (ShedLock)"]
-        Async["📨 Kafka\nPublish events · Request-reply enrich"]
-        AI["🤖 AI / Integration\nOllama LLM · JSONPlaceholder HTTP"]
+    subgraph SB["🔭 Mirador Service"]
+        F["🛡️ Filters\nRate limit · JWT · Idempotency"]
+        API["🔌 REST API"]
+        SVC["⚙️ Domain\n+ Scheduler"]
     end
 
     subgraph Infra["🐳 Infrastructure"]
-        PG[("PostgreSQL 17")]
-        KF[["Apache Kafka"]]
-        RD[("Redis 7")]
+        PG[("PostgreSQL")]
+        KF[["Kafka"]]
+        RD[("Redis")]
         KC["Keycloak"]
         OL["Ollama"]
     end
 
-    subgraph Obs["📡 Observability"]
-        OTEL["OpenTelemetry\nTraces · Logs · Metrics"]
-        STACK["Grafana · Tempo\nLoki · Prometheus\nZipkin · Pyroscope"]
-    end
+    OTEL["📡 OTel → Grafana\nTempo · Loki · Prometheus"]
 
-    Client --> Filter --> API --> Domain
-    Domain --> Async
-    Domain --> AI
-    Domain <--> PG
-    Async <--> KF
-    Domain --> RD
-    AI --> OL
-    Filter -.->|JWT verify| KC
-    Domain -.-> OTEL --> STACK
+    Browser --> F --> API --> SVC
+    SVC <--> PG & KF & RD
+    SVC --> OL
+    F -.->|JWT verify| KC
+    SVC -.-> OTEL
 ```
 
 ---
 
 ## Architecture — production (Kubernetes)
 
-When deployed to a Kubernetes cluster (GKE Autopilot, EKS, AKS, k3s…), the two Docker
-images are served behind a single Nginx Ingress on one hostname — eliminating CORS entirely.
+When deployed to a Kubernetes cluster the two Docker images are served behind a single
+Nginx Ingress on one hostname — eliminating CORS entirely.
 
 ```
-Internet
-    │  HTTPS  (TLS — cert-manager + Let's Encrypt)
+Internet (HTTPS — TLS via cert-manager)
+    │
     ▼
-┌───────────────────────────────────────────────────────────┐
-│  Nginx Ingress Controller           namespace: ingress-nginx│
-│                                                           │
-│  /api/(.*)  →  strip /api  →  mirador-service:8080       │
-│  /(.*)      →              →  mirador-ui:80              │
-└────────────────┬──────────────────────┬───────────────────┘
-                 │                      │
-   namespace: app│                      │
-    ─────────────┼──────────────────────┼──────────────────
-                 ▼                      ▼
-    ┌─────────────────────┐   ┌──────────────────────┐
-    │  mirador-service    │   │    mirador-ui         │
-    │  Spring Boot 4      │   │  Angular 21 + Nginx   │
-    │  replicas: 2        │   │  replicas: 2          │
-    │  HPA: 1–5 @ 70% CPU │   │  RollingUpdate        │
-    └────────┬────────────┘   └──────────────────────┘
-             │
-   namespace: infra
-    ─────────┼─────────────────────────────────────────────
-             │
-    ┌────────┴─────────────────────────────────────┐
-    │  PostgreSQL 17          Redis 7               │
-    │  StatefulSet + PVC      Deployment            │
-    │  10 Gi storage          128 MB maxmemory      │
-    │  Flyway migrations      JWT blacklist +       │
-    │  (V1–V6)                ring buffer           │
-    │                                               │
-    │  Kafka 3.8 (KRaft)                            │
-    │  Deployment — no ZooKeeper                    │
-    │  Topics: created / request / reply            │
-    └───────────────────────────────────────────────┘
-
-Six deployment targets in CI (deploy stage):
-
-  ✓ GKE Autopilot    — auto on main push (default)
-  ▶ AWS EKS          — manual
-  ▶ Azure AKS        — manual
-  ▶ Google Cloud Run — manual (serverless, no cluster)
-  ▶ Fly.io           — manual (PaaS)
-  ▶ k3s / bare metal — manual (any kubectl-reachable cluster)
+Nginx Ingress (ingress-nginx)
+  /api/** → mirador-service:8080   (Spring Boot 4, 2 replicas, HPA 1–5)
+  /**     → mirador-ui:80          (Angular 21 + Nginx, 2 replicas)
+    │
+    ▼
+namespace: infra
+  PostgreSQL 17  — StatefulSet, 10 Gi PVC, Flyway migrations
+  Redis 7        — Deployment, 128 MB, JWT blacklist + ring buffer
+  Kafka (KRaft)  — Deployment, topics: created / request / reply
 ```
 
 > **Same-origin design**: the browser always calls `https://app.example.com/api/…`.
 > Nginx strips `/api` and proxies to the backend. No CORS headers needed.
+
+**CI deployment targets** (deploy stage in `.gitlab-ci.yml`):
+
+| Target | Trigger |
+|--------|---------|
+| GKE Autopilot | Auto on `main` push |
+| AWS EKS | Manual |
+| Azure AKS | Manual |
+| Google Cloud Run | Manual (serverless) |
+| Fly.io | Manual (PaaS) |
+| k3s / bare metal | Manual |
 
 ---
 
@@ -324,6 +295,7 @@ Pre-push hook (via lefthook) runs unit tests automatically before every `git pus
 | Kafka UI | 9080 | http://localhost:9080 |
 | Redis Commander | 8082 | http://localhost:8082 |
 | RedisInsight | 5540 | http://localhost:5540 |
+| Maven Site (reports) | 8083 | http://localhost:8083 — run `mvn verify && mvn site` first |
 
 #### Observability
 
@@ -470,8 +442,13 @@ Credentials: `admin/admin` · `user/user` · `viewer/viewer`
 | `integration` | Failsafe ITests (Testcontainers), SpotBugs, JaCoCo | Every push |
 | `package` | JAR + Docker image (`--cache-from` for fast rebuilds) | `main` + tags |
 | `compat` | 4 SB/Java combos | Manual / `RUN_COMPAT=true` |
-| `native` | GraalVM native image | Daily schedule |
+| `native` | GraalVM native image | Daily schedule (no variable) |
+| `reports` | Maven site + push to `reports/` branch | Daily schedule (`REPORT_PIPELINE=true`) |
 | `deploy` | 6 deployment targets (see above) | `main` |
+
+> **Report schedule setup**: in GitLab → CI/CD → Schedules, create a schedule at `0 2 * * *`
+> with variable `REPORT_PIPELINE=true` and create a project access token (Reporter role,
+> `write_repository` scope) saved as `GITLAB_REPORTS_TOKEN` CI variable.
 
 ### Run CI jobs locally (free, no gitlab.com minutes)
 
