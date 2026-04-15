@@ -128,7 +128,7 @@ services:
   # This keeps the backend agnostic — no Docker code in Spring Boot.
   # ---------------------------------------------------------------------------
   docker-proxy:
-    image: tecnativa/docker-socket-proxy:0.4.2
+    image: tecnativa/docker-socket-proxy:latest  # 0.4.2 tag was removed from Docker Hub
     container_name: customerservice-docker-proxy
     environment:
       CONTAINERS: 1      # allow /containers/* (list, inspect, start, stop, restart)
