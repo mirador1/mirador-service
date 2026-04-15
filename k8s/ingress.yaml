@@ -12,8 +12,8 @@
 #   /api/(.*) → customer-service:8080/$1    (backend — strip /api prefix)
 #   /(.*)     → customer-ui:80              (frontend — Angular SPA)
 #
-# Replace ${K8S_HOST} with your actual domain, e.g. app.example.com.
-# TLS certificate is managed by cert-manager with Let's Encrypt.
+# K8S_HOST = mirador1.duckdns.org  (DuckDNS free domain — A record → 34.52.233.183)
+# Set as GitLab CI group variable. TLS certificate issued automatically by cert-manager (Let's Encrypt).
 #
 # Prerequisites:
 #   kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/cloud/deploy.yaml

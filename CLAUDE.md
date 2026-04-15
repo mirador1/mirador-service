@@ -59,7 +59,8 @@ Always run the default `./mvnw verify` after any change unless testing a specifi
 | Project number | `32654862595` |
 | GKE cluster | `mirador-prod` (europe-west1) |
 | Ingress IP | `34.52.233.183` |
-| App URL | http://34.52.233.183 |
+| Domain | `mirador1.duckdns.org` (DuckDNS free — A record → 34.52.233.183) |
+| App URL | https://mirador1.duckdns.org (HTTP until cert-manager wired) |
 | GCP Console | https://console.cloud.google.com/home/dashboard?project=project-8d6ea68c-33ac-412b-8aa |
 | WIF Provider | `projects/32654862595/locations/global/workloadIdentityPools/gitlab-pool/providers/gitlab-provider` |
 | CI Service Account | `gitlab-ci-deployer@project-8d6ea68c-33ac-412b-8aa.iam.gserviceaccount.com` |
