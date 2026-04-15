@@ -62,6 +62,26 @@
           CVE-2026-34500 (6.5 MEDIUM). 11.0.21 is the latest GA on Maven Central.
         -->
         <tomcat.version>11.0.21</tomcat.version>
+
+        <!--
+          SonarQube analysis configuration.
+          sonar.host.url  — local Docker container (change for CI: http://sonarqube:9000)
+          sonar.token     — generate in SonarQube UI: My Account → Security → Generate Token
+                            Set SONAR_TOKEN env var or pass -Dsonar.token=<token> on CLI.
+          sonar.coverage.jacoco.xmlReportPaths — JaCoCo XML report consumed by Sonar.
+          sonar.exclusions — generated classes, config and shim code that skew metrics.
+        -->
+        <sonar.host.url>http://localhost:9000</sonar.host.url>
+        <sonar.projectKey>mirador</sonar.projectKey>
+        <sonar.projectName>Mirador Service</sonar.projectName>
+        <sonar.coverage.jacoco.xmlReportPaths>
+            ${project.reporting.outputDirectory}/jacoco/jacoco.xml
+        </sonar.coverage.jacoco.xmlReportPaths>
+        <sonar.exclusions>
+            **/compat/**,**/*.java17/**,**/*.java21/**,**/*.sb3/**,
+            **/generated-sources/**,**/target/**
+        </sonar.exclusions>
+        <sonar.cpd.exclusions>**/compat/**</sonar.cpd.exclusions>
     </properties>
 
     <!--
@@ -1101,6 +1121,20 @@
                     </configuration>
                 </execution>
             </executions>
+        </plugin>
+
+        <!--
+          sonar-maven-plugin — sends analysis results to SonarQube.
+          Skipped by default; activated via -Preport or manually:
+            mvn verify sonar:sonar -Dsonar.token=<token>
+          The plugin reads pre-existing bytecode and report files — it does not recompile.
+          JaCoCo XML report must exist before sonar:sonar runs (produced by mvn verify).
+          Community Edition: single-branch analysis only (no PR decoration, no branch comparison).
+        -->
+        <plugin>
+            <groupId>org.sonarsource.scanner.maven</groupId>
+            <artifactId>sonar-maven-plugin</artifactId>
+            <version>5.1.0.4751</version>
         </plugin>
         </plugins>
     </build>

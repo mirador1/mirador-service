@@ -320,6 +320,31 @@ case "$1" in
     echo "  To rebuild: ./run.sh site"
     ;;
 
+  sonar)
+    # Run SonarQube analysis against the local Docker SonarQube instance (port 9000).
+    # Prerequisites:
+    #   1. docker compose up -d sonarqube  (wait ~2 min for first startup)
+    #   2. Visit http://localhost:9000, log in (admin/admin), change password
+    #   3. Create a project manually OR let sonar:sonar auto-create it
+    #   4. Generate a token: My Account → Security → Generate Token
+    #   5. Set SONAR_TOKEN in .env
+    #
+    # Runs mvn verify first to produce JaCoCo XML (required by Sonar for coverage).
+    # Skip ITs to keep it fast; Sonar reads unit-test coverage only.
+    if [ -z "$SONAR_TOKEN" ]; then
+      echo "Error: SONAR_TOKEN is not set in .env."
+      echo "Generate one at http://localhost:9000 → My Account → Security → Generate Token"
+      exit 1
+    fi
+    echo "Running tests + SonarQube analysis..."
+    $MAVEN verify -DskipITs -q
+    $MAVEN sonar:sonar \
+      -Dsonar.token="$SONAR_TOKEN" \
+      -Dsonar.host.url=http://localhost:9000
+    echo ""
+    echo "  SonarQube report: http://localhost:9000/dashboard?id=mirador"
+    ;;
+
   clean)
     echo "Cleaning build artifacts..."
     $MAVEN clean
@@ -433,6 +458,7 @@ case "$1" in
     echo "  Prometheus    http://localhost:9091"
     echo "  Maven Site    http://localhost:8084  (run './run.sh site' to generate)"
     echo "  Compodoc      http://localhost:8085  (run 'cd ../mirador-ui && npm run compodoc' to generate)"
+    echo "  SonarQube     http://localhost:9000  (run './run.sh sonar' after setting SONAR_TOKEN in .env)"
     echo "  GitLab (local) http://localhost:9081"
     echo ""
     ;;

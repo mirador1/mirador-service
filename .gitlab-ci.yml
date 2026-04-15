@@ -54,6 +54,7 @@ stages:
   - package       # Produce deployable artifacts — JAR + Docker image
   - compat        # On-demand compatibility matrix: SB3/SB4 × Java17/21/25
   - native        # GraalVM AOT native-image build (native-build schedule only)
+  - sonar         # SonarQube static analysis — runs after integration to read coverage data
   - reports       # Maven site + docs generation (report schedule only — REPORT_PIPELINE=true)
   - deploy        # Deploy to Kubernetes / PaaS (6 targets — see below)
 
@@ -222,6 +223,44 @@ integration-test:
       - target/spotbugsXml.xml       # SpotBugs XML — parseable by GitLab Code Quality widget
       - target/reports/failsafe.html # HTML integration test report (browsable in the job artifacts panel)
     expire_in: 1 week
+
+# ── stage: sonar ──────────────────────────────────────────────────────────────
+
+# SonarQube static analysis — runs after integration so JaCoCo XML is available.
+# Requires SONAR_TOKEN CI/CD variable (Project → Settings → CI/CD → Variables).
+# SONAR_HOST_URL defaults to the Docker local instance; override for a remote server.
+# Community Edition: analyzes the default branch only (no branch comparison or PR decoration).
+# The job is allow_failure:true so a SonarQube outage doesn't block deployments.
+sonar-analysis:
+  stage: sonar
+  variables:
+    SONAR_HOST_URL: "${SONAR_HOST_URL:-http://localhost:9000}"
+    # Allow JVM to self-attach (Mockito byte-buddy requirement on Java 25)
+    MAVEN_OPTS: >-
+      -XX:+EnableDynamicAgentLoading
+      -Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository
+  script:
+    # JaCoCo XML must exist — produced by mvn verify in the integration stage (via artifacts).
+    # sonar:sonar reads it from target/site/jacoco/jacoco.xml (set in sonar.coverage.jacoco.xmlReportPaths).
+    - mvn $MAVEN_CLI_OPTS sonar:sonar
+      -Dsonar.token="$SONAR_TOKEN"
+      -Dsonar.host.url="$SONAR_HOST_URL"
+  needs:
+    - job: integration-tests
+      artifacts: true   # inherit target/ artifacts (JaCoCo XML, bytecode) from integration stage
+  rules:
+    # Run on default branch and MRs only — skip feature branches to avoid noise.
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    # Skip entirely if SONAR_TOKEN is not configured (avoids failing new environments)
+    - if: '$SONAR_TOKEN == null || $SONAR_TOKEN == ""'
+      when: never
+  allow_failure: true   # SonarQube outage must not block deployments
+  cache:
+    key: "$CI_COMMIT_REF_SLUG"
+    paths:
+      - .m2/repository
+  timeout: 10 minutes
 
 # ── stage: package ────────────────────────────────────────────────────────────
 

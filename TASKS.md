@@ -65,6 +65,9 @@ These were proposed at 2026-04-14T20:56 in response to "d'autres idées pour ép
 
 ## Recently Completed
 
+- [x] SonarQube Community Edition added: Docker service at port 9000 sharing existing PostgreSQL
+      (init-sonar.sql); sonar-maven-plugin 5.1.0.4751; sonar:sonar CI job (runs on default branch
+      + MRs, guarded by SONAR_TOKEN var); run.sh `sonar` command; status shows port 9000
 - [x] Pitest upgraded to 1.23.0 (ASM 9.8 supports Java 25 class files v69); MINION Java 21 override
       removed — test classes compiled at v69 now load correctly; 71% mutation test strength
 - [x] Compodoc Angular API docs: npm run compodoc → docs/compodoc/; nginx at port 8085;
