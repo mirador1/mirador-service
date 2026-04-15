@@ -1095,6 +1095,29 @@ deploy:gke:
     - gcloud container clusters get-credentials "$GKE_CLUSTER"
         --region "$GKE_REGION" --project "$GCP_PROJECT"
     - !reference [.kubectl-apply, script]
+    # GKE-specific: Cloud SQL Auth Proxy — ServiceAccount (Workload Identity) +
+    # ConfigMap override (DB_HOST=127.0.0.1). The proxy sidecar is embedded in the
+    # deployment patch below. Requires CI vars: GCP_PROJECT, CLOUD_SQL_INSTANCE.
+    - |
+      if [ -n "${CLOUD_SQL_INSTANCE:-}" ]; then
+        envsubst < k8s/gke/cloud-sql-proxy.yaml | kubectl apply -f -
+        # Patch backend deployment: add serviceAccount + cloud-sql-proxy sidecar
+        kubectl patch deployment customer-service -n app --type=json -p="[
+          {\"op\":\"add\",\"path\":\"/spec/template/spec/serviceAccountName\",\"value\":\"mirador-backend\"},
+          {\"op\":\"add\",\"path\":\"/spec/template/spec/containers/-\",\"value\":{
+            \"name\":\"cloud-sql-proxy\",
+            \"image\":\"gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.15.1\",
+            \"args\":[\"--structured-logs\",\"--port=5432\",\"--auto-iam-authn\",\"${CLOUD_SQL_INSTANCE}\"],
+            \"resources\":{\"requests\":{\"memory\":\"32Mi\",\"cpu\":\"10m\"},\"limits\":{\"memory\":\"64Mi\",\"cpu\":\"100m\"}},
+            \"securityContext\":{\"allowPrivilegeEscalation\":false}
+          }}
+        ]"
+        # Override DB_HOST in running pods — the ConfigMap override triggers a rollout
+        kubectl set env deployment/customer-service -n app DB_HOST=127.0.0.1
+        kubectl rollout status deployment/customer-service -n app --timeout=180s
+      else
+        echo "CLOUD_SQL_INSTANCE not set — skipping Cloud SQL Auth Proxy (using in-cluster PostgreSQL)"
+      fi
 
 # ── AWS EKS — manual ──────────────────────────────────────────────────────────
 #
