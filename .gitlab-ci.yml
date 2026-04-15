@@ -715,13 +715,18 @@ terraform-apply:
 
 # ── GKE Autopilot — DEFAULT production (runs automatically on main) ───────────
 #
-# GKE Autopilot manages nodes automatically: no node pools to configure,
-# automatic scaling, auto-upgrade, and Workload Identity out of the box.
-# All you need is an Autopilot cluster + a service account with
-# roles/container.developer.
+# Uses Workload Identity Federation (WIF) — no service account key file needed.
+# GitLab CI generates a short-lived OIDC token; GCP STS exchanges it for a
+# Google access token bound to the gitlab-ci-deployer service account.
+# Required group variables: GCP_WIF_PROVIDER, GCP_SERVICE_ACCOUNT,
+#                            GCP_PROJECT, GKE_CLUSTER, GKE_REGION, K8S_HOST
 deploy:gke:
   stage: deploy
   image: google/cloud-sdk:alpine
+  id_tokens:
+    # GitLab generates a JWT token for this job; audience must match the WIF provider.
+    GCP_OIDC_TOKEN:
+      aud: "https://iam.googleapis.com/$GCP_WIF_PROVIDER"
   needs:
     - job: docker-build
       artifacts: false
@@ -733,8 +738,20 @@ deploy:gke:
     name: production/gke
     url: "https://$K8S_HOST"
   script:
-    - echo "$GCP_SA_KEY" | base64 -d > /tmp/sa.json
-    - gcloud auth activate-service-account --key-file=/tmp/sa.json
+    # Write OIDC token to file; gcloud reads it via credentials config (WIF, no key file)
+    - echo "$GCP_OIDC_TOKEN" > /tmp/gcp_oidc_token.txt
+    - |
+      cat > /tmp/gcp_credentials.json <<EOF
+      {
+        "type": "external_account",
+        "audience": "//iam.googleapis.com/${GCP_WIF_PROVIDER}",
+        "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+        "token_url": "https://sts.googleapis.com/v1/token",
+        "credential_source": {"file": "/tmp/gcp_oidc_token.txt", "format": {"type": "text"}},
+        "service_account_impersonation_url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${GCP_SERVICE_ACCOUNT}:generateAccessToken"
+      }
+      EOF
+    - gcloud auth login --cred-file=/tmp/gcp_credentials.json --quiet
     - gcloud container clusters get-credentials "$GKE_CLUSTER"
         --region "$GKE_REGION" --project "$GCP_PROJECT"
     - !reference [.kubectl-apply, script]
