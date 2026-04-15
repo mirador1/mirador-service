@@ -1,19 +1,18 @@
 #!/usr/bin/env bash
 # =============================================================================
-# register-runner.sh — register the local GitLab Runner against a GitLab instance
+# register-runner.sh — register the local GitLab Runner against gitlab.com
 #
 # Prerequisites:
 #   1. Runner container must be running:
 #      ./run.sh runner
 #
-#   2. Get a runner token from the target GitLab instance:
+#   2. Get a runner token from gitlab.com:
 #      Project → Settings → CI/CD → Runners → New project runner
-#      ✓ "Run untagged jobs"  ✓ "Lock to current project"
-#      Click "Create runner" → copy the token (glrt-xxxxxxxxxxxx)
+#      ✓ "Run untagged jobs"   Click "Create runner" → copy the token (glrt-xxxx)
 #
 # Usage:
-#   ./scripts/register-runner.sh local <TOKEN>   — register against local GitLab (localhost:9081)
-#   ./scripts/register-runner.sh cloud <TOKEN>   — register against gitlab.com
+#   ./scripts/register-runner.sh <TOKEN>
+#   ./run.sh register-cloud <TOKEN>          (convenience wrapper)
 # =============================================================================
 
 set -euo pipefail
@@ -23,35 +22,27 @@ log()  { echo -e "${BLUE}▶  $*${NC}"; }
 ok()   { echo -e "${GREEN}✓  $*${NC}"; }
 die()  { echo -e "${RED}✗  $*${NC}" >&2; exit 1; }
 
-TARGET="${1:-}"
-TOKEN="${2:-}"
+# Support both:
+#   ./scripts/register-runner.sh <TOKEN>
+#   ./scripts/register-runner.sh cloud <TOKEN>   (legacy, cloud arg is ignored)
+if [[ "${1:-}" == "cloud" ]]; then
+  TOKEN="${2:-}"
+else
+  TOKEN="${1:-}"
+fi
 
-case "$TARGET" in
-  local)
-    GITLAB_URL="http://host.docker.internal:9081"
-    INSTANCE_LABEL="local GitLab (localhost:9081)"
-    ;;
-  cloud)
-    GITLAB_URL="https://gitlab.com"
-    INSTANCE_LABEL="gitlab.com"
-    ;;
-  *)
-    die "Usage: $0 <local|cloud> <RUNNER_TOKEN>\n  local — register against local GitLab (localhost:9081)\n  cloud — register against gitlab.com"
-    ;;
-esac
-
-[[ -z "$TOKEN" ]] && die "Usage: $0 $TARGET <RUNNER_TOKEN>\n  Get it from: $INSTANCE_LABEL → Project → Settings → CI/CD → Runners → New project runner"
+[[ -z "$TOKEN" ]] && die "Usage: $0 <RUNNER_TOKEN>\n  Get it from: gitlab.com → Project → Settings → CI/CD → Runners → New project runner"
 
 # Check the runner container is up
 docker ps --filter "name=gitlab-runner" --filter "status=running" --format "{{.Names}}" \
   | grep -q "gitlab-runner" \
   || die "Runner container is not running. Start it first:\n  ./run.sh runner"
 
-log "Registering runner against ${INSTANCE_LABEL}..."
+log "Registering runner against gitlab.com..."
 
-docker exec -it gitlab-runner gitlab-runner register \
+docker exec gitlab-runner gitlab-runner register \
   --non-interactive \
-  --url "$GITLAB_URL" \
+  --url "https://gitlab.com" \
   --token "$TOKEN" \
   --executor "docker" \
   --docker-image "maven:3.9.14-eclipse-temurin-25-noble" \
@@ -71,9 +62,8 @@ docker exec gitlab-runner sed -i \
   "s/^concurrent = .*/concurrent = ${CONCURRENCY}/" \
   /etc/gitlab-runner/config.toml
 
-ok "Runner registered against ${INSTANCE_LABEL} — ${CONCURRENCY} concurrent jobs (${CORES} cores detected)"
+ok "Runner registered — ${CONCURRENCY} concurrent jobs (${CORES} cores detected)"
 
-# ── Show config summary ───────────────────────────────────────────────────────
 echo ""
 echo -e "  ${BLUE}Runner config:${NC}"
 docker exec gitlab-runner cat /etc/gitlab-runner/config.toml \
