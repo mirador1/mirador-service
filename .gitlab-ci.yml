@@ -733,65 +733,78 @@ generate-reports:
     expire_in: 30 days
     when: always
 
-# ── stage: reports — Qodana static analysis ───────────────────────────────────
+# ── stage: reports — Semgrep static analysis ─────────────────────────────────
 #
-# Runs JetBrains Qodana (IntelliJ IDEA's analysis engine) on the source code.
-# Covers patterns beyond SpotBugs/PMD: null-safety, unused code, Spring-specific
-# inspections, security hotspots, and redundant or error-prone constructs.
+# Runs Semgrep on the Java source code using public OSS rulesets.
+# No account, no token, no service — the rulesets are fetched from the public
+# Semgrep registry (registry.semgrep.dev) at runtime.
 #
-# Free for public repositories — no QODANA_TOKEN needed for basic analysis.
-# With QODANA_TOKEN (free at qodana.cloud for OSS): enables trend reports,
-# baseline comparison, and per-MR delta analysis.
+# Rulesets used:
+#   p/java        — general Java bugs: null deref, resource leaks, bad equals, …
+#   p/spring      — Spring-specific: missing @Transactional, wrong @Autowired, …
+#   p/owasp-top-ten — injection, XSS, insecure crypto, path traversal, …
+#   p/secrets     — hardcoded credentials, API keys in source
 #
-# When to run:
-#   • On the daily report schedule (add REPORT_PIPELINE=true to schedule variables)
-#   • Manually: click ▶ in any pipeline
+# Output formats:
+#   gl-sast-report.json    → GitLab Security Dashboard (SAST widget in MRs)
+#   semgrep-report.json    → full JSON for manual inspection or downstream tooling
 #
-# Setup (one-time, optional for enhanced features):
-#   1. Log in at https://qodana.cloud with GitLab OAuth
-#   2. Create a project → copy the project token
-#   3. Set QODANA_TOKEN in GitLab → Settings → CI/CD → Variables (masked)
-#
-# Output: qodana-report/ — interactive HTML at qodana-report/results/index.html,
-#         machine-readable JSON at qodana-report/results/report.json
-qodana:
+# Why Semgrep instead of Qodana?
+#   Qodana requires a JetBrains account even on the free tier (token activation).
+#   Semgrep OSS rules are fully public — no registration, no vendor lock-in.
+#   Analysis takes ~1-2 min vs ~10 min for Qodana.
+semgrep:
   stage: reports
-  image:
-    name: jetbrains/qodana-jvm:2024.3
-    # Override default entrypoint so GitLab's shell wrapper runs correctly
-    entrypoint: [""]
+  image: semgrep/semgrep:latest
   rules:
-    # Run automatically on the daily report schedule (same as generate-reports)
+    # Run on the daily report schedule alongside generate-reports
     - if: $CI_PIPELINE_SOURCE == "schedule" && $REPORT_PIPELINE == "true"
       when: on_success
     # Also available as a manual ▶ trigger on any pipeline
     - when: manual
       allow_failure: true
-  allow_failure: true   # analysis failures must never block deployments
-  timeout: 20 minutes   # first run ~10 min (downloads analyzers); cached runs ~3-5 min
-  variables:
-    # QODANA_TOKEN: set in GitLab CI/CD Variables for Qodana Cloud integration (optional).
-    # When present, results are pushed to qodana.cloud for trend and baseline tracking.
-    # When absent, analysis still runs — results are available as CI artifacts only.
-    QODANA_TOKEN: "$QODANA_TOKEN"
+  allow_failure: true   # static analysis results are informational — must not block deploys
   script:
-    - >
-      qodana scan
-      --project-dir="$CI_PROJECT_DIR"
-      --results-dir="$CI_PROJECT_DIR/qodana-report"
-      --cache-dir="$CI_PROJECT_DIR/.qodana-cache"
-      --save-report
+    # GitLab SAST format — populates the Security Dashboard and MR security widget
+    - semgrep
+        --config=p/java
+        --config=p/spring
+        --config=p/owasp-top-ten
+        --config=p/secrets
+        --gitlab-sast
+        --output=gl-sast-report.json
+        --exclude="src/test"
+        src/main/java/
+        || true   # exit 1 when findings exist — treat as informational, not a failure
+    # Full JSON for manual review or downstream tooling
+    - semgrep
+        --config=p/java
+        --config=p/spring
+        --config=p/owasp-top-ten
+        --config=p/secrets
+        --json
+        --output=semgrep-report.json
+        --exclude="src/test"
+        src/main/java/
+        || true
+    - |
+      # Summary to CI log
+      python3 -c "
+      import json, os
+      if os.path.exists('semgrep-report.json'):
+          d = json.load(open('semgrep-report.json'))
+          n = len(d.get('results', []))
+          print(f'Semgrep: {n} findings across p/java + p/spring + p/owasp-top-ten + p/secrets')
+      "
   artifacts:
-    name: "qodana-${CI_COMMIT_SHORT_SHA}"
+    name: "semgrep-${CI_COMMIT_SHORT_SHA}"
+    reports:
+      sast: gl-sast-report.json   # GitLab reads this for the Security Dashboard
     paths:
-      - qodana-report/   # browse HTML report via pipeline artifacts → "Browse"
+      - semgrep-report.json       # full findings — browsable as artifact
+      - gl-sast-report.json
     expire_in: 30 days
-    when: always   # keep report even when analysis finds issues (allow_failure:true)
-  cache:
-    # Cache IntelliJ analyzer downloads between runs — speeds up repeated analysis
-    key: "qodana-v1"
-    paths:
-      - .qodana-cache/
+    when: always
 
 # ── stage: native ─────────────────────────────────────────────────────────────
 

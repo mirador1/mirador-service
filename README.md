@@ -449,8 +449,8 @@ All tools are integrated into the CI/CD pipeline and results are aggregated in t
 | **PIT (Pitest)** | Mutation testing — measures test strength | `mvn verify -Preport` | `/actuator/quality` → Pitest tab |
 | **OWASP Dep-Check** | CVE scan on all Maven dependencies | Every push (2h timeout) | `/actuator/quality` → OWASP tab |
 | **SonarCloud** | Comprehensive analysis: bugs, smells, hotspots, duplication | Every push to `main` / MR | [sonarcloud.io ↗](https://sonarcloud.io/project/overview?id=mirador1_mirador-service) |
-| **GitLab Code Quality** | SpotBugs findings as inline MR diff annotations | Every push to `main` / MR | MR → Code Quality widget |
-| **Qodana** | IntelliJ IDEA full inspection engine | Daily schedule + manual | CI artifacts · [qodana.cloud ↗](https://qodana.cloud) |
+| **GitLab Code Quality** | SpotBugs + PMD + Checkstyle as inline MR diff annotations | Every push to `main` / MR | MR → Code Quality widget |
+| **Semgrep** | OSS rules: Java bugs, Spring patterns, OWASP Top 10, secrets | Daily schedule + manual | CI artifact `semgrep-report.json` · GitLab Security Dashboard |
 | **Maven Site** | HTML report portal: Surefire + JaCoCo + SpotBugs + Javadoc | Daily schedule | `reports/` branch · http://localhost:8084 |
 | **Trivy** | Docker image OS + Java CVE scan | Every push to `main` | CI artifact `trivy-report.json` |
 
@@ -478,11 +478,10 @@ docker compose up -d maven-site   # then open http://localhost:8084
 # SonarCloud (requires SONAR_TOKEN)
 ./mvnw verify sonar:sonar -Dsonar.token=$SONAR_TOKEN -Dsonar.host.url=https://sonarcloud.io
 
-# Qodana (requires Docker)
-docker run --rm -it \
-  -v $(pwd):/data/project \
-  -v $(pwd)/qodana-report:/data/results \
-  jetbrains/qodana-jvm:2024.3 --save-report
+# Semgrep (requires Docker — no account needed)
+docker run --rm -v $(pwd):/src semgrep/semgrep \
+  semgrep --config=p/java --config=p/spring --config=p/owasp-top-ten \
+  --json --output=/src/semgrep-report.json --exclude="src/test" src/main/java/
 ```
 
 ### SonarCloud setup (one-time)
@@ -496,19 +495,13 @@ docker run --rm -it \
 
 The `sonar.organization` and `sonar.projectKey` are already set in `pom.xml`.
 
-### Qodana Cloud setup (one-time, optional)
+### Semgrep
 
-> **Free for public repositories** at [qodana.cloud](https://qodana.cloud).
-
-1. Log in at qodana.cloud with GitLab OAuth
-2. Create a project → copy the project token
-3. Add `QODANA_TOKEN` to GitLab → Settings → CI/CD → Variables (masked + protected)
-
-Without a token, Qodana still runs but results are only available as CI artifacts.
+No setup required — rulesets are fetched from the public Semgrep registry at runtime. The `semgrep` CI job runs on the daily report schedule (`REPORT_PIPELINE=true`) or via manual trigger. Results appear in the GitLab Security Dashboard (SAST widget) and as `semgrep-report.json` in the pipeline artifacts.
 
 ### GitLab Code Quality widget
 
-SpotBugs findings are automatically converted to the [GitLab Code Quality](https://docs.gitlab.com/ee/ci/testing/code_quality.html) format by the `code-quality` CI job and appear as inline annotations on changed lines in every MR. No setup required.
+SpotBugs + PMD + Checkstyle findings are converted to the [GitLab Code Quality](https://docs.gitlab.com/ee/ci/testing/code_quality.html) format by the `code-quality` CI job and appear as inline annotations on changed lines in every MR. No setup required.
 
 ### Live quality dashboard
 
