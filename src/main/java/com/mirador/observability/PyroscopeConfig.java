@@ -16,13 +16,19 @@ import java.util.Map;
  * Starts the Pyroscope continuous profiling agent at application startup.
  *
  * Profile types pushed to Pyroscope every 10s:
- *   • process_cpu       — CPU samples via ITIMER (on-CPU time)
  *   • wall              — wall-clock samples (on-CPU + blocked on I/O, locks, sleep)
- *   • memory alloc      — allocation bytes/objects in TLAB and outside TLAB
+ *   • alloc_in_new_tlab — allocation bytes inside TLAB (fast path)
+ *   • alloc_outside_tlab — allocation bytes outside TLAB (large objects)
  *   • lock              — lock contention (monitors held > 10ms)
  *
- * ITIMER shows what the CPU is actively doing.
- * WALL reveals threads blocked waiting for Kafka, DB, Ollama, or HTTP responses.
+ * WALL is preferred over ITIMER for a service that does Kafka, DB, and Ollama I/O:
+ * ITIMER only samples CPU-hot threads; WALL also captures threads blocked waiting
+ * for network responses, which is where latency hides in this application.
+ *
+ * NOTE: Pyroscope Java SDK only supports ONE PyroscopeAgent.start() per JVM.
+ * A second start() call is silently ignored. All desired profile types must be
+ * configured in the single Config.Builder (EventType for the main type, plus
+ * setProfilingAlloc and setProfilingLock for the secondary types).
  *
  * Profiles are visible at http://localhost:4040 under "customer-service".
  */
@@ -47,31 +53,21 @@ public class PyroscopeConfig {
 
         Map<String, String> labels = Map.of("region", "local", "env", "dev");
 
-        // Agent 1 — CPU (ITIMER): shows which methods consume CPU time
-        PyroscopeAgent.start(
-                new Config.Builder()
-                        .setApplicationName("customer-service")
-                        .setProfilingEvent(EventType.ITIMER)
-                        .setProfilingAlloc("512k")   // 2 extra types: alloc_in_new_tlab + alloc_outside_tlab
-                        .setProfilingLock("10ms")    // 1 extra type: lock contention > 10ms
-                        .setFormat(Format.JFR)
-                        .setServerAddress(serverAddress)
-                        .setLabels(labels)
-                        .build()
-        );
-
-        // Agent 2 — Wall clock: shows threads blocked on I/O, Kafka, DB, Ollama, sleep
-        // Runs alongside the CPU agent, pushes under a separate profile type "wall"
+        // Single agent: WALL event type captures all threads (on-CPU + blocked on I/O).
+        // setProfilingAlloc and setProfilingLock add two extra profile types automatically.
+        // Result: 4 profile types — wall, alloc_in_new_tlab, alloc_outside_tlab, lock.
         PyroscopeAgent.start(
                 new Config.Builder()
                         .setApplicationName("customer-service")
                         .setProfilingEvent(EventType.WALL)
+                        .setProfilingAlloc("512k")   // alloc_in_new_tlab + alloc_outside_tlab
+                        .setProfilingLock("10ms")    // lock contention > 10ms
                         .setFormat(Format.JFR)
                         .setServerAddress(serverAddress)
                         .setLabels(labels)
                         .build()
         );
 
-        log.info("Pyroscope agent started (CPU+alloc+lock+wall) — profiles at {}", serverAddress);
+        log.info("Pyroscope agent started (wall+alloc+lock) — 4 profile types at {}", serverAddress);
     }
 }
