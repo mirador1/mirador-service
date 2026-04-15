@@ -74,3 +74,17 @@ datasources:
     type: grafana-pyroscope-datasource
     uid: pyroscope
     url: http://127.0.0.1:4040
+
+  # Infinity — generic HTTP/JSON datasource used to call Spring Boot Actuator
+  # REST endpoints (/actuator/health/*) directly. These endpoints are NOT
+  # exposed as Prometheus/OTLP metrics, so Infinity is the only way to get
+  # the exact UP/DOWN status for the Health Probes panels in the dashboard.
+  - name: Infinity
+    type: yesoreyeram-infinity-datasource
+    uid: infinity
+    editable: true
+    jsonData:
+      # Allow requests to the Spring Boot app running on the Docker host.
+      # host.docker.internal resolves to the host machine from inside the container.
+      allowedHosts:
+        - "http://host.docker.internal:8080"

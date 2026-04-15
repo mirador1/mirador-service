@@ -128,7 +128,7 @@
     },
     {
       "type": "text",
-      "title": "\ud83d\udd0d Distributed Traces \u2014 Tempo",
+      "title": "🔍 Distributed Traces — Tempo",
       "gridPos": {
         "h": 6,
         "w": 18,
@@ -137,7 +137,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "## Distributed Traces \u2014 Grafana Tempo\n\nTempo is bundled inside this LGTM container. Spring Boot sends traces via **OTLP on port 4318** \u2192 OTel Collector \u2192 Tempo.\n\n### Quick links\n\n- **[\ud83d\udd0d Search all traces (TraceQL)](http://localhost:3001/explore?schemaVersion=1&panes=%7B%22df4%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceqlSearch%22%2C%22limit%22%3A20%2C%22tableType%22%3A%22traces%22%2C%22filters%22%3A%5B%7B%22id%22%3A%220153af9c%22%2C%22operator%22%3A%22%3D%22%2C%22scope%22%3A%22span%22%7D%5D%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22now-1h%22%2C%22to%22%3A%22now%22%7D%7D%7D&orgId=1)** \u2014 last 1 hour\n- **[\ud83d\udcdd Correlate logs in Loki](http://localhost:3001/explore?orgId=1&left=%7B%22datasource%22%3A%22loki%22%7D)** \u2014 LogQL queries\n\n> Trace HTTP requests end-to-end: controller \u2192 JPA \u2192 Redis \u2192 Kafka. Each span carries HTTP method, URL, status, and DB query.\n\n**Tempo API** (direct): "
+        "content": "## Distributed Traces — Grafana Tempo\n\nTempo is bundled inside this LGTM container. Spring Boot sends traces via **OTLP on port 4318** → OTel Collector → Tempo.\n\n### Quick links\n\n- **[🔍 Search all traces (TraceQL)](http://localhost:3001/explore?schemaVersion=1&panes=%7B%22df4%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceqlSearch%22%2C%22limit%22%3A20%2C%22tableType%22%3A%22traces%22%2C%22filters%22%3A%5B%7B%22id%22%3A%220153af9c%22%2C%22operator%22%3A%22%3D%22%2C%22scope%22%3A%22span%22%7D%5D%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22now-1h%22%2C%22to%22%3A%22now%22%7D%7D%7D&orgId=1)** — last 1 hour\n- **[📝 Correlate logs in Loki](http://localhost:3001/explore?orgId=1&left=%7B%22datasource%22%3A%22loki%22%7D)** — LogQL queries\n\n> Trace HTTP requests end-to-end: controller → JPA → Redis → Kafka. Each span carries HTTP method, URL, status, and DB query.\n\n**Tempo API** (direct): "
       }
     },
     {
@@ -564,12 +564,12 @@
       }
     },
     {
-      "title": "\ud83d\udfe2 Health",
-      "description": "App reported process uptime via OTLP push (equivalent to /actuator/health). UP if Spring Boot is running and pushing metrics.",
+      "title": "🟢 Health",
+      "description": "Calls GET /actuator/health — Spring Boot composite health (DB, Redis, disk, ping). UP only if ALL components are UP. Exact status from the actuator endpoint, not a proxy metric.",
       "type": "stat",
       "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "infinity"
       },
       "gridPos": {
         "h": 6,
@@ -580,12 +580,28 @@
       "targets": [
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "infinity"
           },
-          "expr": "clamp_max(process_uptime_seconds > 0, 1)",
-          "instant": true,
-          "refId": "A"
+          "refId": "A",
+          "type": "json",
+          "source": "url",
+          "format": "dataframe",
+          "url": "http://host.docker.internal:8080/actuator/health",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "",
+          "columns": [
+            {
+              "selector": "status",
+              "text": "status",
+              "type": "string"
+            }
+          ],
+          "filters": [],
+          "global_query_id": ""
         }
       ],
       "options": {
@@ -601,13 +617,12 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "none",
-          "decimals": 0,
+          "unit": "string",
           "mappings": [
             {
               "type": "value",
               "options": {
-                "1": {
+                "UP": {
                   "text": "UP",
                   "color": "green",
                   "index": 0
@@ -632,10 +647,6 @@
               {
                 "color": "red",
                 "value": null
-              },
-              {
-                "color": "green",
-                "value": 1
               }
             ]
           },
@@ -646,12 +657,12 @@
       }
     },
     {
-      "title": "\ud83d\udea6 Readiness",
-      "description": "HikariCP connection pool has at least one idle or active connection (equivalent to /actuator/health/readiness \u2014 DB reachable = ready for traffic).",
+      "title": "🚦 Readiness",
+      "description": "Calls GET /actuator/health/readiness — ApplicationAvailability.readinessState. ACCEPTING_TRAFFIC → UP, REFUSING_TRAFFIC → DOWN. Used by Kubernetes to decide if the pod should receive requests. Unrelated to HikariCP connections.",
       "type": "stat",
       "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "infinity"
       },
       "gridPos": {
         "h": 6,
@@ -662,12 +673,28 @@
       "targets": [
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "infinity"
           },
-          "expr": "clamp_max((hikaricp_connections_active + hikaricp_connections_idle) > 0, 1)",
-          "instant": true,
-          "refId": "A"
+          "refId": "A",
+          "type": "json",
+          "source": "url",
+          "format": "dataframe",
+          "url": "http://host.docker.internal:8080/actuator/health/readiness",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "",
+          "columns": [
+            {
+              "selector": "status",
+              "text": "status",
+              "type": "string"
+            }
+          ],
+          "filters": [],
+          "global_query_id": ""
         }
       ],
       "options": {
@@ -683,13 +710,12 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "none",
-          "decimals": 0,
+          "unit": "string",
           "mappings": [
             {
               "type": "value",
               "options": {
-                "1": {
+                "UP": {
                   "text": "UP",
                   "color": "green",
                   "index": 0
@@ -714,10 +740,6 @@
               {
                 "color": "red",
                 "value": null
-              },
-              {
-                "color": "green",
-                "value": 1
               }
             ]
           },
@@ -728,12 +750,12 @@
       }
     },
     {
-      "title": "\ud83e\udec0 Liveness",
-      "description": "JVM has live threads (equivalent to /actuator/health/liveness \u2014 process not deadlocked).",
+      "title": "🫀 Liveness",
+      "description": "Calls GET /actuator/health/liveness — ApplicationAvailability.livenessState. CORRECT → UP, BROKEN → DOWN. Used by Kubernetes to decide if the pod should be restarted. Does NOT check external dependencies. Unrelated to JVM thread count.",
       "type": "stat",
       "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "infinity"
       },
       "gridPos": {
         "h": 6,
@@ -744,12 +766,28 @@
       "targets": [
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "infinity"
           },
-          "expr": "clamp_max(jvm_threads_live_threads > 0, 1)",
-          "instant": true,
-          "refId": "A"
+          "refId": "A",
+          "type": "json",
+          "source": "url",
+          "format": "dataframe",
+          "url": "http://host.docker.internal:8080/actuator/health/liveness",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "",
+          "columns": [
+            {
+              "selector": "status",
+              "text": "status",
+              "type": "string"
+            }
+          ],
+          "filters": [],
+          "global_query_id": ""
         }
       ],
       "options": {
@@ -765,13 +803,12 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "none",
-          "decimals": 0,
+          "unit": "string",
           "mappings": [
             {
               "type": "value",
               "options": {
-                "1": {
+                "UP": {
                   "text": "UP",
                   "color": "green",
                   "index": 0
@@ -796,10 +833,6 @@
               {
                 "color": "red",
                 "value": null
-              },
-              {
-                "color": "green",
-                "value": 1
               }
             ]
           },
@@ -810,7 +843,7 @@
       }
     },
     {
-      "title": "\u26a1 Real-time HTTP Throughput (RPS by status)",
+      "title": "⚡ Real-time HTTP Throughput (RPS by status)",
       "description": "Requests per second grouped by HTTP status class. Equivalent to the Angular dashboard RPS bar chart (delta of http_server_requests_milliseconds_count / window).",
       "type": "timeseries",
       "datasource": {
