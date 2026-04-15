@@ -39,16 +39,20 @@ data:
   OLLAMA_BASE_URL: "http://ollama.infra.svc.cluster.local:11434"
   OLLAMA_MODEL:    "llama3.2:1b"
 
-  # ── OpenTelemetry ─────────────────────────────────────────────────────────
-  # Grafana Agent / OTel Collector runs in the observability namespace and
-  # forwards traces to Tempo and logs to Loki.
-  OTEL_EXPORTER_OTLP_ENDPOINT: "http://grafana-agent.observability.svc.cluster.local:4318"
+  # ── OpenTelemetry → in-cluster OTel Collector → Grafana Cloud ────────────
+  # The opentelemetry-kube-stack Helm chart deploys a DaemonSet collector in the
+  # opentelemetry-operator-system namespace. It holds the Grafana Cloud credentials
+  # (grafana-cloud-auth secret) and forwards all signals to Grafana Cloud.
+  # The app sends to the local collector — no auth header needed here.
+  # Collector also scrapes K8s node/pod metrics automatically.
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://opentelemetry-stack-daemon-collector.opentelemetry-operator-system.svc.cluster.local:4318"
 
-  # ── Zipkin ────────────────────────────────────────────────────────────────
-  ZIPKIN_ENDPOINT: "http://grafana-agent.observability.svc.cluster.local:9411/api/v2/spans"
-
-  # ── Keycloak ──────────────────────────────────────────────────────────────
-  KEYCLOAK_URL: "http://keycloak.infra.svc.cluster.local:8080"
+  # ── Auth0 (OAuth2/OIDC) ───────────────────────────────────────────────────
+  # Auth0 replaces the local Keycloak container. The Spring Security OAuth2
+  # Resource Server only needs the issuer URI — all other OIDC discovery is
+  # automatic via /.well-known/openid-configuration.
+  # AUTH0_DOMAIN is set as a non-sensitive CI group variable (e.g. mirador.eu.auth0.com).
+  KEYCLOAK_URL: "https://${AUTH0_DOMAIN}"
 
   # ── CORS ──────────────────────────────────────────────────────────────────
   # In k8s, Nginx Ingress routes /api/* → backend and / → frontend, both on

@@ -215,11 +215,18 @@ management:
 
   # ---------------------------------------------------------------------------
   # OpenTelemetry — distributed tracing + log export
-  # Traces are sent to Tempo (via LGTM stack) and logs to Loki.
-  # OTLP endpoint defaults to local LGTM container (docker-compose.observability.yml).
+  #
+  # Local dev:  OTEL_EXPORTER_OTLP_ENDPOINT defaults to the LGTM container at :4318.
+  #             No auth header needed — local LGTM accepts anonymous traffic.
+  #
+  # Production (GKE): OTEL_EXPORTER_OTLP_ENDPOINT points to the in-cluster OTel
+  #             Collector DaemonSet (opentelemetry-kube-stack Helm chart, namespace
+  #             opentelemetry-operator-system). The collector holds the Grafana Cloud
+  #             credentials (grafana-cloud-auth K8s Secret) and forwards all signals
+  #             to Grafana Cloud. No auth header needed in this application.
   # ---------------------------------------------------------------------------
   tracing:
-    # 100% sampling — capture every trace. In production, use 0.1 (10%) to reduce overhead.
+    # 100% sampling locally. Production uses OTEL_TRACES_SAMPLER_ARG=0.1 (10%) via env var.
     sampling:
       probability: 1.0
 
@@ -232,11 +239,11 @@ management:
       export:
         otlp:
           endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318}/v1/traces
-          transport: http   # HTTP/protobuf (use grpc for lower overhead in production)
+          transport: http   # HTTP/protobuf — compatible with both LGTM and the in-cluster collector
     logging:
       export:
         otlp:
-          # Exports structured logs directly to Loki via the OpenTelemetry collector
+          # Exports structured logs to Loki (local) or Grafana Cloud Loki (via OTel collector)
           enabled: true
           endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318}/v1/logs
           transport: http
