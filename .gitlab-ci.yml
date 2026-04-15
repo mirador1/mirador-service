@@ -601,7 +601,12 @@ build-native:
 
 .terraform-base:
   stage: infra
-  image: hashicorp/terraform:1.9   # pinned — Terraform is not backwards-compatible across majors
+  image:
+    name: hashicorp/terraform:1.9   # pinned — Terraform is not backwards-compatible across majors
+    # hashicorp/terraform sets ENTRYPOINT ["/bin/terraform"] which breaks GitLab CI's
+    # shell execution (it would run "terraform sh -c ..." instead of "sh -c ...").
+    # Override entrypoint so GitLab's default shell wrapper works correctly.
+    entrypoint: [""]
   before_script:
     - echo "$GCP_SA_KEY" | base64 -d > /tmp/sa.json
     - export GOOGLE_APPLICATION_CREDENTIALS=/tmp/sa.json
@@ -741,6 +746,10 @@ deploy:gke:
   environment:
     name: production/gke
     url: "https://$K8S_HOST"
+  before_script:
+    # google/cloud-sdk:alpine ships without kubectl and gke-gcloud-auth-plugin.
+    # Install both so kubectl can authenticate to the GKE cluster via the plugin.
+    - gcloud components install kubectl gke-gcloud-auth-plugin --quiet
   script:
     # Write OIDC token to file; gcloud reads it via credentials config (WIF, no key file)
     - echo "$GCP_OIDC_TOKEN" > /tmp/gcp_oidc_token.txt

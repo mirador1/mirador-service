@@ -50,23 +50,26 @@ These were proposed at 2026-04-14T20:56 in response to "d'autres idées pour ép
 ### Build & Infra
 - [ ] **Temps de startup** — extraire depuis les logs Spring Boot (`Started MiradorApplication
       in X.XXX seconds`) et afficher dans le dashboard comme métrique de performance
-- [ ] **Pipeline history** — appel à l'API GitLab (`GET /projects/:id/pipelines`) pour
-      afficher les 10 derniers pipelines avec statut et durée dans la page quality
-- [ ] **Branches actives** — `git branch -r` avec date du dernier commit, affiché dans
-      la page about ou quality
+- [x] **Pipeline history** — buildPipelineSection() calls GitLab API, /actuator/quality returns
+      last 10 pipelines. Angular 🚀 Pipelines tab with colored status badges.
+- [x] **Branches actives** — buildBranchesSection() uses git for-each-ref refs/remotes
+      --sort=-committerdate. Angular 🌿 Branches tab in quality page.
 
 ## Pending — autres demandes non traitées
 
-- [ ] **Kafka ACLs** — "quand je clique sur ACLS sur la vue Kafka UI il affiche No Authorizer
-      is configured on the broker" → documenter pourquoi (KRaft sans authorizer en dev) et/ou
-      activer l'authorizer dans la config Kafka du docker-compose
-- [ ] **Pyroscope** — "je ne vois que 3 profiles type liés à l'application, un pour la CPU
-      et 2 pour la mémoire" → vérifier si les profils wall-clock et goroutine sont configurés
+- [x] **Kafka ACLs** — StandardAuthorizer already configured in docker-compose.yml
+      (KAFKA_AUTHORIZER_CLASS_NAME + KAFKA_ALLOW_EVERYONE_IF_NO_ACL_FOUND=true + KAFKA_SUPER_USERS).
+- [x] **Pyroscope** — Fixed: SDK only supports one PyroscopeAgent.start() per JVM — second start()
+      (wall) was silently ignored. Now: single agent with EventType.WALL + setProfilingAlloc("512k")
+      + setProfilingLock("10ms") → 4 profile types: wall, alloc_in_new_tlab, alloc_outside_tlab, lock.
+      WALL preferred over ITIMER for this I/O-heavy service (Kafka, DB, Ollama blocking threads).
 
 ## Pending — Kubernetes & Cloud deployment (session 2026-04-15)
 
-- [~] **deploy:gke first run** — MR !33 auto-merge set, pipeline #241 running. Once merged
-      to main, deploy:gke triggers automatically and pushes the app to GKE.
+- [~] **deploy:gke first run** — MR !33 merged. Pipeline #248 on main failed: kubectl not found
+      in google/cloud-sdk:alpine. Fix in MR !34 (before_script: gcloud components install kubectl
+      gke-gcloud-auth-plugin). Also: mirador-ui docker-build fails (COPY path customer-observability-ui
+      → mirador-ui, fixed in MR !6). Waiting for MR !34 + !6 to merge then re-check deploy:gke.
       URL: https://mirador1.duckdns.org (HTTPS via cert-manager Let's Encrypt).
 - [ ] **HTTPS + cert-manager** — cert-manager installed + GKE Autopilot RBAC patches applied
       (k8s/gke/cert-manager-gke-fix.yaml + --leader-election-namespace=cert-manager).

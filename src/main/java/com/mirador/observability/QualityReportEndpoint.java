@@ -161,6 +161,7 @@ public class QualityReportEndpoint {
         result.put("metrics", buildMetricsSection());
         result.put("runtime", buildRuntimeSection());
         result.put("pipeline", buildPipelineSection());
+        result.put("branches", buildBranchesSection());
         return result;
     }
 
@@ -1358,6 +1359,57 @@ public class QualityReportEndpoint {
             return result;
         } catch (Exception e) {
             return Map.of(K_AVAILABLE, false, K_ERROR, e.getMessage());
+        }
+    }
+
+    /**
+     * Lists remote branches with their last-commit date and author.
+     *
+     * Uses `git for-each-ref refs/remotes --sort=-committerdate` which is available
+     * in the JAR's working directory (the build includes the .git folder for actuator/info).
+     * Falls back gracefully when .git is absent (e.g., Docker without mounted source).
+     *
+     * Format field: %(refname:short) %(committerdate:iso) %(authorname)
+     */
+    private Map<String, Object> buildBranchesSection() {
+        try {
+            // --sort=-committerdate: most recently updated branches first
+            // %(refname:short): strips "origin/" prefix cleanly
+            Process proc = new ProcessBuilder(
+                    "git", "for-each-ref", "refs/remotes",
+                    "--sort=-committerdate",
+                    "--format=%(refname:short)|%(committerdate:iso)|%(authorname)",
+                    "--count=20"
+            ).redirectErrorStream(true).start();
+
+            String output = new String(proc.getInputStream().readAllBytes()).trim();
+            proc.waitFor();
+
+            if (output.isBlank()) {
+                return Map.of(K_AVAILABLE, false, "reason", "No remote branches found (git unavailable or no remotes)");
+            }
+
+            List<Map<String, Object>> branches = new ArrayList<>();
+            for (String line : output.split("\n")) {
+                String[] parts = line.split("\\|", 3);
+                if (parts.length < 2) continue;
+                String name = parts[0].trim();
+                // Skip HEAD pointer — it's not a real branch
+                if (name.endsWith("/HEAD")) continue;
+                Map<String, Object> entry = new LinkedHashMap<>();
+                entry.put("name", name);
+                entry.put("lastCommit", parts.length > 1 ? parts[1].trim() : "");
+                entry.put("author",     parts.length > 2 ? parts[2].trim() : "");
+                branches.add(entry);
+            }
+
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put(K_AVAILABLE, true);
+            result.put("branches", branches);
+            result.put("total", branches.size());
+            return result;
+        } catch (Exception e) {
+            return Map.of(K_AVAILABLE, false, "reason", "git error: " + e.getMessage());
         }
     }
 }

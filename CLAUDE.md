@@ -47,7 +47,9 @@ Always run the default `./mvnw verify` after any change unless testing a specifi
 
 - Branch: `dev`. One commit per logical change.
 - Push with `git push origin dev`.
-- If an MR exists: `glab mr merge <id> --auto-merge --squash=false`.
+- If an MR exists: `glab mr merge <id> --auto-merge --squash=false --remove-source-branch=false`.
+  **Always pass `--remove-source-branch=false`** — GitLab deletes the source branch by default,
+  which would destroy `dev`. The `dev` branch must never be deleted.
 - Never push directly to `main`.
 
 ## GCP Production Environment
