@@ -22,6 +22,9 @@ import java.time.Duration;
 @Component("ollama")
 public class OllamaHealthIndicator implements HealthIndicator {
 
+    // Sonar java:S1192 — "endpoint" detail key used in every Health builder call.
+    private static final String DETAIL_ENDPOINT = "endpoint";
+
     private final String baseUrl;
 
     public OllamaHealthIndicator(@Value("${spring.ai.ollama.base-url:http://localhost:11434}") String baseUrl) {
@@ -37,7 +40,7 @@ public class OllamaHealthIndicator implements HealthIndicator {
                     .retrieve()
                     .body(String.class);
             return Health.up()
-                    .withDetail("endpoint", baseUrl)
+                    .withDetail(DETAIL_ENDPOINT, baseUrl)
                     .build();
         } catch (Exception ex) {
             // Connection refused means Ollama is simply not running — report as
@@ -48,12 +51,12 @@ public class OllamaHealthIndicator implements HealthIndicator {
                     || msg.contains("Failed to connect")
                     || msg.contains("I/O error")) {
                 return Health.unknown()
-                        .withDetail("endpoint", baseUrl)
+                        .withDetail(DETAIL_ENDPOINT, baseUrl)
                         .withDetail("reason", "Ollama not running (optional — required for /bio endpoint)")
                         .build();
             }
             return Health.down(ex)
-                    .withDetail("endpoint", baseUrl)
+                    .withDetail(DETAIL_ENDPOINT, baseUrl)
                     .build();
         }
     }

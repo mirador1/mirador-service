@@ -101,6 +101,13 @@ public class QualityReportEndpoint {
     private static final String K_DESCRIPTION = "description";
     private static final String K_COMPLEXITY  = "complexity";
     private static final String K_VULNERABILITIES = "vulnerabilities";
+    private static final String K_TESTS         = "tests";
+    private static final String K_COVERAGE      = "coverage";
+    private static final String K_SKIPPED       = "skipped";
+    private static final String K_UNKNOWN       = "unknown";
+    private static final String K_VERSION       = "version";
+    private static final String K_DEPENDENCIES  = "dependencies";
+    private static final String K_MUTATED_CLASS = "mutatedClass";
 
     // SonarQube integration — defaults work for local Docker setup.
     // Override via env vars: SONAR_HOST_URL, SONAR_PROJECT_KEY, SONAR_TOKEN.
@@ -127,8 +134,8 @@ public class QualityReportEndpoint {
     public Map<String, Object> report() {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("generatedAt", LocalDateTime.now().format(TS_FMT));
-        result.put("tests", buildTestsSection());
-        result.put("coverage", buildCoverageSection());
+        result.put(K_TESTS, buildTestsSection());
+        result.put(K_COVERAGE, buildCoverageSection());
         result.put("bugs", buildBugsSection());
         result.put("pmd",       buildPmdSection());
         result.put("checkstyle",buildCheckstyleSection());
@@ -138,7 +145,7 @@ public class QualityReportEndpoint {
         result.put("build", buildBuildSection());
         result.put("git", buildGitSection());
         result.put("api", buildApiSection());
-        result.put("dependencies", buildDependenciesSection());
+        result.put(K_DEPENDENCIES, buildDependenciesSection());
         result.put("metrics", buildMetricsSection());
         result.put("runtime", buildRuntimeSection());
         return result;
@@ -178,10 +185,10 @@ public class QualityReportEndpoint {
                 try (is) {
                     Document doc = docBuilder.parse(is);
                     Element suite = doc.getDocumentElement();
-                    int tests = intAttr(suite, "tests");
+                    int tests = intAttr(suite, K_TESTS);
                     int failures = intAttr(suite, K_FAILURES);
                     int errors = intAttr(suite, K_ERRORS);
-                    int skipped = intAttr(suite, "skipped");
+                    int skipped = intAttr(suite, K_SKIPPED);
                     double time = doubleAttr(suite, "time");
 
                     String fullName = suite.getAttribute("name");
@@ -200,10 +207,10 @@ public class QualityReportEndpoint {
 
                     Map<String, Object> suiteMap = new LinkedHashMap<>();
                     suiteMap.put("name", shortName);
-                    suiteMap.put("tests", tests);
+                    suiteMap.put(K_TESTS, tests);
                     suiteMap.put(K_FAILURES, failures);
                     suiteMap.put(K_ERRORS, errors);
-                    suiteMap.put("skipped", skipped);
+                    suiteMap.put(K_SKIPPED, skipped);
                     suiteMap.put("time", String.format("%.3fs", time));
                     suites.add(suiteMap);
 
@@ -248,7 +255,7 @@ public class QualityReportEndpoint {
         result.put("passed", totalTests - totalFailures - totalErrors - totalSkipped);
         result.put(K_FAILURES, totalFailures);
         result.put(K_ERRORS, totalErrors);
-        result.put("skipped", totalSkipped);
+        result.put(K_SKIPPED, totalSkipped);
         result.put("time", String.format("%.2fs", totalTime));
         result.put("runAt", runAt);
         result.put("suites", suites);
@@ -469,11 +476,11 @@ public class QualityReportEndpoint {
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put(K_AVAILABLE, true);
-        result.put("artifact", props.getProperty("build.artifact", "unknown"));
-        result.put("version", props.getProperty("build.version", "unknown"));
-        result.put("time", props.getProperty("build.time", "unknown"));
-        result.put("javaVersion", System.getProperty("java.version", "unknown"));
-        result.put("springBootVersion", props.getProperty("build.version", "unknown"));
+        result.put("artifact", props.getProperty("build.artifact", K_UNKNOWN));
+        result.put(K_VERSION, props.getProperty("build.version", K_UNKNOWN));
+        result.put("time", props.getProperty("build.time", K_UNKNOWN));
+        result.put("javaVersion", System.getProperty("java.version", K_UNKNOWN));
+        result.put("springBootVersion", props.getProperty("build.version", K_UNKNOWN));
         return result;
     }
 
@@ -581,7 +588,7 @@ public class QualityReportEndpoint {
                 Map<String,Object> d = new LinkedHashMap<>();
                 d.put("groupId", groupId);
                 d.put("artifactId", artifactId);
-                d.put("version", version.isEmpty() ? "(managed)" : version);
+                d.put(K_VERSION, version.isEmpty() ? "(managed)" : version);
                 d.put("scope", scope);
                 deps.add(d);
             }
@@ -591,7 +598,7 @@ public class QualityReportEndpoint {
         Map<String,Object> r = new LinkedHashMap<>();
         r.put(K_AVAILABLE, true);
         r.put(K_TOTAL, deps.size());
-        r.put("dependencies", deps);
+        r.put(K_DEPENDENCIES, deps);
         return r;
     }
 
@@ -676,6 +683,11 @@ public class QualityReportEndpoint {
     // PMD section
     // -------------------------------------------------------------------------
 
+    // Sonar java:S3776: cognitive complexity is intentionally above 15 here.
+    // Parses PMD XML with nested file→violation loops and multiple classification branches.
+    // Extracting sub-methods would split the violation-accumulation logic across multiple methods
+    // without making the code clearer.
+    @SuppressWarnings("java:S3776")
     private Map<String, Object> buildPmdSection() {
         InputStream is = loadResource(CP_PMD, DEV_PMD);
         if (is == null) return Map.of(K_AVAILABLE, false);
@@ -748,6 +760,9 @@ public class QualityReportEndpoint {
     // Checkstyle section
     // -------------------------------------------------------------------------
 
+    // Sonar java:S3776: cognitive complexity is intentionally above 15 here.
+    // Parses Checkstyle XML with nested file→error loops and severity/checker classification.
+    @SuppressWarnings("java:S3776")
     private Map<String, Object> buildCheckstyleSection() {
         InputStream is = loadResource(CP_CHECKSTYLE, DEV_CHECKSTYLE);
         if (is == null) return Map.of(K_AVAILABLE, false);
@@ -835,7 +850,7 @@ public class QualityReportEndpoint {
                 JsonNode vulnerabilities = dep.path(K_VULNERABILITIES);
                 if (vulnerabilities.isEmpty()) continue;
 
-                String depName = dep.path("fileName").asText("unknown");
+                String depName = dep.path("fileName").asText(K_UNKNOWN);
                 for (JsonNode vuln : vulnerabilities) {
                     String rawName  = vuln.path("name").asText("?");
                     String name     = cleanCveId(rawName, vuln.path("references"));
@@ -903,9 +918,9 @@ public class QualityReportEndpoint {
                     case "KILLED"      -> killed++;
                     case "SURVIVED"    -> { survived++; if (surviving.size() < 20) {
                         Map<String,Object> sm = new LinkedHashMap<>();
-                        sm.put("class",  getTagText(m, "mutatedClass").contains(".")
-                            ? getTagText(m, "mutatedClass").substring(getTagText(m, "mutatedClass").lastIndexOf('.')+1)
-                            : getTagText(m, "mutatedClass"));
+                        sm.put("class",  getTagText(m, K_MUTATED_CLASS).contains(".")
+                            ? getTagText(m, K_MUTATED_CLASS).substring(getTagText(m, K_MUTATED_CLASS).lastIndexOf('.')+1)
+                            : getTagText(m, K_MUTATED_CLASS));
                         sm.put("method", getTagText(m, "mutatedMethod"));
                         sm.put("mutator", mutator);
                         sm.put(K_DESCRIPTION, getTagText(m, K_DESCRIPTION));
@@ -999,7 +1014,7 @@ public class QualityReportEndpoint {
             r.put("bugs",                  parseIntOrNull(raw.get("bugs")));
             r.put(K_VULNERABILITIES,       parseIntOrNull(raw.get(K_VULNERABILITIES)));
             r.put("codeSmells",            parseIntOrNull(raw.get("code_smells")));
-            r.put("coverage",              parseDoubleOrNull(raw.get("coverage")));
+            r.put(K_COVERAGE,              parseDoubleOrNull(raw.get(K_COVERAGE)));
             r.put("duplications",          parseDoubleOrNull(raw.get("duplicated_lines_density")));
             r.put("linesOfCode",           parseIntOrNull(raw.get("ncloc")));
             r.put("reliabilityRating",     ratingLabel(raw.get("reliability_rating")));

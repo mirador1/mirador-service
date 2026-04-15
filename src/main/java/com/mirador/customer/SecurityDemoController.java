@@ -38,10 +38,15 @@ import java.util.Map;
 @SecurityRequirements   // all demo endpoints are permit-all
 @RestController
 @RequestMapping("/demo/security")
-// NOTE FOR SONARQUBE: The security issues flagged in this class (SQL injection, XSS, duplicate
-// literals) are INTENTIONAL — they exist to demonstrate OWASP vulnerabilities in the Security Demo
-// tab of the UI. Do NOT fix them. Mark them as "Won't Fix" or "Accepted" in SonarQube.
+// NOTE FOR SONARQUBE: The SQL injection (sqli-vulnerable), XSS (xss-vulnerable) and IDOR
+// (idor-vulnerable) endpoints are INTENTIONALLY VULNERABLE — they demonstrate OWASP A01/A03/A07.
+// Mark those specific issues as "Won't Fix" or "Accepted" in SonarQube.
+// All other code quality issues (duplicate literals, etc.) in this class ARE fixed.
 public class SecurityDemoController {
+
+    // Sonar java:S1192 — response map keys used in the security-headers demo.
+    private static final String KEY_EXPECTED    = "expected";
+    private static final String KEY_EXPLANATION = "explanation";
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -61,8 +66,9 @@ public class SecurityDemoController {
     @Operation(summary = "⚠️ SQL Injection — VULNERABLE",
             description = "Concatenates user input directly into SQL. Try `?name=Alice' OR '1'='1` to dump all customers. "
                     + "**OWASP A03:2021 — Injection**")
+    // INTENTIONAL VULNERABILITY: SQL injection via string concatenation (OWASP A03).
+    // Sonar will flag this — that is expected. Do NOT suppress. Mark as Won't Fix in SonarQube.
     @GetMapping("/sqli-vulnerable")
-    @SuppressWarnings("SqlInjection")
     public Map<String, Object> sqliVulnerable(
             @Parameter(description = "User input injected into SQL", example = "Alice' OR '1'='1")
             @RequestParam String name) {
@@ -231,26 +237,26 @@ public class SecurityDemoController {
         return Map.of(
                 "headers", List.of(
                         Map.of("name", "X-Content-Type-Options",
-                               "expected", "nosniff",
-                               "explanation", "Prevents MIME-type sniffing — browser won't reinterpret a CSV as HTML or JavaScript"),
+                               KEY_EXPECTED, "nosniff",
+                               KEY_EXPLANATION, "Prevents MIME-type sniffing — browser won't reinterpret a CSV as HTML or JavaScript"),
                         Map.of("name", "X-Frame-Options",
-                               "expected", "DENY",
-                               "explanation", "Blocks clickjacking — prevents this page from being embedded in an <iframe>"),
+                               KEY_EXPECTED, "DENY",
+                               KEY_EXPLANATION, "Blocks clickjacking — prevents this page from being embedded in an <iframe>"),
                         Map.of("name", "X-XSS-Protection",
-                               "expected", "0",
-                               "explanation", "Disables the broken legacy XSS auditor. Modern protection uses CSP instead."),
+                               KEY_EXPECTED, "0",
+                               KEY_EXPLANATION, "Disables the broken legacy XSS auditor. Modern protection uses CSP instead."),
                         Map.of("name", "Referrer-Policy",
-                               "expected", "strict-origin-when-cross-origin",
-                               "explanation", "Limits URL leakage in the Referer header for cross-origin requests"),
+                               KEY_EXPECTED, "strict-origin-when-cross-origin",
+                               KEY_EXPLANATION, "Limits URL leakage in the Referer header for cross-origin requests"),
                         Map.of("name", "Content-Security-Policy",
-                               "expected", "default-src 'self'; frame-ancestors 'none'",
-                               "explanation", "Blocks inline scripts and external resource loading — prevents XSS escalation and clickjacking"),
+                               KEY_EXPECTED, "default-src 'self'; frame-ancestors 'none'",
+                               KEY_EXPLANATION, "Blocks inline scripts and external resource loading — prevents XSS escalation and clickjacking"),
                         Map.of("name", "Permissions-Policy",
-                               "expected", "camera=(), microphone=(), geolocation=()",
-                               "explanation", "Disables browser APIs (camera, mic, geolocation) that a REST API should never need"),
+                               KEY_EXPECTED, "camera=(), microphone=(), geolocation=()",
+                               KEY_EXPLANATION, "Disables browser APIs (camera, mic, geolocation) that a REST API should never need"),
                         Map.of("name", "Strict-Transport-Security",
-                               "expected", "not set (HTTP dev environment)",
-                               "explanation", "Should be set in HTTPS production: max-age=31536000; includeSubDomains — forces HTTPS for 1 year and prevents SSL stripping")
+                               KEY_EXPECTED, "not set (HTTP dev environment)",
+                               KEY_EXPLANATION, "Should be set in HTTPS production: max-age=31536000; includeSubDomains — forces HTTPS for 1 year and prevents SSL stripping")
                 )
         );
     }

@@ -33,8 +33,11 @@ public class TestReportInfoContributor implements InfoContributor {
 
     private static final String REPORTS_DIR = "target/surefire-reports";
     // Sonar java:S1192 — these keys appear in both per-suite maps and the totals map.
+    private static final String KEY_AVAILABLE = "available";
+    private static final String KEY_TESTS    = "tests";
     private static final String KEY_FAILURES = "failures";
     private static final String KEY_ERRORS   = "errors";
+    private static final String KEY_SKIPPED  = "skipped";
     private static final DateTimeFormatter TS_FMT =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -42,13 +45,13 @@ public class TestReportInfoContributor implements InfoContributor {
     public void contribute(Info.Builder builder) {
         File dir = new File(REPORTS_DIR);
         if (!dir.exists() || !dir.isDirectory()) {
-            builder.withDetail("tests", Map.of("available", false));
+            builder.withDetail(KEY_TESTS, Map.of(KEY_AVAILABLE, false));
             return;
         }
 
         File[] xmlFiles = dir.listFiles((d, name) -> name.startsWith("TEST-") && name.endsWith(".xml"));
         if (xmlFiles == null || xmlFiles.length == 0) {
-            builder.withDetail("tests", Map.of("available", false));
+            builder.withDetail(KEY_TESTS, Map.of(KEY_AVAILABLE, false));
             return;
         }
 
@@ -67,10 +70,10 @@ public class TestReportInfoContributor implements InfoContributor {
                 try {
                     Document doc = docBuilder.parse(xml);
                     Element suite = doc.getDocumentElement();
-                    int tests = intAttr(suite, "tests");
-                    int failures = intAttr(suite, "failures");
-                    int errors = intAttr(suite, "errors");
-                    int skipped = intAttr(suite, "skipped");
+                    int tests = intAttr(suite, KEY_TESTS);
+                    int failures = intAttr(suite, KEY_FAILURES);
+                    int errors = intAttr(suite, KEY_ERRORS);
+                    int skipped = intAttr(suite, KEY_SKIPPED);
                     double time = doubleAttr(suite, "time");
 
                     totalTests += tests;
@@ -87,10 +90,10 @@ public class TestReportInfoContributor implements InfoContributor {
 
                     Map<String, Object> suiteMap = new LinkedHashMap<>();
                     suiteMap.put("name", shortName);
-                    suiteMap.put("tests", tests);
+                    suiteMap.put(KEY_TESTS, tests);
                     suiteMap.put(KEY_FAILURES, failures);
                     suiteMap.put(KEY_ERRORS, errors);
-                    suiteMap.put("skipped", skipped);
+                    suiteMap.put(KEY_SKIPPED, skipped);
                     suiteMap.put("time", String.format("%.3fs", time));
                     suites.add(suiteMap);
                 } catch (Exception ignored) {
@@ -98,7 +101,7 @@ public class TestReportInfoContributor implements InfoContributor {
                 }
             }
         } catch (Exception e) {
-            builder.withDetail("tests", Map.of("available", false, "error", e.getMessage()));
+            builder.withDetail(KEY_TESTS, Map.of(KEY_AVAILABLE, false, "error", e.getMessage()));
             return;
         }
 
@@ -110,18 +113,18 @@ public class TestReportInfoContributor implements InfoContributor {
         boolean allPassed = totalFailures == 0 && totalErrors == 0;
 
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("available", true);
+        result.put(KEY_AVAILABLE, true);
         result.put("status", allPassed ? "PASSED" : "FAILED");
         result.put("total", totalTests);
         result.put("passed", totalTests - totalFailures - totalErrors - totalSkipped);
         result.put(KEY_FAILURES, totalFailures);
         result.put(KEY_ERRORS, totalErrors);
-        result.put("skipped", totalSkipped);
+        result.put(KEY_SKIPPED, totalSkipped);
         result.put("time", String.format("%.2fs", totalTime));
         result.put("runAt", runAt);
         result.put("suites", suites);
 
-        builder.withDetail("tests", result);
+        builder.withDetail(KEY_TESTS, result);
     }
 
     /**

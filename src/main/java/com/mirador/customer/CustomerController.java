@@ -101,12 +101,14 @@ import java.util.concurrent.ExecutionException;
  */
 @Tag(name = "Customers", description = "Customer CRUD, search, export, real-time stream, and advanced patterns (Kafka enrich, virtual threads, cursor pagination, LLM bio generation)")
 @RestController
-@RequestMapping("/customers")
+@RequestMapping(CustomerController.PATH_CUSTOMERS)
 public class CustomerController {
 
     private static final Logger log = LoggerFactory.getLogger(CustomerController.class);
 
     // Sonar java:S1192 — centralise repeated string literals.
+    // Base path used in @RequestMapping, redirect headers, and observation span keys.
+    static final String PATH_CUSTOMERS = "/customers";
     // "endpoint" key used in every observation span for low-cardinality routing context.
     private static final String KEY_ENDPOINT  = "endpoint";
     // Error message prefix — appears in multiple orElseThrow() exception messages.
@@ -221,7 +223,7 @@ public class CustomerController {
             @RequestParam(required = false) String search) {
         Pageable capped = capPageSize(pageable);
         Page<CustomerDto> page = Observation.createNotStarted("customer.find-all", observationRegistry)
-                .lowCardinalityKeyValue(KEY_ENDPOINT, "/customers")
+                .lowCardinalityKeyValue(KEY_ENDPOINT, PATH_CUSTOMERS)
                 .observe(() -> customerFindAllTimer.record(() ->
                         search != null ? service.search(search, capped) : service.findAll(capped)));
         return withLinkHeaders(page, Map.of(
@@ -260,7 +262,7 @@ public class CustomerController {
             @RequestParam(required = false) String search) {
         Pageable capped = capPageSize(pageable);
         Page<CustomerDtoV2> page = Observation.createNotStarted("customer.find-all-v2", observationRegistry)
-                .lowCardinalityKeyValue(KEY_ENDPOINT, "/customers")
+                .lowCardinalityKeyValue(KEY_ENDPOINT, PATH_CUSTOMERS)
                 .lowCardinalityKeyValue("version", "2")
                 .observe(() -> customerFindAllTimer.record(() ->
                         search != null ? service.searchV2(search, capped) : service.findAllV2(capped)));
@@ -295,7 +297,7 @@ public class CustomerController {
     @PostMapping
     public CustomerDto create(@Valid @RequestBody CreateCustomerRequest request) {
         return Observation.createNotStarted("customer.create", observationRegistry)
-                .lowCardinalityKeyValue(KEY_ENDPOINT, "/customers")
+                .lowCardinalityKeyValue(KEY_ENDPOINT, PATH_CUSTOMERS)
                 .observe(() -> customerCreateTimer.record(() -> {
                     CustomerDto result = service.create(request);
                     customerCreatedCounter.increment();
