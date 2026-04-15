@@ -48,10 +48,14 @@ These were proposed at 2026-04-14T20:56 in response to "d'autres idées pour ép
       from pom.xml <properties>, calls Maven Central Solr API in parallel (25 deps max, 8s timeout).
       Adds latestVersion + outdated to each dep, outdatedCount to section root.
       UI: Latest column, amber row highlight, outdated count badge in section header.
-- [ ] **Arbre de dépendances** — `mvn dependency:tree -DoutputType=json` parsé et affiché
-      comme un arbre interactif dans la page quality
-- [ ] **Conflits de version** — `mvn dependency:analyze` (dépendances déclarées non utilisées
-      et utilisées non déclarées) ; exposer dans /actuator/quality
+- [x] **Arbre de dépendances** — maven-dependency-plugin:tree generates target/dependency-tree.txt
+      at generate-resources phase. Packaged into META-INF/build-reports/dependency-tree.txt.
+      QualityReportEndpoint returns dependencyTree.tree (raw text) + totalTransitive count.
+      UI: collapsible <pre class="dep-tree"> in Dependencies section.
+- [x] **Conflits de version** — maven-dependency-plugin:analyze-only runs at test-compile phase,
+      writes target/dependency-analysis.txt. Packaged into META-INF/build-reports/.
+      QualityReportEndpoint.parseDependencyAnalysis() returns usedUndeclared + unusedDeclared lists.
+      UI: lists with amber (used-undeclared) and grey (unused-declared) styling + count badges.
 
 ### Build & Infra
 - [x] **Temps de startup** — StartupTimeTracker @Component captures ApplicationReadyEvent timestamp
@@ -76,8 +80,10 @@ These were proposed at 2026-04-14T20:56 in response to "d'autres idées pour ép
 - [~] **deploy:gke first run** — Fixes applied (MR !35+!36): kubectl+gke-gcloud-auth-plugin installed,
       gettext (envsubst) installed, terraform entrypoint fixed. UI k8s/frontend/ manifests created in
       mirador-ui (MR !8) with correct image reference (registry.gitlab.com/mirador1/mirador-ui:<sha>).
-      Service CI no longer deploys frontend (wrong SHA would be used). MR !36 + !8 pipelines running.
-      URL: https://mirador1.duckdns.org (HTTPS via cert-manager Let's Encrypt).
+      Service CI no longer deploys frontend (wrong SHA would be used).
+      Also fixed: TESTCONTAINERS_RYUK_DISABLED=true in .gitlab-ci.yml (Ryuk can't bind to
+      172.17.0.1 in DinD, caused integration-test failure; DinD cleanup handles resources anyway).
+      MR !36 pipeline #269 running. URL: https://mirador1.duckdns.org (cert-manager Let's Encrypt).
 - [ ] **HTTPS + cert-manager** — cert-manager installed + GKE Autopilot RBAC patches applied
       (k8s/gke/cert-manager-gke-fix.yaml + --leader-election-namespace=cert-manager).
       letsencrypt-prod ClusterIssuer READY=True. TLS cert will be issued on first deploy:gke
