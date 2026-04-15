@@ -50,10 +50,10 @@ These were proposed at 2026-04-14T20:56 in response to "d'autres idées pour ép
 ### Build & Infra
 - [ ] **Temps de startup** — extraire depuis les logs Spring Boot (`Started MiradorApplication
       in X.XXX seconds`) et afficher dans le dashboard comme métrique de performance
-- [ ] **Pipeline history** — appel à l'API GitLab (`GET /projects/:id/pipelines`) pour
-      afficher les 10 derniers pipelines avec statut et durée dans la page quality
-- [ ] **Branches actives** — `git branch -r` avec date du dernier commit, affiché dans
-      la page about ou quality
+- [x] **Pipeline history** — buildPipelineSection() calls GitLab API, /actuator/quality returns
+      last 10 pipelines. Angular 🚀 Pipelines tab with colored status badges.
+- [x] **Branches actives** — buildBranchesSection() uses git for-each-ref refs/remotes
+      --sort=-committerdate. Angular 🌿 Branches tab in quality page.
 
 ## Pending — autres demandes non traitées
 
