@@ -35,6 +35,9 @@
 #   package   build the fat JAR (run verify first)
 #   docker    build local JVM Docker image
 #   clean     wipe target/
+#   site      generate Maven quality reports and serve them at http://localhost:8083
+#             Runs: mvn verify && mvn site → starts the nginx maven-site container
+#             The site is regenerated daily in CI (REPORT_PIPELINE=true schedule)
 #
 # Setup:
 #   ./run.sh install-tools    install hadolint + lefthook via Homebrew
@@ -285,6 +288,35 @@ case "$1" in
     echo "Report: target/dependency-check-report.html"
     ;;
 
+  site)
+    # Generate the full Maven quality report site and serve it via nginx on port 8083.
+    #
+    # Why this exists:
+    #   The CI report schedule (REPORT_PIPELINE=true) generates the site daily and pushes
+    #   it to the reports/ branch. Locally, use this command to regenerate on demand —
+    #   useful when working on test coverage, SpotBugs fixes, or Javadoc improvements.
+    #
+    # What it generates (target/site/):
+    #   Surefire test results · Failsafe integration test results
+    #   JaCoCo coverage report · SpotBugs analysis · Javadoc
+    #   Project info: dependencies, licenses, team, source xref
+    ensure_docker
+    echo "Generating Maven quality reports (mvn verify + site)..."
+    echo "  Step 1/2: mvn verify  (runs tests + collects JaCoCo/SpotBugs data)"
+    $MAVEN verify -q
+    echo "  Step 2/2: mvn site    (generates HTML reports from test data)"
+    $MAVEN site -q
+    echo ""
+    echo "Starting maven-site nginx container..."
+    docker compose up -d maven-site
+    echo ""
+    echo "  Maven Site  http://localhost:8083"
+    echo "  Reports:    Surefire · Failsafe · JaCoCo · SpotBugs · Javadoc"
+    echo ""
+    echo "  To stop:    docker compose stop maven-site"
+    echo "  To rebuild: ./run.sh site"
+    ;;
+
   clean)
     echo "Cleaning build artifacts..."
     $MAVEN clean
@@ -345,7 +377,7 @@ case "$1" in
 
     echo ""
     echo "  ── Admin tools ─────────────────────────────────────────────"
-    for svc in pgadmin kafka-ui redisinsight; do
+    for svc in pgadmin kafka-ui redisinsight maven-site; do
       STATUS=$(docker inspect -f '{{.State.Status}}' "$svc" 2>/dev/null || echo "missing")
       if [ "$STATUS" = "running" ]; then
         LABEL="✅ $STATUS"
@@ -396,6 +428,7 @@ case "$1" in
     echo "  Grafana       http://localhost:3000  (incl. Pyroscope Explore Profiles)"
     echo "  Zipkin        http://localhost:9411"
     echo "  Prometheus    http://localhost:9091"
+    echo "  Maven Site    http://localhost:8083  (run './run.sh site' to generate)"
     echo "  GitLab (local) http://localhost:9081"
     echo ""
     ;;
@@ -434,6 +467,7 @@ case "$1" in
     echo "  package       build fat JAR — skips tests (run verify first)"
     echo "  docker        build local JVM Docker image tagged '$IMAGE'"
     echo "  security-check OWASP Dependency-Check (CVE scan)"
+    echo "  site          generate Maven reports + serve at http://localhost:8083"
     echo "  clean         remove target/"
     echo "  install-tools install hadolint + lefthook via Homebrew"
     echo ""

@@ -322,8 +322,10 @@ services:
   #   restarts, and report data is frozen at the last CI run (no live updates).
   #
   # How to populate target/site/ locally before starting this container:
+  #   ./run.sh site                  (generates reports + starts this container)
+  # Or manually:
   #   mvn verify && mvn site
-  #   docker compose up maven-site   (then browse http://localhost:8083)
+  #   docker compose up -d maven-site
   #
   # Access: http://localhost:8083
   # ---------------------------------------------------------------------------
