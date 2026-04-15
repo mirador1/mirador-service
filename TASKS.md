@@ -65,14 +65,24 @@ These were proposed at 2026-04-14T20:56 in response to "d'autres idées pour ép
 
 ## Pending — Kubernetes & Cloud deployment (session 2026-04-15)
 
-- [ ] **Local Kubernetes test** — deploy mirador-service to a local K8s cluster (minikube or kind)
-      to validate the manifest structure before pushing to cloud. Steps: Helm chart or raw manifests,
-      local image registry, health probe wiring, ConfigMap/Secret management.
-- [ ] **Google Cloud Autopilot deployment** — deploy to GKE Autopilot cluster. Steps include:
-      GCP project + Artifact Registry setup, `gcloud auth configure-docker`, push image,
-      GKE Autopilot cluster creation, kubectl apply manifests (Deployment, Service, Ingress),
-      Cloud SQL (PostgreSQL) + Memorystore (Redis) integration, Cloud Pub/Sub or Kafka on GCP,
-      HTTPS via GKE-managed certificate, and monitoring via Google Cloud Observability.
+- [~] **Local Kubernetes test** — `./run.sh k8s-local` implemented: kind cluster (port 8090),
+      nginx-ingress, builds backend+frontend images, loads into kind, applies all manifests,
+      waits for rollout. App at http://mirador.127.0.0.1.nip.io:8090. Needs a real test run.
+- [ ] **GKE Autopilot deployment — next steps**:
+      1. Install gcloud + Terraform: `brew install google-cloud-sdk terraform`
+      2. Create GCP project, enable APIs: `./run.sh gcp-enable-apis`
+      3. Create Terraform state bucket: `./run.sh gcp-tf-bucket`
+      4. Fill in `terraform/gcp/terraform.tfvars` (copy from .example)
+      5. Preview infra: `./run.sh tf-plan`
+      6. Apply infra: `./run.sh tf-apply` (provisions GKE Autopilot + Cloud SQL + Redis)
+      7. Deploy app: push to main → CI `deploy:gke` job triggers automatically
+- [ ] **Managed Kafka on GCP** — Google Cloud Managed Kafka (GA 2024, Kafka-compatible):
+      set `kafka_enabled = true` in tfvars; see terraform/gcp/kafka.tf for migration steps.
+      Alternative: Cloud Pub/Sub (serverless, cheaper, but requires code changes — not Kafka API).
+- [ ] **Cloud SQL Auth Proxy** — enable Workload Identity and add sidecar to backend Deployment
+      (see k8s/gke/cloud-sql-proxy.yaml); set DB_HOST=127.0.0.1 in ConfigMap.
+- [ ] **HTTPS + cert-manager** — install cert-manager on GKE cluster (already in k8s/ingress.yaml),
+      configure letsencrypt-prod ClusterIssuer, set K8S_HOST to real domain.
 
 ## Pending — Unanswered questions (session 2026-04-15)
 
@@ -91,6 +101,12 @@ These were proposed at 2026-04-14T20:56 in response to "d'autres idées pour ép
 
 ## Recently Completed
 
+- [x] K8s local test: kind-config.yaml, local/ingress.yaml, run.sh k8s-local command;
+      Terraform GCP infra: VPC, GKE Autopilot, Cloud SQL PostgreSQL 17, Memorystore Redis,
+      Google Cloud Managed Kafka (kafka.tf), Cloud SQL Auth Proxy (Workload Identity),
+      CI infra stage (terraform-plan + terraform-apply), run.sh gcp/tf-* commands.
+      Image name bug fixed: docker-build now pushes to $CI_REGISTRY_IMAGE/backend:sha.
+      .kubectl-apply fixed: kafka, frontend, JWT_SECRET, CORS_ALLOWED_ORIGINS added.
 - [x] SonarQube CRITICAL fixes (round 2): remaining S1192 constants added to CustomerController
       (PATH_CUSTOMERS), OllamaHealthIndicator (DETAIL_ENDPOINT), TestReportInfoContributor
       (KEY_AVAILABLE/TESTS/SKIPPED); S3776 suppression added to buildPmdSection() and
