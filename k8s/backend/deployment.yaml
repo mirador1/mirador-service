@@ -77,6 +77,11 @@ spec:
                 secretKeyRef:
                   name: customer-service-secrets
                   key: API_KEY
+            - name: OTEL_EXPORTER_OTLP_AUTH
+              valueFrom:
+                secretKeyRef:
+                  name: customer-service-secrets
+                  key: OTEL_EXPORTER_OTLP_AUTH
           resources:
             # GKE Autopilot: request = limit for deterministic pod sizing and billing.
             # Autopilot rounds up to the nearest resource class; 512Mi/500m is efficient.

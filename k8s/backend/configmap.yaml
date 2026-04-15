@@ -39,13 +39,12 @@ data:
   OLLAMA_BASE_URL: "http://ollama.infra.svc.cluster.local:11434"
   OLLAMA_MODEL:    "llama3.2:1b"
 
-  # ── OpenTelemetry → in-cluster OTel Collector → Grafana Cloud ────────────
-  # The opentelemetry-kube-stack Helm chart deploys a DaemonSet collector in the
-  # opentelemetry-operator-system namespace. It holds the Grafana Cloud credentials
-  # (grafana-cloud-auth secret) and forwards all signals to Grafana Cloud.
-  # The app sends to the local collector — no auth header needed here.
-  # Collector also scrapes K8s node/pod metrics automatically.
-  OTEL_EXPORTER_OTLP_ENDPOINT: "http://opentelemetry-stack-daemon-collector.opentelemetry-operator-system.svc.cluster.local:4318"
+  # ── OpenTelemetry → Grafana Cloud (direct OTLP/HTTP) ──────────────────────
+  # Spring Boot sends traces + logs directly to Grafana Cloud OTLP gateway.
+  # The in-cluster DaemonSet collector (opentelemetry-kube-stack) was rejected by
+  # GKE Autopilot (hostPath volumes not allowed). Direct push is simpler.
+  # OTEL_EXPORTER_OTLP_AUTH (Basic base64(instanceId:token)) is in the K8s Secret.
+  OTEL_EXPORTER_OTLP_ENDPOINT: "${GRAFANA_OTLP_ENDPOINT}"
 
   # ── Auth0 (OAuth2/OIDC) ───────────────────────────────────────────────────
   # Auth0 replaces the local Keycloak container. The Spring Security OAuth2

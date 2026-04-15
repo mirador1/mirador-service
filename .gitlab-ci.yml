@@ -620,6 +620,7 @@ build-native:
 # Output is stored as an artifact so terraform-apply can use it.
 terraform-plan:
   extends: .terraform-base
+  allow_failure: true   # Terraform state bucket may not exist yet; must not block deploy:gke
   script:
     - terraform plan
         -var="project_id=${TF_VAR_project_id}"
@@ -691,11 +692,13 @@ terraform-apply:
         --docker-password="$CI_REGISTRY_PASSWORD" \
         --namespace=app --dry-run=client -o yaml | kubectl apply -f -
     - |
-      # App secrets — DB_PASSWORD, JWT_SECRET, API_KEY must be set as masked GitLab CI variables.
+      # App secrets — masked GitLab CI group variables injected into K8s.
+      # GRAFANA_OTLP_AUTH = base64(instanceId:apiToken) for Grafana Cloud direct OTLP push.
       kubectl create secret generic customer-service-secrets \
         --from-literal=DB_PASSWORD="$DB_PASSWORD" \
         --from-literal=JWT_SECRET="$JWT_SECRET" \
         --from-literal=API_KEY="${API_KEY:-}" \
+        --from-literal=OTEL_EXPORTER_OTLP_AUTH="${GRAFANA_OTLP_AUTH:-}" \
         --namespace=app --dry-run=client -o yaml | kubectl apply -f -
     - |
       # Apply all manifests — envsubst replaces ${K8S_HOST}, ${IMAGE_REGISTRY}, ${IMAGE_TAG},
