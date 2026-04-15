@@ -250,7 +250,7 @@ sonar-analysis:
       -Dsonar.token="$SONAR_TOKEN"
       -Dsonar.host.url="$SONAR_HOST_URL"
   needs:
-    - job: integration-tests
+    - job: integration-test
       artifacts: true   # inherit target/ artifacts (JaCoCo XML, bytecode) from integration stage
   rules:
     # Run on default branch and MRs only — skip feature branches to avoid noise.
