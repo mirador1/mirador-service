@@ -165,3 +165,13 @@ Loki, Tempo, Grafana are already inside the LGTM container — do NOT add them a
 - [ ] New timer/counter/gauge — pre-registered in constructor, not lazily?
 - [ ] Exception handlers — nothing silently swallowed (empty `catch` blocks)?
 - [ ] Javadoc on public methods with non-obvious parameters or return values
+
+## Docker Cleanup
+
+At the start of each session (or after heavy build/test work), run:
+```
+docker container prune -f
+docker volume prune -f
+docker builder prune -f
+```
+Check disk usage first with `docker system df`. Never prune running containers or named volumes without confirming with the user.
