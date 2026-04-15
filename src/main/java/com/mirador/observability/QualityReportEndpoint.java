@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -19,11 +20,14 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -618,14 +622,45 @@ public class QualityReportEndpoint {
     // Dependencies section
     // -------------------------------------------------------------------------
 
+    /**
+     * Parses direct dependencies from pom.xml, resolves {@code ${property}} version references,
+     * then checks Maven Central for each pinned dependency to see if a newer version is available.
+     *
+     * <p>Freshness checks use the Maven Central Solr API in parallel (up to 20 deps, 8 s total timeout).
+     * Managed dependencies ({@code version = "(managed)"}) are skipped — their version is controlled
+     * by the Spring Boot BOM and upgrading them is a Spring Boot upgrade, not a direct dep change.
+     *
+     * @apiNote The total wall-clock time is bounded by 8 seconds regardless of how many deps are checked.
+     *          Partial results are returned if some futures time out; those entries will lack
+     *          {@code latestVersion} and {@code outdated} fields.
+     */
+    @SuppressWarnings("java:S3776") // multi-step parsing + parallel HTTP: complexity is inherent
     private Map<String, Object> buildDependenciesSection() {
         InputStream is = loadResource(CP_POM, "pom.xml");
         if (is == null) return Map.of(K_AVAILABLE, false);
 
+        // Step 1: Parse pom.xml — extract properties + direct dependencies
+        Map<String, String> pomProperties = new HashMap<>();
         List<Map<String,Object>> deps = new ArrayList<>();
         try (is) {
             DocumentBuilder db = secureNamespaceAwareDocumentBuilder();
             Document doc = db.parse(is);
+
+            // Collect <properties> values to resolve ${property} version references
+            NodeList propNodes = doc.getElementsByTagName("properties");
+            for (int i = 0; i < propNodes.getLength(); i++) {
+                Element propsEl = (Element) propNodes.item(i);
+                // Only the top-level <properties> block (parent is <project>)
+                if (!"project".equals(propsEl.getParentNode().getNodeName())) continue;
+                NodeList children = propsEl.getChildNodes();
+                for (int j = 0; j < children.getLength(); j++) {
+                    if (children.item(j) instanceof Element propEl) {
+                        pomProperties.put(propEl.getTagName(), propEl.getTextContent().trim());
+                    }
+                }
+            }
+
+            // Collect direct dependencies
             NodeList depNodes = doc.getElementsByTagName("dependency");
             for (int i = 0; i < depNodes.getLength(); i++) {
                 Element dep = (Element) depNodes.item(i);
@@ -633,22 +668,97 @@ public class QualityReportEndpoint {
                 if (!"dependencies".equals(dep.getParentNode().getNodeName())) continue;
                 String groupId    = getTagText(dep, "groupId");
                 String artifactId = getTagText(dep, "artifactId");
-                String version    = getTagText(dep, "version");
+                String rawVersion = getTagText(dep, "version");
                 String scope      = getTagText(dep, "scope");
                 if (scope.isEmpty()) scope = "compile";
+
+                // Resolve ${property} references
+                String resolvedVersion = rawVersion;
+                if (rawVersion.startsWith("${") && rawVersion.endsWith("}")) {
+                    String key = rawVersion.substring(2, rawVersion.length() - 1);
+                    resolvedVersion = pomProperties.getOrDefault(key, rawVersion);
+                }
+
                 Map<String,Object> d = new LinkedHashMap<>();
                 d.put("groupId", groupId);
                 d.put("artifactId", artifactId);
-                d.put(K_VERSION, version.isEmpty() ? "(managed)" : version);
+                d.put(K_VERSION, resolvedVersion.isEmpty() ? "(managed)" : resolvedVersion);
                 d.put("scope", scope);
                 deps.add(d);
             }
         } catch (Exception e) {
             return Map.of(K_AVAILABLE, false, K_ERROR, e.getMessage());
         }
+
+        // Step 2: Check Maven Central for each dep with a resolvable version (skip managed + properties)
+        // Limit to first 25 deps to keep total latency manageable
+        HttpClient freshClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(3))
+                .build();
+
+        // Use a single shared log instance to avoid Sonar S1312 per-call
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
+        for (Map<String,Object> dep : deps) {
+            String version = (String) dep.get(K_VERSION);
+            // Skip: managed by BOM, unresolved property reference, or non-release versions
+            if (version == null || version.startsWith("(") || version.startsWith("${")) continue;
+            if (futures.size() >= 25) break; // cap to avoid excessive parallel calls
+
+            String g = (String) dep.get("groupId");
+            String a = (String) dep.get("artifactId");
+            String url = "https://search.maven.org/solrsearch/select?rows=1&wt=json&q="
+                    + URLEncoder.encode("g:" + g + " AND a:" + a, StandardCharsets.UTF_8);
+
+            CompletableFuture<Void> f = CompletableFuture.runAsync(() -> {
+                try {
+                    HttpRequest req = HttpRequest.newBuilder()
+                            .uri(URI.create(url))
+                            .timeout(Duration.ofSeconds(5))
+                            .header("Accept", "application/json")
+                            .GET()
+                            .build();
+                    HttpResponse<String> resp = freshClient.send(req, HttpResponse.BodyHandlers.ofString());
+                    if (resp.statusCode() == 200) {
+                        JsonNode root = MAPPER.readTree(resp.body());
+                        JsonNode docs = root.path("response").path("docs");
+                        if (docs.isArray() && !docs.isEmpty()) {
+                            String latest = docs.get(0).path("latestVersion").asText("");
+                            if (!latest.isBlank()) {
+                                dep.put("latestVersion", latest);
+                                // Outdated = current version differs from latest AND current is not a SNAPSHOT/milestone
+                                boolean outdated = !latest.equals(version)
+                                        && !version.contains("SNAPSHOT")
+                                        && !version.contains("-M")
+                                        && !version.contains("-RC")
+                                        && !version.contains("-alpha")
+                                        && !version.contains("-beta");
+                                dep.put("outdated", outdated);
+                            }
+                        }
+                    }
+                } catch (Exception ignored) {
+                    // Freshness check failure is non-critical — dep appears without latestVersion field
+                }
+            });
+            futures.add(f);
+        }
+
+        // Wait up to 8 s for all freshness checks (partial results if some time out)
+        try {
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
+                    .get(8, TimeUnit.SECONDS);
+        } catch (Exception ignored) {
+            // Timeout or interruption — return whatever was collected so far
+        }
+
+        long outdatedCount = deps.stream()
+                .filter(d -> Boolean.TRUE.equals(d.get("outdated")))
+                .count();
+
         Map<String,Object> r = new LinkedHashMap<>();
         r.put(K_AVAILABLE, true);
         r.put(K_TOTAL, deps.size());
+        r.put("outdatedCount", outdatedCount);
         r.put(K_DEPENDENCIES, deps);
         return r;
     }
