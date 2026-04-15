@@ -43,16 +43,19 @@ These were proposed at 2026-04-14T20:56 in response to "d'autres idées pour ép
       pour identifier les classes avec 0% de couverture intentionnelle vs oubliées
 
 ### Dépendances enrichies
-- [ ] **Fraîcheur des dépendances** — appel à `search.maven.org` pour vérifier si une version
-      plus récente existe pour chaque dépendance directe ; afficher un badge "outdated"
+- [x] **Fraîcheur des dépendances** — buildDependenciesSection() resolves ${property} references
+      from pom.xml <properties>, calls Maven Central Solr API in parallel (25 deps max, 8s timeout).
+      Adds latestVersion + outdated to each dep, outdatedCount to section root.
+      UI: Latest column, amber row highlight, outdated count badge in section header.
 - [ ] **Arbre de dépendances** — `mvn dependency:tree -DoutputType=json` parsé et affiché
       comme un arbre interactif dans la page quality
 - [ ] **Conflits de version** — `mvn dependency:analyze` (dépendances déclarées non utilisées
       et utilisées non déclarées) ; exposer dans /actuator/quality
 
 ### Build & Infra
-- [ ] **Temps de startup** — extraire depuis les logs Spring Boot (`Started MiradorApplication
-      in X.XXX seconds`) et afficher dans le dashboard comme métrique de performance
+- [x] **Temps de startup** — StartupTimeTracker @Component captures ApplicationReadyEvent timestamp
+      minus JVM start time. Exposed as startupDurationMs + startupDurationSeconds in runtime section.
+      UI: "Startup Time: X.XXs" row in runtime tab.
 - [x] **Pipeline history** — buildPipelineSection() calls GitLab API, /actuator/quality returns
       last 10 pipelines. Angular 🚀 Pipelines tab with colored status badges.
 - [x] **Branches actives** — buildBranchesSection() uses git for-each-ref refs/remotes
