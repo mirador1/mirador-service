@@ -1,49 +1,8 @@
-<div align="center">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
-  <defs>
-    <radialGradient id="sky" cx="50%" cy="60%" r="60%">
-      <stop offset="0%" stop-color="#1e3a5f" stop-opacity="0.15" />
-      <stop offset="100%" stop-color="#1e3a5f" stop-opacity="0" />
-    </radialGradient>
-  </defs>
-  <circle cx="60" cy="60" r="55" fill="url(#sky)" stroke="#3b82f6" stroke-width="0.5" opacity="0.3" />
-  <!-- Tower body -->
-  <rect x="50" y="65" width="20" height="38" rx="2" fill="#3b82f6" opacity="0.8" />
-  <!-- Tower platform / observation deck -->
-  <rect x="44" y="58" width="32" height="7" rx="2" fill="#3b82f6" />
-  <!-- Battlements -->
-  <rect x="44" y="53" width="6" height="5" rx="1" fill="#3b82f6" />
-  <rect x="53" y="53" width="6" height="5" rx="1" fill="#3b82f6" />
-  <rect x="62" y="53" width="6" height="5" rx="1" fill="#3b82f6" />
-  <rect x="71" y="53" width="5" height="5" rx="1" fill="#3b82f6" />
-  <!-- Tower window (eye/lens) -->
-  <ellipse cx="60" cy="75" rx="5" ry="4" fill="#0f172a" stroke="#3b82f6" stroke-width="1" />
-  <circle cx="60" cy="75" r="2" fill="#60a5fa" opacity="0.8" />
-  <!-- Binoculars on platform -->
-  <circle cx="55" cy="61" r="2.5" fill="none" stroke="#93c5fd" stroke-width="1.2" />
-  <circle cx="65" cy="61" r="2.5" fill="none" stroke="#93c5fd" stroke-width="1.2" />
-  <rect x="57" y="60.5" width="6" height="1" fill="#93c5fd" />
-  <!-- Radar sweep arcs -->
-  <path d="M 82 45 A 12 12 0 0 1 94 57" stroke="#34d399" stroke-width="1.2" fill="none" opacity="0.7" />
-  <path d="M 82 38 A 19 19 0 0 1 101 57" stroke="#34d399" stroke-width="1" fill="none" opacity="0.5" />
-  <path d="M 82 31 A 26 26 0 0 1 108 57" stroke="#34d399" stroke-width="0.8" fill="none" opacity="0.3" />
-  <!-- Signal dot -->
-  <circle cx="86" cy="48" r="2" fill="#34d399" opacity="0.9" />
-  <!-- Stars / metrics dots -->
-  <circle cx="25" cy="30" r="1" fill="#60a5fa" opacity="0.7" />
-  <circle cx="35" cy="22" r="1.5" fill="#60a5fa" opacity="0.5" />
-  <circle cx="15" cy="45" r="1" fill="#34d399" opacity="0.6" />
-  <circle cx="95" cy="25" r="1" fill="#60a5fa" opacity="0.5" />
-  <circle cx="30" cy="90" r="1" fill="#34d399" opacity="0.4" />
-  <!-- Ground base -->
-  <rect x="30" y="103" width="60" height="3" rx="1.5" fill="#3b82f6" opacity="0.3" />
-  <rect x="40" y="106" width="40" height="2" rx="1" fill="#3b82f6" opacity="0.15" />
-</svg>
-</div>
-
-# Mirador — Observable Customer API
+![Mirador Service](banner.svg)
 
 ![Java 25](https://img.shields.io/badge/Java-25-ED8B00?logo=openjdk&logoColor=white) ![Spring Boot 4](https://img.shields.io/badge/Spring_Boot-4-6DB33F?logo=springio&logoColor=white) ![PostgreSQL 17](https://img.shields.io/badge/PostgreSQL-17-4169E1?logo=postgresql&logoColor=white) ![Apache Kafka](https://img.shields.io/badge/Apache_Kafka-black?logo=apachekafka&logoColor=white) ![Redis](https://img.shields.io/badge/Redis-DC382D?logo=redis&logoColor=white) ![Angular 21](https://img.shields.io/badge/Angular-21-DD0031?logo=angular&logoColor=white) ![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white) ![GitLab CI](https://img.shields.io/badge/GitLab_CI-FC6D26?logo=gitlab&logoColor=white) ![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-7F52FF?logo=opentelemetry&logoColor=white)
+
+# Mirador — Observable Customer API
 
 This project has one goal: demonstrate what it takes to diagnose an incident on a backend service.
 The stack is built around that scenario — not around the technologies themselves.
