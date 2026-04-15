@@ -14,8 +14,10 @@
       reports/ branch (orphan), exposes pipeline artifact (30 days).
       TODO: create GitLab schedule in UI (CI/CD → Schedules, 02:00 UTC, REPORT_PIPELINE=true)
       and GITLAB_REPORTS_TOKEN CI variable (project access token, Reporter + write_repository).
-- [ ] **Javadoc enrichment** — Javadoc is already in `<reporting>`, but add `@apiNote` / `@implNote`
-      tags to non-obvious public methods so the generated site is useful, not just structural.
+- [x] **Javadoc enrichment** — @apiNote/@implNote added to: LoginAttemptService, JwtTokenProvider,
+      AuditService.log(), MaintenanceEndpoint.run(), KafkaHealthIndicator.health(),
+      JwtAuthenticationFilter (class + 2 private methods), ApiKeyAuthenticationFilter (class),
+      QualityReportEndpoint (class + report()). All other classes already had adequate documentation.
 
 ## Pending — Maven site integration in Angular UI
 
@@ -67,10 +69,10 @@ These were proposed at 2026-04-14T20:56 in response to "d'autres idées pour ép
 
 ## Pending — Kubernetes & Cloud deployment (session 2026-04-15)
 
-- [~] **deploy:gke first run** — MR !33 merged. Pipeline #248 on main failed: kubectl not found
-      in google/cloud-sdk:alpine. Fix in MR !34 (before_script: gcloud components install kubectl
-      gke-gcloud-auth-plugin). Also: mirador-ui docker-build fails (COPY path customer-observability-ui
-      → mirador-ui, fixed in MR !6). Waiting for MR !34 + !6 to merge then re-check deploy:gke.
+- [~] **deploy:gke first run** — Fixes applied (MR !35+!36): kubectl+gke-gcloud-auth-plugin installed,
+      gettext (envsubst) installed, terraform entrypoint fixed. UI k8s/frontend/ manifests created in
+      mirador-ui (MR !8) with correct image reference (registry.gitlab.com/mirador1/mirador-ui:<sha>).
+      Service CI no longer deploys frontend (wrong SHA would be used). MR !36 + !8 pipelines running.
       URL: https://mirador1.duckdns.org (HTTPS via cert-manager Let's Encrypt).
 - [ ] **HTTPS + cert-manager** — cert-manager installed + GKE Autopilot RBAC patches applied
       (k8s/gke/cert-manager-gke-fix.yaml + --leader-election-namespace=cert-manager).
