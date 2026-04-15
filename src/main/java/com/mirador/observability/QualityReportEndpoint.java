@@ -43,18 +43,41 @@ import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 
 /**
- * Actuator endpoint exposing a Maven quality report at /actuator/quality.
+ * Actuator endpoint exposing a Maven quality report at {@code /actuator/quality}.
  *
- * <p>Aggregates data from:
+ * <p>Aggregates build and quality data into a single JSON response consumed by the
+ * Angular quality dashboard ({@code /quality} route in mirador-ui). Each section is
+ * built by a private {@code build*Section()} method and returns either the data map
+ * (with {@code available: true}) or {@code {available: false, reason: "..."}} when the
+ * data source is absent or unreachable — so the UI can show a helpful message instead
+ * of an error.
+ *
+ * <h3>Sections returned by {@link #report()}</h3>
  * <ul>
- *   <li>Surefire XML reports (META-INF/build-reports/surefire/TEST-*.xml)</li>
- *   <li>JaCoCo CSV report (META-INF/build-reports/jacoco.csv)</li>
- *   <li>SpotBugs XML report (META-INF/build-reports/spotbugsXml.xml)</li>
- *   <li>Build info properties (META-INF/build-info.properties)</li>
+ *   <li><b>tests</b>        — Surefire XML: test counts, failures, slowest tests</li>
+ *   <li><b>coverage</b>     — JaCoCo CSV: line/branch coverage %, per-class table</li>
+ *   <li><b>bugs</b>         — SpotBugs XML: bug count, rank, category breakdown</li>
+ *   <li><b>pmd</b>          — PMD XML: rule violation count and category breakdown</li>
+ *   <li><b>checkstyle</b>   — Checkstyle XML: violation count by severity</li>
+ *   <li><b>owasp</b>        — OWASP Dependency-Check JSON: CVE list with CVSS scores</li>
+ *   <li><b>pitest</b>       — PIT XML: mutation test strength %</li>
+ *   <li><b>sonar</b>        — SonarCloud REST API: bug/vuln/smell counts, ratings A–E</li>
+ *   <li><b>build</b>        — build-info.properties: version, artifact, build time</li>
+ *   <li><b>git</b>          — git log: last commit, branch, remote URL</li>
+ *   <li><b>api</b>          — Spring MVC handler mappings: endpoint count, method breakdown</li>
+ *   <li><b>dependencies</b> — pom.xml: direct dependency count, Spring Boot version</li>
+ *   <li><b>metrics</b>      — Micrometer registry: metric count, key gauges/counters</li>
+ *   <li><b>runtime</b>      — JVM: uptime, active profiles, heap, JAR layer list</li>
+ *   <li><b>pipeline</b>     — GitLab API: last 10 CI/CD pipeline runs with status/duration</li>
+ *   <li><b>branches</b>     — git for-each-ref: 20 most recently active remote branches</li>
  * </ul>
  *
- * <p>Falls back to target/ directory paths when classpath resources are not present
- * (useful during local development before packaging).
+ * <p>Data sources in priority order:
+ * <ol>
+ *   <li>Classpath resources (META-INF/build-reports/...) — present when the JAR was built with
+ *       {@code mvn verify} and the reports were copied by the Antrun plugin.</li>
+ *   <li>Filesystem fallback (target/...) — used during local development without packaging.</li>
+ * </ol>
  */
 @Component
 @Endpoint(id = "quality")
@@ -142,6 +165,17 @@ public class QualityReportEndpoint {
         this.environment = environment;
     }
 
+    /**
+     * Builds and returns the full quality report as a JSON map.
+     *
+     * <p>Each section is computed independently; a failure in one section (e.g., SonarCloud
+     * unreachable, GitLab token missing) returns {@code {available: false}} for that section
+     * only — it does not prevent the other sections from being included.
+     *
+     * @apiNote The response is not cached. Each {@code GET /actuator/quality} call re-reads
+     *          all data sources. For the Angular dashboard this is acceptable because the
+     *          endpoint is only polled on explicit navigation to the quality page.
+     */
     @ReadOperation
     public Map<String, Object> report() {
         Map<String, Object> result = new LinkedHashMap<>();
