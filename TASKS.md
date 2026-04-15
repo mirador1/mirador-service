@@ -37,10 +37,11 @@ These were proposed at 2026-04-14T20:56 in response to "d'autres idées pour ép
 ### Métriques de code avancées
 - [x] **Complexité cyclomatique** — buildMetricsSection() now returns topComplexClasses (top 10
       by COMPLEXITY_MISSED+COMPLEXITY_COVERED). UI: table in metrics tab, amber > 15, red > 30.
-- [ ] **Tests les plus lents** — parser les Surefire XML (`time` par test case) et afficher
-      le top-10 des tests les plus lents dans l'onglet Tests
-- [ ] **Classes sans tests** — croiser la liste des classes (JaCoCo) avec les suites de test
-      pour identifier les classes avec 0% de couverture intentionnelle vs oubliées
+- [x] **Tests les plus lents** — Already implemented: buildTestsSection() parses Surefire XML
+      time attributes, sorts allTestCases by duration desc, returns top-10 slowest tests
+      with name + time (formatted) + timeMs fields.
+- [x] **Classes sans tests** — buildMetricsSection() returns untestedClasses (METHOD_COVERED=0,
+      METHOD_TOTAL>0) + untestedCount. UI: table in metrics tab, sorted alphabetically.
 
 ### Dépendances enrichies
 - [x] **Fraîcheur des dépendances** — buildDependenciesSection() resolves ${property} references
