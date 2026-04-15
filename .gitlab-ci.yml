@@ -536,7 +536,7 @@ trivy:scan:
   # Runs only on main/tags after docker-build succeeds. allow_failure:true —
   # we track CVEs as informational; blocking releases on new CVEs creates friction.
   stage: package
-  image: aquasec/trivy:latest
+  image: aquasecurity/trivy:latest
   needs:
     - job: docker-build
   rules:
