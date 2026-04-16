@@ -142,7 +142,7 @@ services:
   #   api-gateway         / dev-secret          → ROLE_USER + ROLE_ADMIN
   #   monitoring-service  / dev-secret-readonly  → ROLE_USER
   #
-  # See infra/keycloak/realm.md for the full architecture and production guidance.
+  # See infra/keycloak/README.md for the full architecture and production guidance.
   # Access the admin console at http://localhost:9090 (admin / admin).
   # ---------------------------------------------------------------------------
   keycloak:

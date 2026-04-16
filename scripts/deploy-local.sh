@@ -170,7 +170,7 @@ ok "Images loaded into kind."
 
 # ── 5. Namespaces + Secrets ───────────────────────────────────────────────────
 log "Creating namespaces..."
-kubectl apply -f "$BACKEND_DIR/k8s/namespace.yaml"
+kubectl apply -f "$BACKEND_DIR/deploy/kubernetes/namespace.yaml"
 
 log "Creating secrets..."
 # The secret is needed in both namespaces:
@@ -188,18 +188,18 @@ ok "Secrets applied."
 
 # ── 6. Apply manifests ────────────────────────────────────────────────────────
 log "Applying infrastructure manifests..."
-kubectl apply -f "$BACKEND_DIR/k8s/infra/postgres.yaml"
-kubectl apply -f "$BACKEND_DIR/k8s/infra/redis.yaml"
-kubectl apply -f "$BACKEND_DIR/k8s/infra/kafka.yaml"
+kubectl apply -f "$BACKEND_DIR/deploy/kubernetes/stateful/postgres.yaml"
+kubectl apply -f "$BACKEND_DIR/deploy/kubernetes/stateful/redis.yaml"
+kubectl apply -f "$BACKEND_DIR/deploy/kubernetes/stateful/kafka.yaml"
 
 log "Applying backend manifests..."
 export IMAGE_REGISTRY IMAGE_TAG UI_IMAGE_TAG K8S_HOST
 # Override imagePullPolicy to IfNotPresent for local registry (avoids Always pull of local images)
 for f in \
-  "$BACKEND_DIR/k8s/backend/configmap.yaml" \
-  "$BACKEND_DIR/k8s/backend/deployment.yaml" \
-  "$BACKEND_DIR/k8s/backend/service.yaml" \
-  "$BACKEND_DIR/k8s/backend/hpa.yaml"; do
+  "$BACKEND_DIR/deploy/kubernetes/backend/configmap.yaml" \
+  "$BACKEND_DIR/deploy/kubernetes/backend/deployment.yaml" \
+  "$BACKEND_DIR/deploy/kubernetes/backend/service.yaml" \
+  "$BACKEND_DIR/deploy/kubernetes/backend/hpa.yaml"; do
   envsubst < "$f" | kubectl apply -f -
 done
 # Switch imagePullPolicy to IfNotPresent for local registry
@@ -210,8 +210,8 @@ kubectl patch deployment customer-service -n app \
 log "Applying frontend manifests..."
 if kubectl get namespace app &>/dev/null; then
   for f in \
-    "$BACKEND_DIR/k8s/frontend/deployment.yaml" \
-    "$BACKEND_DIR/k8s/frontend/service.yaml"; do
+    "$BACKEND_DIR/deploy/kubernetes/frontend/deployment.yaml" \
+    "$BACKEND_DIR/deploy/kubernetes/frontend/service.yaml"; do
     [[ -f "$f" ]] && envsubst < "$f" | kubectl apply -f -
   done
   kubectl patch deployment customer-ui -n app \
@@ -222,7 +222,7 @@ fi
 log "Applying Ingress..."
 # No configuration-snippet in ingress.yaml anymore — apply directly.
 # Disable SSL redirect below (no cert-manager/TLS in a local cluster).
-envsubst < "$BACKEND_DIR/k8s/ingress.yaml" | kubectl apply -f -
+envsubst < "$BACKEND_DIR/deploy/kubernetes/ingress.yaml" | kubectl apply -f -
 
 # Disable HTTPS redirect (nginx-ingress defaults to redirect HTTP → HTTPS when
 # a TLS block is present; not needed for local development).

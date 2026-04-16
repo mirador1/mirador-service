@@ -702,8 +702,8 @@
                     <skip>true</skip>
                     <effort>Default</effort>
                     <threshold>Medium</threshold>
-                    <!-- Documented false positives for Spring DI patterns — see spotbugs-exclude.xml -->
-                    <excludeFilterFile>spotbugs-exclude.xml</excludeFilterFile>
+                    <!-- Documented false positives for Spring DI patterns — see config/spotbugs-exclude.xml -->
+                    <excludeFilterFile>config/spotbugs-exclude.xml</excludeFilterFile>
                     <!-- XML report consumed by CI artifact / GitLab Code Quality -->
                     <xmlOutput>true</xmlOutput>
                 </configuration>
@@ -754,7 +754,7 @@
                 <failBuildOnCVSS>9</failBuildOnCVSS>
                 <formats>HTML,JSON</formats>
                 <suppressionFiles>
-                    <suppressionFile>owasp-suppressions.xml</suppressionFile>
+                    <suppressionFile>config/owasp-suppressions.xml</suppressionFile>
                 </suppressionFiles>
                 <!-- Store NVD database inside the project dir so GitLab CI can cache it -->
                 <dataDirectory>${project.basedir}/.owasp-data</dataDirectory>
@@ -774,6 +774,40 @@
                     <id>dependency-check</id>
                     <phase>prepare-package</phase>
                     <goals><goal>check</goal></goals>
+                </execution>
+            </executions>
+        </plugin>
+
+        <!--
+          owasp-data-readme — drops a README.md into .owasp-data/ the first time
+          the OWASP scan populates it, so the directory self-documents for anyone
+          who stumbles on 240 MB of files and wonders "what is this?".
+          The template is committed at build/owasp-data-README.md; here it's
+          just copied to the cache directory. Only runs when the OWASP plugin is
+          actually active (-Preport triggers the prepare-package execution above).
+        -->
+        <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-antrun-plugin</artifactId>
+            <version>3.1.0</version>
+            <executions>
+                <execution>
+                    <id>owasp-data-readme</id>
+                    <phase>prepare-package</phase>
+                    <goals><goal>run</goal></goals>
+                    <configuration>
+                        <target xmlns:if="ant:if">
+                            <!-- Ant-if namespace lets us attach `if:set` to the copy task.
+                                 Without it, Ant's plain <copy> rejects the if= attribute. -->
+                            <available file="${project.basedir}/.owasp-data/odc.mv.db"
+                                       property="owasp.data.populated"/>
+                            <copy file="${project.basedir}/build/owasp-data-README.md"
+                                  tofile="${project.basedir}/.owasp-data/README.md"
+                                  overwrite="true"
+                                  failonerror="false"
+                                  if:set="owasp.data.populated"/>
+                        </target>
+                    </configuration>
                 </execution>
             </executions>
         </plugin>
@@ -819,7 +853,7 @@
                 <includeTests>false</includeTests>
                 <!-- Custom ruleset excludes LawOfDemeter (StackOverflow on Java 25) -->
                 <rulesets>
-                    <ruleset>pmd-ruleset.xml</ruleset>
+                    <ruleset>config/pmd-ruleset.xml</ruleset>
                 </rulesets>
             </configuration>
             <executions>
@@ -1351,8 +1385,8 @@
                          mvn verify -Dcompat -Djava17   (Java 17)
 
           Applies Java-version source overlays WITHOUT changing Spring Boot version:
-            java-compat       → ScopedValue replaced by ThreadLocal (Java <25)
-            java-compat-java17 → switch pattern matching replaced by if/else (Java 17)
+            java-overlays/pre-java25 → ScopedValue replaced by ThreadLocal (Java <25)
+            java-overlays/java17     → switch pattern matching replaced by if/else (Java 17)
         -->
         <profile>
             <id>compat</id>
@@ -1383,11 +1417,11 @@
                                         </copy>
                                         <!-- Step 2: Java <25 compat overlay (ScopedValue → ThreadLocal) -->
                                         <copy todir="${project.build.directory}/merged-sources/main" overwrite="true">
-                                            <fileset dir="src/main/java-compat"/>
+                                            <fileset dir="src/main/java-overlays/pre-java25"/>
                                         </copy>
                                         <!-- Step 3: Java 17 overlay (switch pattern matching → if/else) -->
                                         <copy todir="${project.build.directory}/merged-sources/main" overwrite="true" if:set="java17">
-                                            <fileset dir="src/main/java-compat-java17"/>
+                                            <fileset dir="src/main/java-overlays/java17"/>
                                         </copy>
                                     </target>
                                 </configuration>
@@ -1417,10 +1451,10 @@
             2. Default Java to 21 (virtual threads + records); override with -Djava17 for Java 17.
             3. Replace SB4-only dependencies with SB3 equivalents.
             4. Source overlays via maven-antrun-plugin (conditional copies):
-               - java-compat:          ScopedValue → ThreadLocal (always, since SB3 = Java <25)
-               - java-compat-java17:   switch pattern matching → if/else (only if -Djava17)
-               - java-sb3:             @GetMapping(version=...) → manual header dispatch (always)
-               - test/java-sb3:        AutoConfigureMockMvc bridge annotation (always)
+               - java-overlays/pre-java25: ScopedValue → ThreadLocal (always, since SB3 = Java <25)
+               - java-overlays/java17:     switch pattern matching → if/else (only if -Djava17)
+               - java-overlays/sb3:        @GetMapping(version=...) → manual header dispatch (always)
+               - test/java-overlays/sb3:   AutoConfigureMockMvc bridge annotation (always)
             5. Exclude RestTestClient test (SB4-only).
         -->
         <profile>
@@ -1489,15 +1523,15 @@
                                         </copy>
                                         <!-- Java <25 compat (ScopedValue → ThreadLocal) — always for SB3 -->
                                         <copy todir="${project.build.directory}/merged-sources/main" overwrite="true">
-                                            <fileset dir="src/main/java-compat"/>
+                                            <fileset dir="src/main/java-overlays/pre-java25"/>
                                         </copy>
                                         <!-- Java 17 compat (switch → if/else) — only if -Djava17 -->
                                         <copy todir="${project.build.directory}/merged-sources/main" overwrite="true" if:set="java17">
-                                            <fileset dir="src/main/java-compat-java17"/>
+                                            <fileset dir="src/main/java-overlays/java17"/>
                                         </copy>
                                         <!-- SB3 overlay (@GetMapping without version=) — always for SB3 -->
                                         <copy todir="${project.build.directory}/merged-sources/main" overwrite="true">
-                                            <fileset dir="src/main/java-sb3"/>
+                                            <fileset dir="src/main/java-overlays/sb3"/>
                                         </copy>
 
                                         <!-- Test sources (exclude SB4-only RestTestClient test) -->
@@ -1508,7 +1542,7 @@
                                         </copy>
                                         <!-- SB3 test overlay (AutoConfigureMockMvc bridge) -->
                                         <copy todir="${project.build.directory}/merged-sources/test" overwrite="true">
-                                            <fileset dir="src/test/java-sb3"/>
+                                            <fileset dir="src/test/java-overlays/sb3"/>
                                         </copy>
                                     </target>
                                 </configuration>

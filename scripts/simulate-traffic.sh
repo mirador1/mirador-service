@@ -10,9 +10,9 @@
 #   - Request bios and todos (external API calls → circuit breaker activity)
 #
 # Usage:
-#   ./infra/simulate-traffic.sh              # default: 60 iterations, 2s pause
-#   ./infra/simulate-traffic.sh 100 1        # 100 iterations, 1s pause
-#   ./infra/simulate-traffic.sh 0            # infinite loop (Ctrl+C to stop)
+#   ./scripts/simulate-traffic.sh              # default: 60 iterations, 2s pause
+#   ./scripts/simulate-traffic.sh 100 1        # 100 iterations, 1s pause
+#   ./scripts/simulate-traffic.sh 0            # infinite loop (Ctrl+C to stop)
 #
 # Prerequisites: curl, jq
 # =============================================================================

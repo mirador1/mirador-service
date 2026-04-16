@@ -151,7 +151,7 @@ case "$1" in
 
   simulate)
     echo "Starting traffic simulation..."
-    ./infra/simulate-traffic.sh "${2:-60}" "${3:-2}"
+    ./scripts/simulate-traffic.sh "${2:-60}" "${3:-2}"
     ;;
 
   restart)
@@ -359,7 +359,7 @@ case "$1" in
       echo "Kind cluster '${KIND_CLUSTER}' already exists — reusing."
     else
       echo "Creating kind cluster '${KIND_CLUSTER}' (ports 8090+8443 → ingress)..."
-      kind create cluster --name "${KIND_CLUSTER}" --config k8s/kind-config.yaml
+      kind create cluster --name "${KIND_CLUSTER}" --config deploy/kubernetes/kind-config.yaml
     fi
     kubectl config use-context "kind-${KIND_CLUSTER}"
 
@@ -400,31 +400,31 @@ case "$1" in
 
     # ── 7. Deploy infrastructure (PostgreSQL, Redis, Kafka) ───────────────
     echo "Deploying infra (PostgreSQL, Redis, Kafka)..."
-    for f in k8s/namespace.yaml k8s/infra/postgres.yaml k8s/infra/redis.yaml k8s/infra/kafka.yaml; do
+    for f in deploy/kubernetes/namespace.yaml deploy/kubernetes/stateful/postgres.yaml deploy/kubernetes/stateful/redis.yaml deploy/kubernetes/stateful/kafka.yaml; do
       [ -f "$f" ] && envsubst < "$f" | kubectl apply -f -
     done
 
     # ── 8. Deploy backend ─────────────────────────────────────────────────
     echo "Deploying backend..."
-    for f in k8s/backend/configmap.yaml k8s/backend/service.yaml k8s/backend/hpa.yaml; do
+    for f in deploy/kubernetes/backend/configmap.yaml deploy/kubernetes/backend/service.yaml deploy/kubernetes/backend/hpa.yaml; do
       [ -f "$f" ] && envsubst < "$f" | kubectl apply -f -
     done
     # imagePullPolicy: IfNotPresent → use the locally-loaded image, do NOT try to pull
-    envsubst < k8s/backend/deployment.yaml \
+    envsubst < deploy/kubernetes/backend/deployment.yaml \
       | sed 's/imagePullPolicy: Always/imagePullPolicy: IfNotPresent/g' \
       | kubectl apply -f -
 
     # ── 9. Deploy frontend ────────────────────────────────────────────────
     echo "Deploying frontend..."
-    for f in k8s/frontend/service.yaml; do
+    for f in deploy/kubernetes/frontend/service.yaml; do
       [ -f "$f" ] && envsubst < "$f" | kubectl apply -f -
     done
-    envsubst < k8s/frontend/deployment.yaml \
+    envsubst < deploy/kubernetes/frontend/deployment.yaml \
       | sed 's/imagePullPolicy: Always/imagePullPolicy: IfNotPresent/g' \
       | kubectl apply -f -
 
     # ── 10. Apply local ingress (HTTP, no TLS) ────────────────────────────
-    envsubst < k8s/local/ingress.yaml | kubectl apply -f -
+    envsubst < deploy/kubernetes/local/ingress.yaml | kubectl apply -f -
 
     # ── 11. Wait for rollouts ─────────────────────────────────────────────
     echo "Waiting for infra pods..."
@@ -466,7 +466,7 @@ case "$1" in
   #   3. Set project: gcloud config set project <PROJECT_ID>
   #   4. Enable APIs: ./run.sh gcp-enable-apis
   #   5. Create TF state bucket: ./run.sh gcp-tf-bucket
-  #   6. Copy terraform/gcp/terraform.tfvars.example → terraform.tfvars and fill in values
+  #   6. Copy deploy/terraform/gcp/terraform.tfvars.example → terraform.tfvars and fill in values
   #   7. ./run.sh tf-plan   (preview changes)
   #   8. ./run.sh tf-apply  (apply changes)
   gcp-enable-apis)
@@ -499,8 +499,8 @@ case "$1" in
 
   tf-plan)
     command -v terraform >/dev/null 2>&1 || { echo "❌  terraform not found — brew install terraform"; exit 1; }
-    cd terraform/gcp
-    [ ! -f terraform.tfvars ] && { echo "❌  terraform/gcp/terraform.tfvars not found. Copy from terraform.tfvars.example."; exit 1; }
+    cd deploy/terraform/gcp
+    [ ! -f terraform.tfvars ] && { echo "❌  deploy/terraform/gcp/terraform.tfvars not found. Copy from terraform.tfvars.example."; exit 1; }
     PROJECT=$(grep project_id terraform.tfvars | sed 's/.*= *"\(.*\)"/\1/')
     terraform init -backend-config="bucket=${PROJECT}-tf-state" -backend-config="prefix=mirador/gcp" -input=false
     terraform plan
@@ -508,8 +508,8 @@ case "$1" in
 
   tf-apply)
     command -v terraform >/dev/null 2>&1 || { echo "❌  terraform not found — brew install terraform"; exit 1; }
-    cd terraform/gcp
-    [ ! -f terraform.tfvars ] && { echo "❌  terraform/gcp/terraform.tfvars not found."; exit 1; }
+    cd deploy/terraform/gcp
+    [ ! -f terraform.tfvars ] && { echo "❌  deploy/terraform/gcp/terraform.tfvars not found."; exit 1; }
     PROJECT=$(grep project_id terraform.tfvars | sed 's/.*= *"\(.*\)"/\1/')
     terraform init -backend-config="bucket=${PROJECT}-tf-state" -backend-config="prefix=mirador/gcp" -input=false
     terraform apply
@@ -520,7 +520,7 @@ case "$1" in
     echo "⚠️  This will destroy all GCP infrastructure (GKE cluster, Cloud SQL, Redis)."
     echo "    Press Ctrl+C to abort, or Enter to continue..."
     read -r
-    cd terraform/gcp
+    cd deploy/terraform/gcp
     PROJECT=$(grep project_id terraform.tfvars | sed 's/.*= *"\(.*\)"/\1/')
     terraform init -backend-config="bucket=${PROJECT}-tf-state" -backend-config="prefix=mirador/gcp" -input=false
     terraform destroy
@@ -546,7 +546,7 @@ case "$1" in
       deployment/cert-manager-webhook deployment/cert-manager-cainjector \
       -n cert-manager --timeout=120s
     echo "🔧  Applying GKE Autopilot RBAC patches (leader-election in cert-manager namespace)..."
-    kubectl apply -f k8s/gke/cert-manager-gke-fix.yaml
+    kubectl apply -f deploy/kubernetes/gke/cert-manager-gke-fix.yaml
     kubectl patch deployment cert-manager -n cert-manager --type='json' \
       -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--leader-election-namespace=cert-manager"}]'
     kubectl patch deployment cert-manager-cainjector -n cert-manager --type='json' \
