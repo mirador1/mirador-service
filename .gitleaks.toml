@@ -8,6 +8,12 @@
 # gitleaks ships ~100 detectors out of the box (AWS keys, GCP SAs, GitHub
 # tokens, generic high-entropy strings, etc.). We inherit the default
 # ruleset and only add project-specific allowlists below.
+#
+# Config schema: gitleaks 8.21+ uses top-level `[[allowlists]]` (plural)
+# for global allowlists that apply across all rules. The older
+# `[[rules.allowlist]]` (slice under a rule) was removed — gitleaks
+# 8.21+ treats per-rule allowlist as a singular map, not a slice, and
+# fails to load with "expected a map, got 'slice'" otherwise.
 # =============================================================================
 
 title = "Mirador Service — gitleaks config"
@@ -19,10 +25,12 @@ title = "Mirador Service — gitleaks config"
 useDefault = true
 
 # -----------------------------------------------------------------------------
-# Allowlist — strings that look like secrets but aren't.
+# Allowlists — strings and paths that look like secrets but aren't.
+# Top-level `[[allowlists]]` is gitleaks 8.21+ syntax; each block is its
+# own global allowlist (OR-combined with the defaults).
 # -----------------------------------------------------------------------------
 
-[[rules.allowlist]]
+[[allowlists]]
 description = "Demo credentials used in docs/tests — never deployed."
 regexes = [
   # The demo password literal appears in dev docker-compose + README examples.
@@ -35,11 +43,13 @@ regexes = [
   '''admin/admin''',
 ]
 
-[[rules.allowlist]]
+[[allowlists]]
 description = "Files that legitimately contain secret-shaped tokens (test data, examples)."
 paths = [
   '''\.env\.example$''',            # template, no real secrets
   '''docs/examples/.+\.json$''',    # sample payloads
+  '''docs/api/.+\.md$''',           # API docs contain curl examples with $TOKEN placeholders
+  '''docs/api\.md$''',              # historical path (pre-a3e2bc9 reorg); gitleaks scans history
   '''src/test/resources/.+\.yml$''',
   '''src/test/resources/.+\.yaml$''',
   # Generated output — never contains real secrets, but may match entropy rules.
@@ -47,7 +57,16 @@ paths = [
   '''node_modules/.+''',
 ]
 
-[[rules.allowlist]]
+[[allowlists]]
+description = "Documentation placeholders — never real credentials."
+regexes = [
+  # "Bearer $TOKEN" in docs is a shell variable, not a secret.
+  '''Bearer \$TOKEN''',
+  # Example API key value shown in docs/api/api.md.
+  '''demo-api-key-\d{4}''',
+]
+
+[[allowlists]]
 description = "Fake JWT tokens in tests (header.payload.signature shape)."
 regexes = [
   '''eyJhbGciOiJIUzI1NiIs[A-Za-z0-9_\-\.]+''',

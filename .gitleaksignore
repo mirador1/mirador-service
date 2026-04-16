@@ -1,0 +1,20 @@
+# gitleaks fingerprint ignorelist — known-safe historical findings.
+#
+# Each line is a fingerprint emitted by gitleaks in the form
+#   <commit-sha>:<path>:<rule>:<line>
+#
+# Use this file only for verified false positives that cannot be
+# expressed as a path or regex allowlist in .gitleaks.toml (typically
+# because the content is in git history under a path that has since
+# been renamed or removed, and gitleaks path allowlists match the
+# file path as-of the commit in a way that is brittle across renames).
+
+# Historical docker-compose comment showing a curl -u example against
+# localhost — never a real credential, pre-dates the renovate/gitleaks
+# split in commit 6b2657f6.
+6b2657f6ffd0694399bb03613927715e1520bda0:docker-compose.yml:curl-auth-user:371
+
+# Historical docs/api.md (path before a3e2bc9 docs reorg moved it to
+# docs/api/api.md) — the curl example shows `Bearer $TOKEN`, a shell
+# variable placeholder, not a real bearer token.
+bc1702818a23209ca19566563ea142c4a8ee290e:docs/api.md:curl-auth-header:66
