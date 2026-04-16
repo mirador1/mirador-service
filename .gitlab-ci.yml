@@ -224,6 +224,53 @@ include:
   - template: Security/SAST.gitlab-ci.yml
   # Maven/Gemnasium dependency CVE scan
   - template: Security/Dependency-Scanning.gitlab-ci.yml
+  # Built-in GitLab Secret Detection (gitleaks) — scans for leaked tokens
+  - template: Security/Secret-Detection.gitlab-ci.yml
+
+# ── Local gitleaks mirror ─────────────────────────────────────────────────────
+# The GitLab Secret-Detection template above covers the default case, but we
+# also run gitleaks directly so:
+#   1. The config in .gitleaks.toml (project-specific allowlist) is applied.
+#   2. We can fail the pipeline on new findings (template allows failures).
+#   3. Output is plain gitleaks — easier to debug than GitLab's wrapper.
+secret-scan:
+  stage: test
+  image:
+    name: zricethezav/gitleaks:v8.21.4   # pinned — never :latest
+    entrypoint: [""]
+  tags:
+    - macbook-local
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - when: on_success
+  script:
+    # `detect` scans the current working tree + git history.
+    # --redact hides secret values in output (in case of a real leak we don't
+    # want the secret to live in CI logs too).
+    - gitleaks detect --source . --config .gitleaks.toml --redact --verbose
+  artifacts:
+    when: always
+    paths:
+      - gitleaks-report.json
+    expire_in: 1 week
+
+# ── Renovate config lint ──────────────────────────────────────────────────────
+# Renovate runs externally (GitLab's Renovate instance), but we lint our own
+# renovate.json here so syntax errors don't break the scheduled bot run.
+renovate-lint:
+  stage: lint
+  image: node:22-alpine
+  tags:
+    - macbook-local
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - changes: [renovate.json]
+  script:
+    # renovate-config-validator is bundled in the renovate npm package.
+    # --strict: fail on warnings too.
+    - npx --yes --package renovate renovate-config-validator --strict renovate.json
 
 # ── stage: integration ────────────────────────────────────────────────────────
 

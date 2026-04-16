@@ -1,0 +1,54 @@
+# =============================================================================
+# gitleaks config — secret scanner
+#
+# Runs on:
+#   - pre-commit (via lefthook) — scans staged changes
+#   - CI        (via .gitlab-ci.yml `secret-scan` job) — scans the whole repo
+#
+# gitleaks ships ~100 detectors out of the box (AWS keys, GCP SAs, GitHub
+# tokens, generic high-entropy strings, etc.). We inherit the default
+# ruleset and only add project-specific allowlists below.
+# =============================================================================
+
+title = "Mirador Service — gitleaks config"
+
+# Extend the built-in ruleset (AWS, GCP, Azure, GitHub, GitLab, npm, PyPI,
+# generic-api-key, high-entropy, etc.). See:
+# https://github.com/gitleaks/gitleaks/blob/master/config/gitleaks.toml
+[extend]
+useDefault = true
+
+# -----------------------------------------------------------------------------
+# Allowlist — strings that look like secrets but aren't.
+# -----------------------------------------------------------------------------
+
+[[rules.allowlist]]
+description = "Demo credentials used in docs/tests — never deployed."
+regexes = [
+  # The demo password literal appears in dev docker-compose + README examples.
+  '''demo''',
+  # Local dev-only JWT secret — only valid against a local cluster.
+  '''local-dev-jwt-secret-min-32-chars-long''',
+  # Local dev API key.
+  '''local-dev-api-key''',
+  # Keycloak default admin user documented in README.
+  '''admin/admin''',
+]
+
+[[rules.allowlist]]
+description = "Files that legitimately contain secret-shaped tokens (test data, examples)."
+paths = [
+  '''\.env\.example$''',            # template, no real secrets
+  '''docs/examples/.+\.json$''',    # sample payloads
+  '''src/test/resources/.+\.yml$''',
+  '''src/test/resources/.+\.yaml$''',
+  # Generated output — never contains real secrets, but may match entropy rules.
+  '''target/.+''',
+  '''node_modules/.+''',
+]
+
+[[rules.allowlist]]
+description = "Fake JWT tokens in tests (header.payload.signature shape)."
+regexes = [
+  '''eyJhbGciOiJIUzI1NiIs[A-Za-z0-9_\-\.]+''',
+]
