@@ -814,7 +814,9 @@ hadolint:
 sbom:syft:
   stage: package
   image:
-    name: anchore/syft:v1.18.1
+    # -debug tag ships with /bin/sh — the default :v1.18.1 is distroless
+    # and GitLab's script wrapper requires sh to run.
+    name: anchore/syft:v1.18.1-debug
     entrypoint: [""]
   tags:
     - macbook-local
@@ -850,7 +852,8 @@ sbom:syft:
 grype:scan:
   stage: package
   image:
-    name: anchore/grype:v0.87.0
+    # -debug tag ships with /bin/sh — the default :v0.87.0 is distroless.
+    name: anchore/grype:v0.87.0-debug
     entrypoint: [""]
   tags:
     - macbook-local
@@ -919,7 +922,9 @@ dockle:
 cosign:sign:
   stage: package
   image:
-    name: gcr.io/projectsigstore/cosign:v2.5.0
+    # -debug tag ships with /bin/sh and common CLI utilities — the default
+    # :v2.5.0 is distroless and GitLab's script wrapper requires sh.
+    name: gcr.io/projectsigstore/cosign:v2.5.0-debug
     entrypoint: [""]
   tags:
     - macbook-local
@@ -1427,6 +1432,14 @@ terraform-apply:
         --from-literal=OTEL_EXPORTER_OTLP_AUTH="${GRAFANA_OTLP_AUTH:-}" \
         --from-literal=GITLAB_API_TOKEN="${GITLAB_API_TOKEN:-}" \
         --namespace=app --dry-run=client -o yaml | kubectl apply -f -
+    - |
+      # Legacy-resource cleanup. When a resource is renamed (e.g. the Ingress
+      # went from customer-service-ingress → mirador-ingress in commit e884286),
+      # `kubectl apply` creates the new name but never deletes the old one.
+      # The nginx-ingress admission webhook then rejects the new resource
+      # because the old one still claims the same host+path pair. List every
+      # renamed-away resource we still need to sweep here.
+      kubectl delete ingress customer-service-ingress -n app --ignore-not-found
     - |
       # Render the overlay with kustomize, then substitute ${VAR} placeholders
       # (Kustomize itself does NOT process env vars — envsubst fills them in).
