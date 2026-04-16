@@ -1,29 +1,31 @@
 # =============================================================================
-# GitHub Actions — CI pipeline — two lanes:
+# GitHub Actions — CI pipeline
 #
-# REGULAR pipeline (every push + PR) — fast lane:
-#   lint          hadolint Dockerfile linting
-#   test          unit-test (surefire) + JaCoCo unit exec
-#   integration   failsafe (*ITest) + SpotBugs + JaCoCo merged coverage
-#   package       build-jar + docker-build (main/tags only)
+# Mirrors the GitLab CI pipeline in .gitlab-ci.yml so developers working from
+# a GitHub mirror/fork get the same safety net. Deploy jobs (deploy:gke,
+# terraform-apply, etc.) are NOT mirrored — production deployment remains
+# GitLab-only to avoid drift in the WIF/Cloud-SQL/K8s setup.
+#
+# REGULAR pipeline (every push + PR) — fast lane, runs by default:
+#   lint / quality         hadolint · code-quality (PMD + Checkstyle)
+#   test                   unit-test · owasp-dependency-check · semgrep (SAST)
+#   integration            failsafe (*ITest) + SpotBugs + JaCoCo merged coverage
+#   package                build-jar · docker-build · trivy:scan (CVE)
+#   sonar                  sonar-analysis (SonarCloud)
+#   compat                 SB4×Java21 · SB4×Java17 · SB3×Java21 · SB3×Java17
 #
 # SCHEDULED pipeline (daily at 03:00 UTC, main branch only) — slow lane:
-#   native        build-native — GraalVM AOT native image (5-15 min)
-#                 only runs if Dockerfile.native, pom.xml, or src/ changed
+#   native                 build-native — GraalVM AOT native image (5-15 min)
+#                          only runs if Dockerfile.native, pom.xml, or src/ changed
 #
 # Docker availability:
 #   GitHub-hosted ubuntu-latest runners include Docker, so Testcontainers
 #   works without any DinD service or special setup — unlike GitLab CI which
 #   requires `services: docker:28-dind`.
 #
-# PostgreSQL for tests:
-#   Integration tests use the Testcontainers JDBC URL
-#   `jdbc:tc:postgresql:17:///demo` (defined in src/test/resources/application.properties).
-#   Testcontainers pulls the image and starts the container automatically.
-#
-# Kafka for tests:
-#   AbstractIntegrationTest starts a KafkaContainer (Testcontainers) and registers
-#   its bootstrap-servers via @DynamicPropertySource.
+# Secrets expected:
+#   SONAR_TOKEN            — SonarCloud token (matches GitLab's SONAR_TOKEN)
+#   GITHUB_TOKEN           — auto-provisioned by GitHub; used for GHCR push
 # =============================================================================
 name: CI
 
@@ -103,9 +105,6 @@ jobs:
   unit-test:
     name: Test / Unit
     runs-on: ubuntu-24.04
-    # Skip on scheduled and manual runs — those triggers are reserved exclusively
-    # for the GraalVM native build (slow lane). The code was already tested
-    # when it landed on main via the regular pipeline, so re-running adds no value.
     if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
     steps:
       - name: Checkout
@@ -125,22 +124,102 @@ jobs:
       - name: Publish unit test report
         # Annotates PRs with per-test pass/fail details directly in the GitHub UI
         uses: dorny/test-reporter@v2
-        if: always()    # run even if tests failed so the report is always published
+        if: always()
         with:
           name: Unit Test Results
-          path: target/surefire-reports/*.xml    # JUnit XML produced by maven-surefire-plugin
-          reporter: java-junit                   # parser format matching the surefire XML schema
-          fail-on-error: false                   # test failures are already reported by Maven; don't fail the step a second time
+          path: target/surefire-reports/*.xml
+          reporter: java-junit
+          fail-on-error: false
 
       - name: Upload JaCoCo unit exec
-        # Forwarded to integration-test job so both exec files can be merged
-        uses: actions/upload-artifact@v4    # stores files between jobs (artifacts don't persist in the runner workspace)
+        uses: actions/upload-artifact@v4
         with:
           name: jacoco-unit-exec
           path: |
-            target/jacoco.exec       # binary coverage data — merged with IT exec in integration-test job
-            target/site/jacoco/      # HTML report for browsing unit coverage in the GitHub UI
-          retention-days: 7          # short-lived: only needed until the integration job completes
+            target/jacoco.exec
+            target/site/jacoco/
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # OWASP Dependency-Check — scans Maven deps against the NVD for known CVEs.
+  #
+  # The NVD database is ~240 MB; caching it across runs brings the warm path
+  # down from 15 min (cold first download) to ~2 min. The cache key is stable
+  # ("owasp-nvd-db-v1") so it's shared across every branch and PR. Bump the
+  # suffix to force a full rebuild.
+  #
+  # allow_failure equivalent: `continue-on-error: true` keeps the pipeline
+  # green even when NVD is slow or a new false positive lands — CVE triage
+  # happens in the published HTML report, not as a merge-blocker.
+  # ---------------------------------------------------------------------------
+  owasp-dependency-check:
+    name: Test / OWASP Dependency-Check
+    runs-on: ubuntu-24.04
+    if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
+    continue-on-error: true   # GitLab parity: `allow_failure: true`
+    timeout-minutes: 120      # NVD full download ~60 min on first run
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      - name: Restore NVD cache
+        uses: actions/cache@v4
+        with:
+          path: .owasp-data
+          # Stable key shared across all branches — matches the GitLab job's
+          # "owasp-nvd-db-v1" cache. Bump the suffix to force a full rebuild.
+          key: owasp-nvd-db-v1
+
+      - name: Run OWASP Dependency-Check
+        run: mvn $MAVEN_ARGS dependency-check:check
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: owasp-dependency-check-report
+          path: target/dependency-check-report.html
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # Semgrep SAST — static code analysis for security bugs (injection, XSS,
+  # hardcoded secrets, crypto misuse).
+  #
+  # Uses the auto-config ruleset which picks rules based on the languages
+  # detected in the repo. Results upload as SARIF → visible under the
+  # "Security" tab of the repository.
+  # ---------------------------------------------------------------------------
+  semgrep:
+    name: Test / Semgrep SAST
+    runs-on: ubuntu-24.04
+    if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
+    continue-on-error: true
+    permissions:
+      security-events: write   # needed to upload SARIF results to the Security tab
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Semgrep
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: p/default
+          generateSarif: "1"
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
 
 # =============================================================================
 # Stage: integration (needs Docker for Testcontainers)
@@ -159,9 +238,6 @@ jobs:
   integration-test:
     name: Test / Integration + SpotBugs + Coverage
     runs-on: ubuntu-24.04
-    # Skip on scheduled and manual runs — those triggers are reserved exclusively
-    # for the GraalVM native build (slow lane). The code was already tested
-    # when it landed on main via the regular pipeline, so re-running adds no value.
     if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
     needs: unit-test
     steps:
@@ -176,9 +252,7 @@ jobs:
           cache: maven
 
       - name: Download JaCoCo unit exec
-        # Pulls the unit coverage data produced by the previous job so that
-        # the JaCoCo:merge goal can combine unit + IT coverage into one report.
-        uses: actions/download-artifact@v4    # restores files uploaded by a previous job (artifacts don't persist in the runner workspace)
+        uses: actions/download-artifact@v4
         with:
           name: jacoco-unit-exec
           path: target/
@@ -190,12 +264,12 @@ jobs:
 
       - name: Publish integration test report
         uses: dorny/test-reporter@v2
-        if: always()    # run even if tests failed so the report is always published
+        if: always()
         with:
           name: Integration Test Results
-          path: target/failsafe-reports/*.xml    # JUnit XML produced by maven-failsafe-plugin
-          reporter: java-junit                   # parser format matching the failsafe XML schema
-          fail-on-error: false                   # test failures are already reported by Maven; don't fail the step a second time
+          path: target/failsafe-reports/*.xml
+          reporter: java-junit
+          fail-on-error: false
 
       - name: Upload coverage + SpotBugs reports
         uses: actions/upload-artifact@v4
@@ -208,6 +282,178 @@ jobs:
           retention-days: 7
 
 # =============================================================================
+# Stage: sonar (depends on integration-test for JaCoCo merged coverage)
+# =============================================================================
+
+  # ---------------------------------------------------------------------------
+  # SonarCloud analysis — static analysis (smells, bugs, vulnerabilities,
+  # hotspots) + merged coverage integration so Sonar's "New Code Coverage"
+  # gate works correctly.
+  #
+  # Uses `mvn compile` first because sonar-scanner needs target/classes to
+  # exist — running `mvn sonar:sonar` alone does not trigger a compile.
+  # ---------------------------------------------------------------------------
+  sonar-analysis:
+    name: Sonar / SonarCloud
+    runs-on: ubuntu-24.04
+    if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
+    continue-on-error: true   # Sonar outage must not block merges
+    needs: integration-test   # pulls JaCoCo XML for coverage merge
+    env:
+      # Required by Sonar to match the analysis to the project on sonarcloud.io.
+      # Configure as a repo secret in Settings → Secrets and variables → Actions.
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history — Sonar needs it for accurate blame
+
+      - name: Setup Java 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      - name: Download integration artifacts (coverage + SpotBugs)
+        uses: actions/download-artifact@v4
+        with:
+          name: reports-integration
+          path: target/
+
+      - name: Skip if SONAR_TOKEN is not set
+        id: check-token
+        run: |
+          if [ -z "$SONAR_TOKEN" ]; then
+            echo "Skipping SonarCloud analysis — SONAR_TOKEN secret not configured."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compile (Sonar needs target/classes/)
+        if: steps.check-token.outputs.skip == 'false'
+        run: mvn $MAVEN_ARGS compile -DskipTests -Djacoco.skip=true
+
+      - name: Run SonarCloud analysis
+        if: steps.check-token.outputs.skip == 'false'
+        run: |
+          mvn $MAVEN_ARGS sonar:sonar \
+            -Dsonar.token="$SONAR_TOKEN" \
+            -Dsonar.host.url="https://sonarcloud.io"
+
+# =============================================================================
+# Stage: quality (runs in parallel with integration — informational only)
+# =============================================================================
+
+  # ---------------------------------------------------------------------------
+  # PMD + Checkstyle — catches style violations, bug patterns, duplicate code.
+  # Produces XML reports archived as GitHub artifacts for download. The
+  # GitLab equivalent also converts to the GitLab Code Quality JSON widget
+  # format; GitHub has no native equivalent, so we keep the raw reports.
+  # ---------------------------------------------------------------------------
+  code-quality:
+    name: Quality / PMD + Checkstyle
+    runs-on: ubuntu-24.04
+    if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
+    continue-on-error: true   # informational, never block merges
+    needs: integration-test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 21
+        # Java 21 for PMD + Checkstyle: their own parsers (not javac) don't fully
+        # support Java 25 preview syntax yet. Analysis scope is unchanged.
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Run PMD + Checkstyle
+        # -Dcompat: activates the Java 21 source overlay (ScopedValue → ThreadLocal shim)
+        # -Preport-static: enables maven-pmd-plugin and maven-checkstyle-plugin
+        # -DskipTests -DskipITs: tests already ran in unit + integration jobs
+        run: |
+          mvn $MAVEN_ARGS verify \
+            -Dcompat -Preport-static \
+            -DskipTests -DskipITs \
+            -Djacoco.skip=true
+
+      - name: Upload PMD + Checkstyle XML
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: code-quality-reports
+          path: |
+            target/pmd.xml
+            target/checkstyle-result.xml
+          retention-days: 7
+
+# =============================================================================
+# Stage: compat (runs in parallel — validates SB3/SB4 × Java 17/21)
+# =============================================================================
+
+  # ---------------------------------------------------------------------------
+  # Compatibility matrix: 4 (Spring Boot × Java version) combinations.
+  #
+  # Default build (without any of these) is SB4 + Java 25 — covered by the
+  # unit-test + integration-test jobs above. These four extra jobs guarantee
+  # the codebase still compiles and tests green under the supported downgrade
+  # combinations (documented as first-class variants in the README).
+  #
+  # allow_failure equivalent via continue-on-error — a failed compat target
+  # is a known regression to address, not a release blocker.
+  # ---------------------------------------------------------------------------
+  compat:
+    name: Compat / ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
+    continue-on-error: true
+    strategy:
+      fail-fast: false        # one failing combo must not cancel the others
+      matrix:
+        include:
+          - name: SB4 · Java 21
+            java: '21'
+            mvn-flags: '-Dcompat'
+          - name: SB4 · Java 17
+            java: '17'
+            mvn-flags: '-Dcompat -Djava17'
+          - name: SB3 · Java 21
+            java: '21'
+            mvn-flags: '-Dsb3'
+          - name: SB3 · Java 17
+            java: '17'
+            mvn-flags: '-Dsb3 -Djava17'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java ${{ matrix.java }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: maven
+
+      - name: mvn verify ${{ matrix.mvn-flags }}
+        run: mvn $MAVEN_ARGS verify ${{ matrix.mvn-flags }}
+
+      - name: Publish test report
+        uses: dorny/test-reporter@v2
+        if: always()
+        with:
+          name: ${{ matrix.name }} tests
+          path: |
+            target/surefire-reports/*.xml
+            target/failsafe-reports/*.xml
+          reporter: java-junit
+          fail-on-error: false
+
+# =============================================================================
 # Stage: package
 # =============================================================================
 
@@ -218,11 +464,8 @@ jobs:
   build-jar:
     name: Package / JAR
     runs-on: ubuntu-24.04
-    # Skip on scheduled and manual runs — those triggers are reserved exclusively
-    # for the GraalVM native build (slow lane). The code was already tested
-    # when it landed on main via the regular pipeline, so re-running adds no value.
     if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
-    needs: [ unit-test, integration-test ]    # both test gates must pass before producing the artifact
+    needs: [ unit-test, integration-test ]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -232,7 +475,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '25'
-          cache: maven    # caches ~/.m2/repository between runs keyed on pom.xml hash
+          cache: maven
 
       - name: Build JAR
         run: mvn $MAVEN_ARGS -DskipTests package
@@ -241,8 +484,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: customer-service-jar
-          path: target/*.jar    # Spring Boot fat JAR (includes embedded Tomcat + all dependencies)
-          retention-days: 7     # short-lived: for manual download or downstream deploy jobs
+          path: target/*.jar
+          retention-days: 7
 
   # ---------------------------------------------------------------------------
   # Build the Docker image and push it to GitHub Container Registry (GHCR).
@@ -259,15 +502,16 @@ jobs:
   docker-build:
     name: Package / Docker → GHCR
     runs-on: ubuntu-24.04
-    needs: [ unit-test, integration-test ]    # both test gates must pass before producing the image
-    # Only on main branch or version tags, and never on scheduled/manual runs
+    needs: [ unit-test, integration-test ]
     if: |
       (github.event_name != 'schedule' && github.event_name != 'workflow_dispatch') &&
       (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
     permissions:
-      contents: read    # needed to checkout the repository
-      # Required to push images to ghcr.io/<owner>/<repo>
+      contents: read
       packages: write
+    outputs:
+      image: ${{ steps.meta.outputs.tags }}
+      digest: ${{ steps.build.outputs.digest }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -275,31 +519,69 @@ jobs:
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
-          registry: ghcr.io                          # GitHub Container Registry
-          username: ${{ github.actor }}              # GitHub user or bot that triggered the workflow
-          password: ${{ secrets.GITHUB_TOKEN }}      # auto-provisioned token, no manual secret needed
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
-          # sha-<short> tag + branch/tag name (mirrors GitLab: $CI_COMMIT_SHA + $CI_COMMIT_REF_SLUG)
           tags: |
-            type=sha,prefix=sha-      # immutable pointer — e.g. sha-a1b2c3d — used for deployments
-            type=ref,event=branch     # moving pointer — e.g. main — for convenience
-            type=ref,event=tag        # version tag — e.g. v1.2.0 — when pushing a git tag
+            type=sha,prefix=sha-
+            type=ref,event=branch
+            type=ref,event=tag
 
       - name: Build and push Docker image
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: ${{ steps.meta.outputs.tags }}      # all tags computed by the metadata step above
-          labels: ${{ steps.meta.outputs.labels }}  # OCI standard labels (revision, created, …) injected at build time
-          # Layer cache: reuse layers from the last push to the same branch
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache              # pull cached layers before building
-          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache,mode=max      # push all layers (not just final stage) for maximum cache reuse
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache,mode=max
+
+  # ---------------------------------------------------------------------------
+  # Trivy — CVE scan of the JVM Docker image we just pushed.
+  #
+  # Trivy pulls the image straight from the registry — no DinD, no privileged
+  # mode needed. SARIF output uploads to the GitHub Security tab so CVEs
+  # surface in the same place as Semgrep findings.
+  #
+  # continue-on-error parity with the GitLab `allow_failure: true` — CVEs
+  # are informational, blocking releases on every new advisory creates friction.
+  # ---------------------------------------------------------------------------
+  trivy-scan:
+    name: Package / Trivy CVE scan
+    runs-on: ubuntu-24.04
+    needs: docker-build
+    if: |
+      (github.event_name != 'schedule' && github.event_name != 'workflow_dispatch') &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
+    continue-on-error: true
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
+    steps:
+      - name: Run Trivy on the freshly built image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ghcr.io/${{ github.repository }}:sha-${{ github.sha }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: HIGH,CRITICAL
+          exit-code: '0'   # do not fail on findings; reporting-only
+
+      - name: Upload Trivy SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy
 
 # =============================================================================
 # Stage: native (scheduled daily + manual trigger only)
@@ -321,39 +603,31 @@ jobs:
   # Tags pushed (same pattern as JVM Docker image):
   #   native-sha-<short>   — immutable pointer for deployments
   #   native-main          — moving pointer for convenience
-  #
-  # [GraalVM Community 25 / Spring Boot 4 AOT]
   # ---------------------------------------------------------------------------
   build-native:
-    name: Native / GraalVM -> GHCR
+    name: Native / GraalVM → GHCR
     runs-on: ubuntu-24.04
-    # Runs only on: schedule (daily 03:00 UTC) and workflow_dispatch (manual)
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'    # inverse of the regular pipeline condition
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     permissions:
-      contents: read    # needed to checkout the repository
-      packages: write   # needed to push the native image to GHCR
+      contents: read
+      packages: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # Fetch last 2 commits so paths-filter can compare HEAD~1..HEAD
           fetch-depth: 2
 
-      # Check if native-relevant files changed since the previous commit.
-      # On the daily schedule this covers "any change since yesterday's build".
-      # outputs.native == 'true' → at least one watched file changed.
       - name: Check for native-relevant changes
-        id: filter        # referenced as steps.filter.outputs.native in subsequent steps
+        id: filter
         uses: dorny/paths-filter@v3
         with:
           filters: |
             native:
-              - 'Dockerfile.native'    # base image or build instructions changed
-              - 'pom.xml'              # dependencies or plugin config changed
-              - 'src/**'               # application source code changed
+              - 'Dockerfile.native'
+              - 'pom.xml'
+              - 'src/**'
 
       - name: Log in to GHCR
-        # Only authenticate when we're actually going to build — saves a round-trip on skips
         if: steps.filter.outputs.native == 'true'
         uses: docker/login-action@v3
         with:
@@ -363,31 +637,27 @@ jobs:
 
       - name: Extract Docker metadata for native image
         id: meta
-        if: steps.filter.outputs.native == 'true'    # skip metadata computation when no build will happen
+        if: steps.filter.outputs.native == 'true'
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
-          # Prefix all native tags with "native-" to distinguish from JVM images
           tags: |
-            type=sha,prefix=native-sha-              # immutable pointer — e.g. native-sha-a1b2c3d — used for deployments
-            type=ref,event=branch,prefix=native-     # moving pointer — e.g. native-main — for convenience
+            type=sha,prefix=native-sha-
+            type=ref,event=branch,prefix=native-
 
       - name: Build and push GraalVM native image
-        # Skip entirely when no relevant file changed — saves 5-15 minutes of CPU
         if: steps.filter.outputs.native == 'true'
         uses: docker/build-push-action@v6
-        timeout-minutes: 30    # AOT compilation is CPU-intensive; default 6h is far too loose
+        timeout-minutes: 30
         with:
           context: .
           file: Dockerfile.native
           push: true
-          tags: ${{ steps.meta.outputs.tags }}      # all tags computed by the metadata step above
-          labels: ${{ steps.meta.outputs.labels }}  # OCI standard labels (revision, created, …) injected at build time
-          # Native image layers are almost entirely unique per build — cache still helps
-          # for the Maven download layer (Stage 1) and the base image (Stage 2).
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:native-buildcache              # pull cached layers before building
-          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:native-buildcache,mode=max      # push all layers (not just final stage) for maximum cache reuse
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:native-buildcache
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:native-buildcache,mode=max
 
       - name: Skip notification
-        if: steps.filter.outputs.native == 'false'    # complement of the build condition — one of the two always runs
+        if: steps.filter.outputs.native == 'false'
         run: echo "No native-relevant files changed — skipping GraalVM build."
