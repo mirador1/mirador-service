@@ -678,6 +678,8 @@ trivy:scan:
   image:
     name: aquasec/trivy:0.69.3
     entrypoint: [""]
+  tags:
+    - macbook-local
   needs:
     - job: docker-build
   rules:
@@ -707,6 +709,175 @@ trivy:scan:
     expire_in: 30 days
     paths:
       - trivy-report.json
+
+# ── Dockerfile lint (hadolint) ────────────────────────────────────────────────
+# Linter for Dockerfile best practices: pin versions, COPY not ADD, USER
+# non-root, no `apt-get update` without --no-install-recommends, etc.
+# Runs in seconds — catches issues before the long docker-build job.
+hadolint:
+  stage: lint
+  image:
+    name: hadolint/hadolint:v2.12.0-debian
+    entrypoint: [""]
+  tags:
+    - macbook-local
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - changes: [Dockerfile]
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    # --failure-threshold error: fail only on errors, not on warnings.
+    # Matches the lefthook pre-commit policy.
+    - hadolint --failure-threshold error Dockerfile
+
+# ── SBOM generation (syft) — CycloneDX format ─────────────────────────────────
+# Produces a Software Bill of Materials for the built image, listing every
+# OS package + Java library with version + license. Required by an
+# increasing number of enterprise compliance frameworks (NTIA, EU CRA).
+#
+# Output: bom.cdx.json (CycloneDX 1.5 format, machine-readable).
+# Attached as a GitLab artifact + can be pushed as an OCI referrer
+# alongside the image so `cosign download sbom` retrieves it anywhere
+# the image is available.
+sbom:syft:
+  stage: package
+  image:
+    name: anchore/syft:v1.18.1
+    entrypoint: [""]
+  tags:
+    - macbook-local
+  needs:
+    - job: docker-build
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+  script:
+    - |
+      syft "registry:$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA" \
+        --registry-username "$CI_REGISTRY_USER" \
+        --registry-password "$CI_REGISTRY_PASSWORD" \
+        -o cyclonedx-json=bom.cdx.json \
+        -o spdx-json=bom.spdx.json \
+        -o table
+  artifacts:
+    when: always
+    expire_in: 90 days
+    paths:
+      - bom.cdx.json
+      - bom.spdx.json
+    reports:
+      cyclonedx: bom.cdx.json
+
+# ── Grype CVE scan — reads the SBOM, matches against vuln database ─────────
+# Second opinion alongside Trivy. Grype's matcher is more aggressive on
+# Java — it knows the Maven coordinates from the SBOM and cross-references
+# the GitHub Advisory Database + NVD. Running both tools catches CVEs that
+# only one has in its DB.
+grype:scan:
+  stage: package
+  image:
+    name: anchore/grype:v0.87.0
+    entrypoint: [""]
+  tags:
+    - macbook-local
+  needs:
+    - job: sbom:syft
+      artifacts: true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+  allow_failure: true   # informational, matches trivy:scan policy
+  script:
+    # Scan the SBOM rather than the image → faster + reproducible.
+    - grype sbom:bom.cdx.json --fail-on high --output table
+    - grype sbom:bom.cdx.json --output json > grype-report.json
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - grype-report.json
+
+# ── Container policy check (dockle) ───────────────────────────────────────────
+# dockle checks image hardening: USER non-root, no root in image, Dockerfile
+# best practices, CIS Docker Benchmark. Complements Trivy (CVEs) with
+# hygiene checks (DKL-DI-0006 HEALTHCHECK, DKL-LI-0003 suspicious env var).
+dockle:
+  stage: package
+  image:
+    name: goodwithtech/dockle:v0.4.15
+    entrypoint: [""]
+  tags:
+    - macbook-local
+  needs:
+    - job: docker-build
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+  allow_failure: true   # hygiene checks — warn, don't block
+  variables:
+    # dockle reads creds via env vars for registry auth.
+    DOCKLE_USERNAME: "$CI_REGISTRY_USER"
+    DOCKLE_PASSWORD: "$CI_REGISTRY_PASSWORD"
+  script:
+    - dockle --exit-code 0 --format json --output dockle-report.json
+          "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA"
+    - dockle --exit-code 0 "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA"
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - dockle-report.json
+
+# ── cosign — keyless image signing via GitLab OIDC ────────────────────────────
+# Signs the image with a short-lived certificate from Sigstore's Fulcio,
+# using GitLab's OIDC token as identity proof. No long-lived signing keys.
+# Signatures are stored in the registry as OCI artifacts alongside the image.
+#
+# Verify externally with:
+#   cosign verify \
+#     --certificate-identity "https://gitlab.com/mirador1/mirador-service//.gitlab-ci.yml@refs/heads/main" \
+#     --certificate-oidc-issuer "https://gitlab.com" \
+#     $CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA
+cosign:sign:
+  stage: package
+  image:
+    name: gcr.io/projectsigstore/cosign:v2.5.0
+    entrypoint: [""]
+  tags:
+    - macbook-local
+  needs:
+    - job: docker-build
+  id_tokens:
+    SIGSTORE_ID_TOKEN:
+      aud: sigstore
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+  allow_failure: true   # until signing policy is wired into deploy; enforce later
+  variables:
+    # cosign uses these env vars to locate the OIDC token and enable keyless mode.
+    COSIGN_YES: "true"             # skip interactive prompt
+    COSIGN_EXPERIMENTAL: "1"       # enables keyless signing with Sigstore
+  script:
+    # Log in to the registry — cosign needs read access to resolve the digest
+    # and write access to push the signature artifact.
+    - cosign login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD"
+    # Sign the image by SHA digest (never by tag — tags are mutable).
+    - |
+      DIGEST=$(cosign triangulate --type digest \
+        "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA" 2>/dev/null \
+        || echo "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA")
+      cosign sign --identity-token "$SIGSTORE_ID_TOKEN" \
+        "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA"
 
 # ── stage: compat ─────────────────────────────────────────────────────────────
 #

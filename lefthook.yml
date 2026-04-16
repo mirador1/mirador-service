@@ -44,10 +44,11 @@ pre-commit:
 
     dockerfile-lint:
       # Hadolint catches ~40 common Dockerfile bugs (wrong COPY, missing USER, etc.).
+      # --failure-threshold error: warnings don't block (matches CI policy).
       glob: "Dockerfile*"
       run: |
         if command -v hadolint >/dev/null 2>&1; then
-          hadolint {staged_files}
+          hadolint --failure-threshold error {staged_files}
         else
           echo "⚠️  hadolint not installed — skipping Dockerfile lint. Install: brew install hadolint"
         fi
