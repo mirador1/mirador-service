@@ -582,7 +582,11 @@ trivy:scan:
   stage: package
   # aquasec/trivy no longer publishes :latest (since ~0.60). Pin a real tag.
   # Check https://hub.docker.com/r/aquasec/trivy/tags for the current stable.
-  image: aquasec/trivy:0.69.3
+  # entrypoint:[""] overrides the default `trivy` entrypoint — GitLab CI wraps
+  # the script in `sh -c`, which trivy rejects with `unknown command "sh"`.
+  image:
+    name: aquasec/trivy:0.69.3
+    entrypoint: [""]
   needs:
     - job: docker-build
   rules:
@@ -1104,8 +1108,18 @@ terraform-apply:
 #                            GCP_PROJECT, GKE_CLUSTER, GKE_REGION, K8S_HOST
 deploy:gke:
   stage: deploy
-  interruptible: false   # Active K8s apply + Cloud SQL Proxy patch — avoid mid-deploy interruption.
-  image: google/cloud-sdk:alpine
+  interruptible: false # Active K8s apply + Cloud SQL Proxy patch — avoid mid-deploy interruption.
+  tags:
+    - macbook-local
+  # Base alpine image + install gcloud via the official tarball. The official
+  # google/cloud-sdk image is amd64-only; running it under QEMU on the arm64
+  # macbook-local runner segfaults with Go runtime panics (`fatal error:
+  # lfstack.push`). Installing native arm64 gcloud avoids emulation entirely.
+  image: alpine:3.20
+  variables:
+    # Make gcloud + kubectl available in every script: step (GitLab forks
+    # a fresh shell per line, so PATH exports in before_script don't propagate).
+    PATH: "/google-cloud-sdk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
   id_tokens:
     # GitLab generates a JWT token for this job; audience must match the WIF provider.
     GCP_OIDC_TOKEN:
@@ -1121,10 +1135,21 @@ deploy:gke:
     name: production/gke
     url: "https://$K8S_HOST"
   before_script:
-    # google/cloud-sdk:alpine ships without kubectl, gke-gcloud-auth-plugin, and envsubst.
-    # - kubectl + gke-gcloud-auth-plugin: authenticate kubectl to GKE via WIF
-    # - gettext: provides envsubst (used to expand ${K8S_HOST}, ${IMAGE_TAG}, etc. in manifests)
-    - apk add --no-cache gettext
+    # The alpine base image has nothing — install what we need natively for arm64.
+    # - bash/curl/python3/gettext: required by gcloud installer + envsubst + token script
+    # - Google Cloud CLI: download the arm64 tarball and extract (architecture detected
+    #   at runtime; same logic works if the job ever runs on amd64)
+    # - gke-gcloud-auth-plugin + kubectl: gcloud components, arm64-compatible
+    - apk add --no-cache bash curl python3 gettext
+    - |
+      ARCH=$(uname -m)
+      case "$ARCH" in
+        aarch64) GCLOUD_ARCH="arm" ;;
+        x86_64)  GCLOUD_ARCH="x86_64" ;;
+        *) echo "Unsupported arch: $ARCH"; exit 1 ;;
+      esac
+      curl -sSL "https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-${GCLOUD_ARCH}.tar.gz" | tar -xz -C /
+      /google-cloud-sdk/install.sh --quiet --path-update false --usage-reporting false
     - gcloud components install kubectl gke-gcloud-auth-plugin --quiet
   script:
     # Write OIDC token to file; gcloud reads it via credentials config (WIF, no key file)
