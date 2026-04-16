@@ -54,35 +54,27 @@
       `kubectl create secret` step in `.kubectl-apply` with ExternalSecret
       CRDs. Auto-rotation, no secrets in CI variable storage.
 
-- [ ] **k6 smoke test post-deploy** — 30 s k6 load against
-      `/actuator/health` + `/customers`, p95 < 500 ms, rollback on failure.
-
 - [ ] **distroless java25 image** — switch once Google publishes it (track
       https://github.com/GoogleContainerTools/distroless). Drops ~90 CVEs
       vs `eclipse-temurin:25-jre`.
 
-- [ ] **mise (or asdf) + `.tool-versions`** — pin Java 25 + Maven + kubectl
-      + terraform per repo.
-
-- [ ] **OpenAPI lint (Spectral)** — enforce operationId uniqueness and
-      break-detection vs previous main tag's `/api-docs.yaml`.
-
 - [ ] **Argo Rollouts / Flagger** — progressive traffic split for canary
       deploys. Requires Istio or Linkerd; deferred until Argo CD lands.
 
-## Pending — Documentation
-
-- [ ] **Tech glossary verification pass** — `docs/reference/technologies.md` has
-      entries tagged "verify" by the generating agent: WireMock usage
-      (not in pom.xml?), SSE/SockJS wiring, Cilium/Dataplane V2 explicit
-      status, Memorystore vs scaffolding, Artifact Registry explicit
-      provisioning, JSONB + SLSA claims.
-
-- [ ] **ADRs for decisions currently tacit** — container runtime choice,
-      OTel OTLP push vs scrape, `@Transactional(readOnly)` strategy.
-
 ## Recently Completed
 
+- [x] ADR-0009 (container runtime: `eclipse-temurin:25-jre`), ADR-0010
+      (OTLP push to Collector, not Prometheus scrape), and ADR-0011
+      (minimal `@Transactional` surface, no `readOnly = true`) — three
+      previously tacit decisions now recorded.
+- [x] Tech glossary verification pass — corrected SSE (actively used via
+      `SseEmitterRegistry`), consolidated the duplicate SSE entry, removed
+      WireMock + JSONB placeholder entries (neither present in code), and
+      tightened Memorystore / Artifact Registry usage claims.
+- [x] OpenAPI lint via Spectral (`.spectral.yaml` + CI job).
+- [x] k6 post-deploy smoke test (`scripts/load-test/smoke.js` + CI job).
+- [x] `.mise.toml` pins Java 25 + Maven + kubectl + Terraform + gcloud +
+      Node per repo (commit `8bbd8f9`).
 - [x] Kustomize base + overlays (`local`/`gke`/`eks`/`aks`) with postgres
       mini-base, TLS patch, Cloud SQL sidecar patch.
 - [x] 8 ADRs under `docs/adr/` (Kustomize, Cloud SQL, local runner,
