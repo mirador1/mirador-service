@@ -136,6 +136,53 @@ hadolint:
   script:
     - hadolint Dockerfile
 
+# ── openapi-lint — Spectral rules against the generated OpenAPI spec ────────
+# Compiles the app, boots it briefly, fetches /v3/api-docs (springdoc),
+# then runs Spectral with our ruleset (.spectral.yaml). Catches
+# operationId-not-unique, missing descriptions, unused schemas — issues
+# that SonarCloud + PMD cannot see because they operate on the Java
+# source, not on the produced API contract.
+openapi-lint:
+  stage: lint
+  image: node:22-alpine
+  tags:
+    - macbook-local
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - changes:
+        - "**/*.java"
+        - ".spectral.yaml"
+        - "pom.xml"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  needs: []
+  before_script:
+    - apk add --no-cache bash curl openjdk25-jre-headless maven
+  script:
+    # Start the app with the special 'openapi-export' profile (auto-exit
+    # after writing the spec). Alternative: boot + curl + kill — more fragile.
+    # We use Spring's standalone openapi endpoint: boot briefly, fetch, kill.
+    - mvn -q -DskipTests package -Dmaven.javadoc.skip=true
+    - |
+      # Boot the app in the background, wait up to 60 s for it to serve,
+      # then fetch /v3/api-docs and kill.
+      nohup java -jar target/mirador-*.jar > /tmp/app.log 2>&1 &
+      APP_PID=$!
+      for i in $(seq 1 60); do
+        curl -sSf http://localhost:8080/v3/api-docs > /tmp/openapi.json 2>/dev/null && break
+        sleep 1
+      done
+      kill "$APP_PID" 2>/dev/null || true
+      test -s /tmp/openapi.json || { echo "Failed to fetch /v3/api-docs"; cat /tmp/app.log | tail -40; exit 1; }
+    # Run Spectral with our ruleset. --fail-severity error = block only on errors.
+    - npx --yes @stoplight/spectral-cli lint /tmp/openapi.json --ruleset .spectral.yaml --fail-severity error
+  artifacts:
+    when: always
+    paths:
+      - /tmp/openapi.json
+    expire_in: 1 week
+  allow_failure: true   # warnings-only initially; flip to false once clean
+
 # ── stage: test ───────────────────────────────────────────────────────────────
 
 # Unit tests only — *ITest classes excluded (they need Docker / Testcontainers).
@@ -1377,6 +1424,37 @@ terraform-apply:
 # Google access token bound to the gitlab-ci-deployer service account.
 # Required group variables: GCP_WIF_PROVIDER, GCP_SERVICE_ACCOUNT,
 #                            GCP_PROJECT, GKE_CLUSTER, GKE_REGION, K8S_HOST
+# ── smoke-test — k6 post-deploy smoke test ────────────────────────────────────
+# Runs against the public GKE endpoint AFTER deploy:gke. 30 s of light
+# read-only traffic at ~3 RPS, pass/fail on p95 < 500 ms and < 1 % errors.
+# See scripts/load-test/README.md for thresholds + how to run locally.
+smoke-test:
+  stage: deploy
+  image: grafana/k6:1.4.0
+  tags:
+    - macbook-local
+  needs:
+    - job: deploy:gke
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  environment:
+    name: production/gke
+    action: verify
+  variables:
+    # K8S_HOST is a protected CI var pointing at e.g. mirador1.duckdns.org.
+    # The smoke.js script reads __ENV.K8S_HOST.
+    K8S_HOST: "$K8S_HOST"
+  script:
+    - k6 run scripts/load-test/smoke.js
+  artifacts:
+    when: always
+    paths:
+      - smoke-summary.json
+    expire_in: 30 days
+  allow_failure: true   # initially informational — flip to false once stable
+
 deploy:gke:
   stage: deploy
   interruptible: false # Active K8s apply + Cloud SQL Proxy patch — avoid mid-deploy interruption.
