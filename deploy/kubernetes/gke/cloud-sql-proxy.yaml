@@ -76,7 +76,7 @@ metadata:
 ---
 # ConfigMap: GKE-specific overrides for the backend ConfigMap.
 # DB_HOST=127.0.0.1 because the Cloud SQL Auth Proxy listens on localhost inside the pod.
-# Apply this AFTER k8s/backend/configmap.yaml to override DB_HOST.
+# Apply this AFTER deploy/kubernetes/backend/configmap.yaml to override DB_HOST.
 apiVersion: v1
 kind: ConfigMap
 metadata:

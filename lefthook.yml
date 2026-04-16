@@ -10,7 +10,7 @@
 #   pre-commit — validates staged files without running any build:
 #                - .gitlab-ci.yml       → glab ci lint (catch YAML/syntax errors)
 #                - Dockerfile*          → hadolint     (linter for common Dockerfile bugs)
-#                - k8s/**/*.yaml        → kubectl apply --dry-run=client -f
+#                - deploy/kubernetes/**/*.yaml  → kubectl apply --dry-run=client -f
 #                - terraform/**/*.tf    → terraform fmt -check + terraform validate
 #                - pom.xml              → xmllint       (XML well-formed)
 #                Each check only runs if the relevant file type is staged.
@@ -56,7 +56,7 @@ pre-commit:
     k8s-dry-run:
       # Client-side validation: YAML syntax + basic K8s schema.
       # Does NOT hit the cluster — safe to run even without a connected context.
-      glob: "k8s/**/*.yaml"
+      glob: "deploy/kubernetes/**/*.yaml"
       run: |
         if command -v kubectl >/dev/null 2>&1; then
           for f in {staged_files}; do
@@ -70,12 +70,12 @@ pre-commit:
     terraform-validate:
       # terraform fmt -check + terraform validate on the gcp/ module.
       # Only runs when a .tf file is staged — no network call.
-      glob: "terraform/**/*.tf"
+      glob: "deploy/terraform/**/*.tf"
       run: |
         if command -v terraform >/dev/null 2>&1; then
-          terraform -chdir=terraform/gcp fmt -check -recursive
-          terraform -chdir=terraform/gcp init -backend=false -input=false >/dev/null
-          terraform -chdir=terraform/gcp validate
+          terraform -chdir=deploy/terraform/gcp fmt -check -recursive
+          terraform -chdir=deploy/terraform/gcp init -backend=false -input=false >/dev/null
+          terraform -chdir=deploy/terraform/gcp validate
         else
           echo "⚠️  terraform not installed — skipping Terraform validate. Install: brew install terraform"
         fi

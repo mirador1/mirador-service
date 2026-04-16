@@ -19,10 +19,10 @@ deep-dives can grow independently.
 
 | File / folder         | Role                                                                                                                             |
 | --------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `banner.svg`          | Project banner displayed at the top of the root `README.md`.                                                                    |
+| `assets/banner.svg`          | Project banner displayed at the top of the root `README.md`.                                                                    |
 | `auth0-action-roles.js` | Reference implementation of the Auth0 Action that injects realm roles into issued tokens (used in `JwtAuthenticationFilter`).  |
-| `outputs/`            | Sample API responses and Prometheus scrape dumps used as reference data in docs, tests, and live demo comparisons.              |
-| `screenshots/`        | Screenshots embedded in the topic documents (Grafana dashboards, Prometheus UI, etc.).                                          |
+| `examples/`            | Sample API responses and Prometheus scrape dumps used as reference data in docs, tests, and live demo comparisons.              |
+| `assets/screenshots/`        | Screenshots embedded in the topic documents (Grafana dashboards, Prometheus UI, etc.).                                          |
 
 ## What belongs here vs. elsewhere
 
@@ -41,7 +41,7 @@ deep-dives can grow independently.
   than duplicating content.
 - Update `architecture.md` when adding a new module or changing a major
   data-flow path.
-- Screenshots go into `screenshots/`, referenced with relative paths
+- Screenshots go into `assets/screenshots/`, referenced with relative paths
   (`![](screenshots/foo.png)`).
 - If a section outgrows its file, split by audience (dev, ops, sec) rather
   than by feature.

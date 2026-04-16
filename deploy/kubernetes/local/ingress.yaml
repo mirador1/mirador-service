@@ -1,7 +1,7 @@
 # =============================================================================
 # Local (kind) Ingress — HTTP only, no TLS, no cert-manager.
 #
-# Used by `./run.sh k8s-local` in place of k8s/ingress.yaml which is
+# Used by `./run.sh k8s-local` in place of deploy/kubernetes/ingress.yaml which is
 # designed for production (cert-manager + Let's Encrypt + HTTPS).
 #
 # K8S_HOST is set to mirador.127.0.0.1.nip.io by the k8s-local script.

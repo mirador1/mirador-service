@@ -28,24 +28,24 @@ on the target environment.
 The CI's `.kubectl-apply` template applies manifests in this order:
 
 ```
-k8s/namespace.yaml           # always
+deploy/kubernetes/namespace.yaml           # always
 deploy/kubernetes/stateful/redis.yaml         # always
 deploy/kubernetes/stateful/kafka.yaml         # always
 deploy/kubernetes/stateful/postgres.yaml      # NOT on GKE (skipped — uses Cloud SQL)
-k8s/backend/configmap.yaml
-k8s/backend/deployment.yaml
-k8s/backend/service.yaml
-k8s/backend/hpa.yaml
-k8s/ingress.yaml
+deploy/kubernetes/backend/configmap.yaml
+deploy/kubernetes/backend/deployment.yaml
+deploy/kubernetes/backend/service.yaml
+deploy/kubernetes/backend/hpa.yaml
+deploy/kubernetes/ingress.yaml
 ```
 
 Then, on GKE only:
 
 ```
-k8s/gke/cloud-sql-proxy.yaml # if CLOUD_SQL_INSTANCE CI var is set
+deploy/kubernetes/gke/cloud-sql-proxy.yaml # if CLOUD_SQL_INSTANCE CI var is set
 ```
 
-`k8s/frontend/` is NOT applied by this repo — the frontend pipeline
+`deploy/kubernetes/frontend/` is NOT applied by this repo — the frontend pipeline
 (`mirador-ui` repo) handles its own deployment.
 
 ## What NOT to put here

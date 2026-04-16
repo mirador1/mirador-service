@@ -12,7 +12,7 @@
 #   - Separate resource quotas (infra pods tend to need more memory)
 #
 # Apply once per cluster:
-#   kubectl apply -f k8s/namespace.yaml
+#   kubectl apply -f deploy/kubernetes/namespace.yaml
 # =============================================================================
 
 apiVersion: v1

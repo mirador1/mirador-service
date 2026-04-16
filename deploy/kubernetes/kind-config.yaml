@@ -12,7 +12,7 @@
 # no /etc/hosts changes needed.
 #
 # Usage:
-#   kind create cluster --name mirador --config k8s/kind-config.yaml
+#   kind create cluster --name mirador --config deploy/kubernetes/kind-config.yaml
 # Or via the helper script:
 #   ./run.sh k8s-local
 # =============================================================================

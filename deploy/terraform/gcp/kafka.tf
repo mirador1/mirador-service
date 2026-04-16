@@ -30,7 +30,7 @@ variable "kafka_enabled" {
   type        = bool
   default     = false
   # Set to true once managedkafka.googleapis.com is enabled in your project.
-  # Until then, the in-cluster Kafka Deployment (k8s/infra/kafka.yaml) is used.
+  # Until then, the in-cluster Kafka Deployment (deploy/kubernetes/stateful/kafka.yaml) is used.
 }
 
 variable "kafka_vcpus_per_broker" {
@@ -115,11 +115,11 @@ variable "kafka_memory_gb_per_broker" {
 # Migration path: in-cluster → Managed Kafka
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. Set kafka_enabled = true in terraform.tfvars and run terraform apply
-# 2. Add KAFKA_SECURITY_PROTOCOL=SASL_SSL to k8s/backend/configmap.yaml
+# 2. Add KAFKA_SECURITY_PROTOCOL=SASL_SSL to deploy/kubernetes/backend/configmap.yaml
 #    (Google Managed Kafka requires SASL/PLAIN over TLS for authentication)
 # 3. Set KAFKA_BOOTSTRAP_SERVERS to the output kafka_bootstrap_servers value
 # 4. Store KAFKA_SASL_USERNAME (service account email) + KAFKA_SASL_PASSWORD
 #    (HMAC key) as Kubernetes Secrets
-# 5. Remove k8s/infra/kafka.yaml from the kubectl apply loop in .gitlab-ci.yml
+# 5. Remove deploy/kubernetes/stateful/kafka.yaml from the kubectl apply loop in .gitlab-ci.yml
 # 6. Delete the in-cluster Kafka Deployment: kubectl delete deployment kafka -n infra
 # =============================================================================
