@@ -126,7 +126,8 @@ spec:
             periodSeconds: 5
             failureThreshold: 3
             timeoutSeconds: 5
-          # Startup probe: extra time for the first boot (Flyway migrations can be slow).
+          # Startup probe: extra time for the first boot on cold nodes.
+          # GKE Autopilot first pull + Spring Boot 4 + Flyway can exceed 2 min.
           # Once this passes, liveness/readiness take over.
           startupProbe:
             httpGet:
@@ -134,4 +135,4 @@ spec:
               port: 8080
             initialDelaySeconds: 10
             periodSeconds: 5
-            failureThreshold: 12    # up to 60s for first boot (12 × 5s)
+            failureThreshold: 60    # up to 5 min for first boot (60 × 5s)

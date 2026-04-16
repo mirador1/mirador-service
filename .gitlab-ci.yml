@@ -528,12 +528,16 @@ build-jar:
 # avoid flooding the registry with images that are never deployed.
 docker-build:
   # Kaniko builds the Docker image without Docker daemon — no DinD, no privileged mode.
-  # Runs on any runner (local Mac or SaaS) without exhausting CI quota.
+  # MUST run on an amd64 runner — the local Mac runner is Apple Silicon (arm64) and
+  # would produce arm64 images that fail with "exec format error" on GKE amd64 nodes.
+  # saas-linux-medium-amd64 guarantees the build matches the target platform.
   # Kaniko reads the Dockerfile and pushes directly to the registry in one step.
   # Cache: --cache=true + --cache-repo stores layer snapshots in the registry,
   # equivalent to --cache-from in Docker buildx (first run is slow, subsequent runs fast).
   stage: package
   interruptible: false   # Expensive (~5 min build). Don't restart on a new push mid-run.
+  tags:
+    - saas-linux-medium-amd64
   image:
     name: gcr.io/kaniko-project/executor:debug
     entrypoint: [""]
@@ -570,7 +574,9 @@ trivy:scan:
   # Runs only on main/tags after docker-build succeeds. allow_failure:true —
   # we track CVEs as informational; blocking releases on new CVEs creates friction.
   stage: package
-  image: aquasecurity/trivy:latest
+  # aquasec/trivy no longer publishes :latest (since ~0.60). Pin a real tag.
+  # Check https://hub.docker.com/r/aquasec/trivy/tags for the current stable.
+  image: aquasec/trivy:0.69.3
   needs:
     - job: docker-build
   rules:
@@ -1079,8 +1085,9 @@ terraform-apply:
                 k8s/ingress.yaml; do
         [ -f "$f" ] && envsubst < "$f" | kubectl apply -f -
       done
-    # Wait for the rolling update to complete (180 s timeout)
-    - kubectl rollout status deployment/customer-service -n app --timeout=180s
+    # Wait for the rolling update to complete. 6 min is enough for cold-start
+    # on GKE Autopilot (image pull + JVM warmup + Flyway), matches startupProbe budget.
+    - kubectl rollout status deployment/customer-service -n app --timeout=360s
 
 # ── GKE Autopilot — DEFAULT production (runs automatically on main) ───────────
 #
