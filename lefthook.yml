@@ -81,6 +81,65 @@ pre-commit:
         fi
       fail_text: "Terraform files failed validation. Run 'terraform fmt' and fix syntax."
 
+    env-keys-in-sync:
+      # .env and .env.example MUST have the same keys (values can differ).
+      # A missing key in .env.example leaves new devs without the variable
+      # documented; a stale key in .env.example is dead weight.
+      # Only fires when one of the two files is staged.
+      glob: "{.env,.env.example}"
+      run: |
+        if [ ! -f .env ] || [ ! -f .env.example ]; then
+          echo "⚠️  .env or .env.example missing — skipping key-parity check."
+          exit 0
+        fi
+        diff=$(diff <(grep -E '^[A-Z_][A-Z0-9_]*=' .env.example | cut -d= -f1 | sort) \
+                    <(grep -E '^[A-Z_][A-Z0-9_]*=' .env | cut -d= -f1 | sort) || true)
+        if [ -n "$diff" ]; then
+          echo "❌  .env and .env.example have different keys:"
+          echo "$diff" | sed 's/^/    /'
+          exit 1
+        fi
+      fail_text: "Keys differ between .env and .env.example. Add/remove the missing variable in both files."
+
+    pom-hardcoded-versions:
+      # Every plugin/dependency <version> MUST live under <properties> so
+      # bumps land in one place and duplicates across profiles can't drift.
+      # The ONLY legitimate hardcoded version is <parent><version>…</version>
+      # because Maven resolves the parent before evaluating properties.
+      glob: "pom.xml"
+      run: |
+        # Strip comments, then flag any <version>LITERAL</version> that isn't ${…}
+        # and isn't inside a <parent> block.
+        violations=$(python3 - <<'PY'
+        import re, sys
+        with open('pom.xml') as f:
+            raw = f.read()
+        content = re.sub(r'<!--.*?-->', '', raw, flags=re.DOTALL)
+        # Remove the single <parent>…</parent> block so its <version> is exempt.
+        content = re.sub(r'<parent>.*?</parent>', '', content, flags=re.DOTALL, count=1)
+        pattern = re.compile(
+            r'<artifactId>([^<]+)</artifactId>\s*'
+            r'(?:<groupId>[^<]+</groupId>\s*)?'
+            r'<version>([^<]+)</version>',
+            re.DOTALL,
+        )
+        bad = [(m.group(1).strip(), m.group(2).strip())
+               for m in pattern.finditer(content)
+               if not m.group(2).strip().startswith('${')
+               and m.group(1).strip() != 'mirador']
+        for a, v in bad:
+            print(f"  {a}: {v}")
+        sys.exit(1 if bad else 0)
+        PY
+        )
+        if [ $? -ne 0 ]; then
+          echo "❌  Hardcoded <version> found in pom.xml outside <parent>:"
+          echo "$violations"
+          echo "Fix: extract to a property under <properties> and reference as \${name.version}."
+          exit 1
+        fi
+      fail_text: "pom.xml has hardcoded versions. Move them to <properties>."
+
     pom-xml-wellformed:
       # Cheap sanity check that pom.xml is well-formed XML.
       # Full model validation happens in mvn; this catches typos before push.
