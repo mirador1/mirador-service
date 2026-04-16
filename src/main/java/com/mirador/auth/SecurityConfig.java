@@ -143,7 +143,10 @@ public class SecurityConfig {
         var config = new CorsConfiguration();
         config.setAllowedOrigins(allowedOrigins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(List.of("*"));
+        // Explicit allowlist — wildcard "*" is a security anti-pattern (defense-in-depth).
+        config.setAllowedHeaders(List.of(
+                "Content-Type", "Authorization", "X-API-Key",
+                "X-Request-Id", "Idempotency-Key", "Accept", "Cache-Control"));
         config.setAllowCredentials(true);
         // Expose security headers so the Angular Security Demo can read them via HttpClient observe:'response'
         config.setExposedHeaders(List.of(

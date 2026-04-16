@@ -34,11 +34,12 @@ metadata:
     # Increase timeouts for Kafka request-reply (default 60s may be too short)
     nginx.ingress.kubernetes.io/proxy-read-timeout: "90"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "90"
-    # Enable WebSocket upgrade headers (for /ws/** STOMP endpoint)
+    # Enable WebSocket upgrade — use server-snippet-free annotations.
+    # configuration-snippet is disabled by default since nginx-ingress 1.9+
+    # (snippet directives blocked by the Ingress administrator on GKE).
+    # The nginx-ingress controller natively handles WebSocket when the client
+    # sends Upgrade headers, so explicit proxy_set_header is not needed.
     nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
-    nginx.ingress.kubernetes.io/configuration-snippet: |
-      proxy_set_header Upgrade $http_upgrade;
-      proxy_set_header Connection "upgrade";
     # ── TLS — cert-manager Let's Encrypt ────────────────────────────────────
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
 spec:

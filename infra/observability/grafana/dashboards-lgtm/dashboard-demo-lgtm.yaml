@@ -24,4 +24,7 @@ providers:
     disableDeletion: false  # allow manual deletion from the Grafana UI without it being re-created on next reload
     updateIntervalSeconds: 10  # hot-reload interval — changes to demo.json appear within 10 s
     options:
-      path: /otel-lgtm/demo.json  # absolute path inside the otel-lgtm container (see docker-compose.observability.yml volume mount)
+      # Directory mount — Grafana scans every updateIntervalSeconds for new/changed *.json files.
+      # Add a new dashboard: drop a JSON file in infra/observability/grafana/dashboards-lgtm/
+      # and it appears in Grafana within 10 s without restarting the container.
+      path: /otel-lgtm/dashboards/

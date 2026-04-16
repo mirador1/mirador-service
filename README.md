@@ -429,3 +429,82 @@ After registration every push triggers jobs on **your machine** instead of gitla
 ```bash
 ./run.sh verify   # local equivalent of the full CI pipeline (no Docker needed)
 ```
+
+---
+
+## Code Quality
+
+This project uses a layered quality stack: static analysis, test coverage, mutation testing, dependency CVE scanning, and cloud-based code intelligence.
+
+All tools are integrated into the CI/CD pipeline and results are aggregated in the Angular dashboard at **Settings → Code Report** (route `/quality`).
+
+### Tool overview
+
+| Tool | What it checks | When it runs | Report |
+|------|---------------|--------------|--------|
+| **JaCoCo** | Line + branch test coverage (gate: 70%) | Every push | `/actuator/quality` → Coverage tab · Maven site |
+| **SpotBugs** | Bytecode bugs: null deref, threading, correctness | Every push | `/actuator/quality` → Bugs tab · GitLab MR annotations |
+| **PMD** | Code smells: unused vars, duplicates, complexity | `mvn verify -Preport,report-static -Dcompat` | `/actuator/quality` → PMD tab |
+| **Checkstyle** | Style: Google Java Style Guide | `mvn verify -Preport,report-static -Dcompat` | `/actuator/quality` → Checkstyle tab |
+| **PIT (Pitest)** | Mutation testing — measures test strength | `mvn verify -Preport` | `/actuator/quality` → Pitest tab |
+| **OWASP Dep-Check** | CVE scan on all Maven dependencies | Every push (2h timeout) | `/actuator/quality` → OWASP tab |
+| **SonarCloud** | Comprehensive analysis: bugs, smells, hotspots, duplication | Every push to `main` / MR | [sonarcloud.io ↗](https://sonarcloud.io/project/overview?id=mirador1_mirador-service) |
+| **GitLab Code Quality** | SpotBugs + PMD + Checkstyle as inline MR diff annotations | Every push to `main` / MR | MR → Code Quality widget |
+| **Semgrep** | OSS rules: Java bugs, Spring patterns, OWASP Top 10, secrets | Daily schedule + manual | CI artifact `semgrep-report.json` · GitLab Security Dashboard |
+| **Maven Site** | HTML report portal: Surefire + JaCoCo + SpotBugs + Javadoc | Daily schedule | `reports/` branch · http://localhost:8084 |
+| **Trivy** | Docker image OS + Java CVE scan | Every push to `main` | CI artifact `trivy-report.json` |
+
+### Run quality checks locally
+
+```bash
+# Fast path — unit tests + SpotBugs + JaCoCo (Java 25, default)
+./mvnw verify
+
+# Full report — adds OWASP CVE scan + Pitest mutation coverage (takes ~20 min)
+./mvnw verify -Preport
+
+# Static analysis — adds PMD + Checkstyle (requires Java 21 — both crash on Java 25)
+./mvnw verify -Preport,report-static -Dcompat
+
+# Generate HTML site (Surefire, JaCoCo, SpotBugs, Javadoc) → target/site/
+./mvnw site
+
+# Serve the site locally (nginx on port 8084)
+docker compose up -d maven-site   # then open http://localhost:8084
+
+# Mutation testing only (skips all other analysis)
+./mvnw test-compile pitest:mutationCoverage -Preport
+
+# SonarCloud (requires SONAR_TOKEN)
+./mvnw verify sonar:sonar -Dsonar.token=$SONAR_TOKEN -Dsonar.host.url=https://sonarcloud.io
+
+# Semgrep (requires Docker — no account needed)
+docker run --rm -v $(pwd):/src semgrep/semgrep \
+  semgrep --config=p/java --config=p/spring --config=p/owasp-top-ten \
+  --json --output=/src/semgrep-report.json --exclude="src/test" src/main/java/
+```
+
+### SonarCloud setup (one-time)
+
+> **Free for public repositories** at [sonarcloud.io](https://sonarcloud.io).
+
+1. Log in at sonarcloud.io with your GitLab account
+2. Import the `mirador1/mirador-service` project
+3. Generate a token at sonarcloud.io → Account → Security
+4. Add `SONAR_TOKEN` to GitLab → Settings → CI/CD → Variables (masked + protected)
+
+The `sonar.organization` and `sonar.projectKey` are already set in `pom.xml`.
+
+### Semgrep
+
+No setup required — rulesets are fetched from the public Semgrep registry at runtime. The `semgrep` CI job runs on the daily report schedule (`REPORT_PIPELINE=true`) or via manual trigger. Results appear in the GitLab Security Dashboard (SAST widget) and as `semgrep-report.json` in the pipeline artifacts.
+
+### GitLab Code Quality widget
+
+SpotBugs + PMD + Checkstyle findings are converted to the [GitLab Code Quality](https://docs.gitlab.com/ee/ci/testing/code_quality.html) format by the `code-quality` CI job and appear as inline annotations on changed lines in every MR. No setup required.
+
+### Live quality dashboard
+
+The backend exposes all quality data (tests, coverage, bugs, sonar, OWASP, pitest, build info, GitLab pipelines) via `/actuator/quality`. The Angular UI reads this endpoint and displays it at **Settings → Code Report** (`/quality` route).
+
+The main dashboard also shows a compact quality summary (tests, coverage %, SpotBugs bugs, Sonar rating) in the **Code Quality** section.

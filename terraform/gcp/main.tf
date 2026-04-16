@@ -35,12 +35,8 @@ terraform {
     }
   }
 
-  # Remote state — store in GCS so the team shares the same state.
-  # Create the bucket once: gsutil mb -p ${project_id} gs://${project_id}-tf-state
-  backend "gcs" {
-    bucket = "${var.project_id}-tf-state"   # set in backend.tf or -backend-config flag
-    prefix = "mirador/gcp"
-  }
+  # Backend configuration is in backend.tf — bucket/prefix injected via
+  # -backend-config at terraform init time (see .gitlab-ci.yml infra stage).
 }
 
 provider "google" {

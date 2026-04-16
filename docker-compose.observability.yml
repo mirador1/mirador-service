@@ -53,9 +53,11 @@ services:
       # running on the host machine (outside Docker) via a stable hostname.
       - "host.docker.internal:host-gateway"
     volumes:
-      # Pre-provision a Grafana dashboard into the LGTM Grafana instance
+      # Dashboard provisioning — the entire dashboards-lgtm/ directory is mounted so
+      # adding a new *.json file is enough to provision a new Grafana dashboard without
+      # any container restart. The YAML provider scans the directory every 10 s.
       - ./infra/observability/grafana/dashboards-lgtm/dashboard-demo-lgtm.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/dashboard-demo-lgtm.yaml
-      - ./infra/observability/grafana/dashboards-lgtm/demo.json:/otel-lgtm/demo.json
+      - ./infra/observability/grafana/dashboards-lgtm/:/otel-lgtm/dashboards/
       # Override OTEL collector config (Tempo-only pipeline, CORS allowed)
       - ./infra/observability/otelcol-override.yaml:/otel-lgtm/otelcol-config.yaml:ro
       # Override Grafana datasource provisioning — fixes Tempo→Loki trace-to-logs query:
@@ -66,11 +68,15 @@ services:
       # Forward all application logs received via OTLP to Loki
       ENABLE_LOGS_ALL: "true"
       # Set the provisioned demo dashboard as the Grafana home page
-      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /otel-lgtm/demo.json
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /otel-lgtm/dashboards/demo.json
       # Install the Infinity datasource plugin at startup so Grafana panels can call
       # REST endpoints (e.g. /actuator/health/*) directly — needed for exact UP/DOWN
       # health probe status that is not available as a Prometheus/OTLP metric.
-      GF_INSTALL_PLUGINS: "yesoreyeram-infinity-datasource"
+      # Plugins installed at startup:
+      # - yesoreyeram-infinity-datasource: call REST endpoints (actuator health probes)
+      # - marcusolsson-dynamictext-panel:  rich HTML+JS panels (Docker service control)
+      # - volkovlabs-button-panel:         single-action buttons (generate traffic)
+      GF_INSTALL_PLUGINS: "yesoreyeram-infinity-datasource,marcusolsson-dynamictext-panel,volkovlabs-button-panel"
     # Wait until Tempo's query API is ready before Grafana attempts datasource connection.
     # Tempo exposes /ready at port 3200; LGTM takes ~15-20s to start all internal services.
     healthcheck:

@@ -130,13 +130,8 @@ else
   ok "Ingress Controller ready."
 fi
 
-# Enable configuration-snippet annotations (required for WebSocket proxy_set_header).
-# Disabled by default in ingress-nginx ≥ 1.9 for security; safe to enable in a local cluster.
-kubectl patch configmap ingress-nginx-controller -n ingress-nginx \
-  --patch '{"data":{"allow-snippet-annotations":"true"}}' 2>/dev/null || true
-# Restart the controller so the configmap change takes effect
-kubectl rollout restart deployment/ingress-nginx-controller -n ingress-nginx
-kubectl rollout status deployment/ingress-nginx-controller -n ingress-nginx --timeout=60s
+# No configuration-snippet annotations used — nginx-ingress handles WebSocket
+# natively with proxy-http-version: "1.1". No controller patching needed.
 
 # ── 4. Build + push Docker images ─────────────────────────────────────────────
 if ! $SKIP_BUILD; then
@@ -225,13 +220,9 @@ if kubectl get namespace app &>/dev/null; then
 fi
 
 log "Applying Ingress..."
-# Strip the configuration-snippet annotation: nginx-ingress ≥ 1.9 treats
-# proxy_set_header snippets as "risky" and rejects them by default.
-# For local kind, WebSocket still works via proxy-http-version: "1.1" alone.
-# Also disable SSL redirect — no cert-manager/TLS in a local cluster.
-envsubst < "$BACKEND_DIR/k8s/ingress.yaml" \
-  | grep -v 'configuration-snippet\|proxy_set_header\|Connection "upgrade"' \
-  | kubectl apply -f -
+# No configuration-snippet in ingress.yaml anymore — apply directly.
+# Disable SSL redirect below (no cert-manager/TLS in a local cluster).
+envsubst < "$BACKEND_DIR/k8s/ingress.yaml" | kubectl apply -f -
 
 # Disable HTTPS redirect (nginx-ingress defaults to redirect HTTP → HTTPS when
 # a TLS block is present; not needed for local development).

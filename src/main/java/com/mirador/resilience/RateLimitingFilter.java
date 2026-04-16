@@ -40,6 +40,9 @@ public class RateLimitingFilter extends OncePerRequestFilter {
     private static final String HEADER_LIMIT_REMAINING = "X-Rate-Limit-Remaining";
     private static final String HEADER_RETRY_AFTER     = "Retry-After";
 
+    // Cap the number of tracked IPs to prevent memory exhaustion from spoofed X-Forwarded-For.
+    // When the cap is reached, new IPs fall through without a dedicated bucket (fail-open).
+    private static final int MAX_BUCKETS = 50_000;
     private final ConcurrentMap<String, Bucket> buckets = new ConcurrentHashMap<>();
 
     private final long capacity;
@@ -61,6 +64,12 @@ public class RateLimitingFilter extends OncePerRequestFilter {
                                     FilterChain chain) throws ServletException, IOException {
 
         String ip = resolveClientIp(request);
+        // Fail-open if the bucket map is at capacity — prevents memory exhaustion
+        // from attackers rotating X-Forwarded-For values.
+        if (buckets.size() >= MAX_BUCKETS && !buckets.containsKey(ip)) {
+            chain.doFilter(request, response);
+            return;
+        }
         Bucket bucket = buckets.computeIfAbsent(ip, this::newBucket);
 
         ConsumptionProbe probe = bucket.tryConsumeAndReturnRemaining(1);
@@ -92,15 +101,24 @@ public class RateLimitingFilter extends OncePerRequestFilter {
         return Bucket.builder().addLimit(limit).build();
     }
 
+    // IPv4 or IPv6 (simplified) — rejects garbage strings from spoofed headers.
+    private static final java.util.regex.Pattern IP_PATTERN = java.util.regex.Pattern.compile(
+            "^[0-9]{1,3}(\\.[0-9]{1,3}){3}$|^[0-9a-fA-F:]{2,45}$");
+
     /**
      * Resolves the real client IP, honoring the X-Forwarded-For header when
      * the request arrives through a reverse proxy (nginx, AWS ALB, …).
+     * Falls back to remoteAddr if XFF contains a non-IP value (spoofing defence).
      */
     private static String resolveClientIp(HttpServletRequest request) {
         String xff = request.getHeader("X-Forwarded-For");
         if (xff != null && !xff.isBlank()) {
             // X-Forwarded-For: client, proxy1, proxy2 — take the first entry
-            return xff.split(",")[0].trim();
+            String candidate = xff.split(",")[0].trim();
+            // Reject spoofed non-IP values to prevent unbounded bucket creation
+            if (candidate.length() <= 45 && IP_PATTERN.matcher(candidate).matches()) {
+                return candidate;
+            }
         }
         return request.getRemoteAddr();
     }

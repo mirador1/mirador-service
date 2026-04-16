@@ -303,6 +303,160 @@ sonar-analysis:
       - .m2/repository
   timeout: 10 minutes
 
+# ── stage: sonar — GitLab Code Quality artifact ──────────────────────────────
+#
+# Produces the GitLab Code Quality artifact (gl-code-quality-report.json) by:
+#
+#   1. Running PMD + Checkstyle via Maven with Java 21.
+#      Both tools crash on Java 25 pattern-matching syntax; -Dcompat activates the
+#      Java 21 source overlay so the analysis completes cleanly.
+#      -Preport-static enables PMD and Checkstyle (both skipped in the default build).
+#
+#   2. Using the SpotBugs XML from the integration-test artifacts (already produced
+#      by mvn verify in that stage — no need to rerun bytecode analysis here).
+#
+#   3. Converting all three XML reports to the GitLab Code Quality JSON format.
+#      GitLab reads gl-code-quality-report.json to annotate MR diffs inline —
+#      violations appear on the exact changed lines, no separate plugin required.
+#
+# Severity mapping:
+#   SpotBugs  priority 1 → blocker, 2 → critical, 3 → major, 4 → minor, 5 → info
+#   PMD       priority 1 → blocker, 2 → critical, 3 → major, 4 → minor, 5 → info
+#   Checkstyle error → major, warning → minor, info → info
+#
+# Format spec: https://docs.gitlab.com/ee/ci/testing/code_quality.html#implement-a-custom-tool
+code-quality:
+  stage: sonar
+  # Java 21 image: same as compat-* jobs — required for PMD + Checkstyle to parse
+  # Java 25 pattern-matching syntax (both tools use their own parser, not javac).
+  image: maven:3.9.14-eclipse-temurin-21-noble
+  needs:
+    - job: integration-test
+      artifacts: true   # provides target/spotbugsXml.xml (bytecode analysis already done)
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  allow_failure: true   # Code Quality annotations are informational — must never block merges
+  variables:
+    MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+  script:
+    # Step 1 — Generate PMD + Checkstyle XML reports.
+    # -Dcompat: activates the Java 21 source overlay (ScopedValue → ThreadLocal shim)
+    # -Preport-static: enables maven-pmd-plugin and maven-checkstyle-plugin (both skip=true by default)
+    # -DskipTests -DskipITs: tests already validated in earlier stages
+    # -Djacoco.skip: no coverage measurement needed here
+    # SpotBugs is NOT in -Preport-static so it stays skipped; we use the XML from integration-test.
+    - mvn $MAVEN_CLI_OPTS verify
+        -Dcompat -Preport-static
+        -DskipTests -DskipITs
+        -Djacoco.skip=true
+    # Step 2 — Convert SpotBugs + PMD + Checkstyle XML → gl-code-quality-report.json.
+    - |
+      python3 - <<'PYEOF'
+      import xml.etree.ElementTree as ET, json, hashlib, os
+
+      # SpotBugs priority 1=HIGH…5=INFO → GitLab severity labels
+      SMAP_SB  = {1: 'blocker', 2: 'critical', 3: 'major', 4: 'minor', 5: 'info'}
+      # PMD priority string '1'=HIGH…'5'=INFO
+      SMAP_PMD = {'1': 'blocker', '2': 'critical', '3': 'major', '4': 'minor', '5': 'info'}
+      issues = []
+
+      def rel_path(abs_path):
+          """Strip everything before src/main/java/ to get a project-relative path."""
+          idx = abs_path.find('src/main/java/')
+          return abs_path[idx:] if idx >= 0 else abs_path
+
+      # ── SpotBugs ─────────────────────────────────────────────────────────────
+      sb_path = 'target/spotbugsXml.xml'
+      if os.path.exists(sb_path):
+          root = ET.parse(sb_path).getroot()
+          n = 0
+          for bug in root.findall('.//BugInstance'):
+              priority = int(bug.get('priority', '5'))
+              src = bug.find('.//SourceLine[@primary="true"]') or bug.find('.//SourceLine')
+              if src is None:
+                  continue
+              sp = src.get('sourcepath', '')
+              line = int(src.get('start', '1'))
+              btype = bug.get('type', 'UNKNOWN')
+              cat   = bug.get('category', '')
+              path  = ('src/main/java/' + sp) if sp else 'src/main/java/unknown'
+              desc  = '[SpotBugs] ' + btype + (' [' + cat + ']' if cat else '')
+              lm = bug.find('.//LongMessage')
+              if lm is not None and lm.text:
+                  desc += ': ' + lm.text.strip()[:200]
+              fp = hashlib.md5(f"sb:{path}:{line}:{btype}".encode()).hexdigest()
+              issues.append({"description": desc, "fingerprint": fp,
+                             "severity": SMAP_SB.get(priority, 'info'),
+                             "location": {"path": path, "lines": {"begin": line}}})
+              n += 1
+          print(f"SpotBugs: {n} findings")
+      else:
+          print("SpotBugs: no report found (target/spotbugsXml.xml missing)")
+
+      # ── PMD ──────────────────────────────────────────────────────────────────
+      pmd_path = 'target/pmd.xml'
+      if os.path.exists(pmd_path):
+          root = ET.parse(pmd_path).getroot()
+          n = 0
+          for fnode in root.findall('.//file'):
+              fpath = fnode.get('name', '')
+              rel   = rel_path(fpath)
+              for v in fnode.findall('violation'):
+                  line     = int(v.get('beginline', '1'))
+                  rule     = v.get('rule', 'Unknown')
+                  ruleset  = v.get('ruleset', '')
+                  priority = v.get('priority', '3')
+                  msg      = (v.text or '').strip()[:200]
+                  desc = '[PMD] ' + rule + (f' ({ruleset})' if ruleset else '') + ': ' + msg
+                  fp = hashlib.md5(f"pmd:{rel}:{line}:{rule}".encode()).hexdigest()
+                  issues.append({"description": desc, "fingerprint": fp,
+                                 "severity": SMAP_PMD.get(priority, 'major'),
+                                 "location": {"path": rel, "lines": {"begin": line}}})
+                  n += 1
+          print(f"PMD: {n} findings")
+      else:
+          print("PMD: no report found (target/pmd.xml missing)")
+
+      # ── Checkstyle ───────────────────────────────────────────────────────────
+      cs_path = 'target/checkstyle-result.xml'
+      if os.path.exists(cs_path):
+          root = ET.parse(cs_path).getroot()
+          n = 0
+          for fnode in root.findall('.//file'):
+              fpath = fnode.get('name', '')
+              rel   = rel_path(fpath)
+              for err in fnode.findall('error'):
+                  line   = int(err.get('line', '1'))
+                  sev    = err.get('severity', 'warning')
+                  msg    = err.get('message', '')[:200]
+                  source = err.get('source', '').split('.')[-1]
+                  gl_sev = 'major' if sev == 'error' else 'minor' if sev == 'warning' else 'info'
+                  desc = '[Checkstyle] ' + source + ': ' + msg
+                  fp = hashlib.md5(f"cs:{rel}:{line}:{source}:{msg[:50]}".encode()).hexdigest()
+                  issues.append({"description": desc, "fingerprint": fp,
+                                 "severity": gl_sev,
+                                 "location": {"path": rel, "lines": {"begin": line}}})
+                  n += 1
+          print(f"Checkstyle: {n} findings")
+      else:
+          print("Checkstyle: no report found (target/checkstyle-result.xml missing)")
+
+      with open('gl-code-quality-report.json', 'w') as f:
+          json.dump(issues, f, indent=2)
+      print(f"✓ Total {len(issues)} findings → gl-code-quality-report.json")
+      PYEOF
+  artifacts:
+    reports:
+      # GitLab reads this key to populate the Code Quality widget in MR diffs.
+      # Violations appear as inline annotations on the changed lines — no plugin needed.
+      codequality: gl-code-quality-report.json
+    paths:
+      - gl-code-quality-report.json   # also browsable as a raw JSON pipeline artifact
+    expire_in: 1 week
+
 # ── stage: package ────────────────────────────────────────────────────────────
 
 # Generate the Maven site with quality reports (Surefire, JaCoCo, SpotBugs, Javadoc).
@@ -382,7 +536,7 @@ trivy:scan:
   # Runs only on main/tags after docker-build succeeds. allow_failure:true —
   # we track CVEs as informational; blocking releases on new CVEs creates friction.
   stage: package
-  image: aquasec/trivy:latest
+  image: aquasecurity/trivy:latest
   needs:
     - job: docker-build
   rules:
@@ -576,6 +730,79 @@ generate-reports:
     name: "reports-${CI_COMMIT_SHORT_SHA}"
     paths:
       - target/site/    # Full Maven site HTML — browsable via "Browse" in pipeline artifacts
+    expire_in: 30 days
+    when: always
+
+# ── stage: reports — Semgrep static analysis ─────────────────────────────────
+#
+# Runs Semgrep on the Java source code using public OSS rulesets.
+# No account, no token, no service — the rulesets are fetched from the public
+# Semgrep registry (registry.semgrep.dev) at runtime.
+#
+# Rulesets used:
+#   p/java        — general Java bugs: null deref, resource leaks, bad equals, …
+#   p/spring      — Spring-specific: missing @Transactional, wrong @Autowired, …
+#   p/owasp-top-ten — injection, XSS, insecure crypto, path traversal, …
+#   p/secrets     — hardcoded credentials, API keys in source
+#
+# Output formats:
+#   gl-sast-report.json    → GitLab Security Dashboard (SAST widget in MRs)
+#   semgrep-report.json    → full JSON for manual inspection or downstream tooling
+#
+# Why Semgrep instead of Qodana?
+#   Qodana requires a JetBrains account even on the free tier (token activation).
+#   Semgrep OSS rules are fully public — no registration, no vendor lock-in.
+#   Analysis takes ~1-2 min vs ~10 min for Qodana.
+semgrep:
+  stage: reports
+  image: semgrep/semgrep:latest
+  rules:
+    # Run on the daily report schedule alongside generate-reports
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $REPORT_PIPELINE == "true"
+      when: on_success
+    # Also available as a manual ▶ trigger on any pipeline
+    - when: manual
+      allow_failure: true
+  allow_failure: true   # static analysis results are informational — must not block deploys
+  script:
+    # GitLab SAST format — populates the Security Dashboard and MR security widget
+    - semgrep
+        --config=p/java
+        --config=p/spring
+        --config=p/owasp-top-ten
+        --config=p/secrets
+        --gitlab-sast
+        --output=gl-sast-report.json
+        --exclude="src/test"
+        src/main/java/
+        || true   # exit 1 when findings exist — treat as informational, not a failure
+    # Full JSON for manual review or downstream tooling
+    - semgrep
+        --config=p/java
+        --config=p/spring
+        --config=p/owasp-top-ten
+        --config=p/secrets
+        --json
+        --output=semgrep-report.json
+        --exclude="src/test"
+        src/main/java/
+        || true
+    - |
+      # Summary to CI log
+      python3 -c "
+      import json, os
+      if os.path.exists('semgrep-report.json'):
+          d = json.load(open('semgrep-report.json'))
+          n = len(d.get('results', []))
+          print(f'Semgrep: {n} findings across p/java + p/spring + p/owasp-top-ten + p/secrets')
+      "
+  artifacts:
+    name: "semgrep-${CI_COMMIT_SHORT_SHA}"
+    reports:
+      sast: gl-sast-report.json   # GitLab reads this for the Security Dashboard
+    paths:
+      - semgrep-report.json       # full findings — browsable as artifact
+      - gl-sast-report.json
     expire_in: 30 days
     when: always
 
@@ -868,6 +1095,32 @@ deploy:gke:
     - gcloud container clusters get-credentials "$GKE_CLUSTER"
         --region "$GKE_REGION" --project "$GCP_PROJECT"
     - !reference [.kubectl-apply, script]
+    # GKE-specific: Cloud SQL Auth Proxy — ServiceAccount (Workload Identity) +
+    # ConfigMap override (DB_HOST=127.0.0.1). The proxy sidecar is embedded in the
+    # deployment patch below. Requires CI vars: GCP_PROJECT, CLOUD_SQL_INSTANCE.
+    - |
+      if [ -n "${CLOUD_SQL_INSTANCE:-}" ]; then
+        envsubst < k8s/gke/cloud-sql-proxy.yaml | kubectl apply -f -
+        # Patch backend deployment: set serviceAccount + cloud-sql-proxy sidecar.
+        # Strategic merge patch is idempotent — safe to re-apply on every deploy.
+        kubectl patch deployment customer-service -n app --type=strategic -p="{
+          \"spec\":{\"template\":{\"spec\":{
+            \"serviceAccountName\":\"mirador-backend\",
+            \"containers\":[{
+              \"name\":\"cloud-sql-proxy\",
+              \"image\":\"gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.15.1\",
+              \"args\":[\"--structured-logs\",\"--port=5432\",\"--auto-iam-authn\",\"${CLOUD_SQL_INSTANCE}\"],
+              \"resources\":{\"requests\":{\"memory\":\"32Mi\",\"cpu\":\"10m\"},\"limits\":{\"memory\":\"64Mi\",\"cpu\":\"100m\"}},
+              \"securityContext\":{\"allowPrivilegeEscalation\":false}
+            }]
+          }}}
+        }"
+        # Override DB_HOST in running pods — the ConfigMap override triggers a rollout
+        kubectl set env deployment/customer-service -n app DB_HOST=127.0.0.1
+        kubectl rollout status deployment/customer-service -n app --timeout=180s
+      else
+        echo "CLOUD_SQL_INSTANCE not set — skipping Cloud SQL Auth Proxy (using in-cluster PostgreSQL)"
+      fi
 
 # ── AWS EKS — manual ──────────────────────────────────────────────────────────
 #
