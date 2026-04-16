@@ -4,13 +4,94 @@
 # lefthook is a fast Git hooks manager written in Go (no Node.js required).
 # Install: brew install lefthook
 # Activate: lefthook install   (wires hooks into .git/hooks/)
-# Bypass:   LEFTHOOK=0 git push   (skip hooks for emergency pushes)
+# Bypass:   LEFTHOOK=0 git commit / push   (skip hooks for emergency pushes)
 #
 # Hooks defined here:
+#   pre-commit — validates staged files without running any build:
+#                - .gitlab-ci.yml       → glab ci lint (catch YAML/syntax errors)
+#                - Dockerfile*          → hadolint     (linter for common Dockerfile bugs)
+#                - k8s/**/*.yaml        → kubectl apply --dry-run=client -f
+#                - terraform/**/*.tf    → terraform fmt -check + terraform validate
+#                - pom.xml              → xmllint       (XML well-formed)
+#                Each check only runs if the relevant file type is staged.
+#                Missing tool → check is skipped (warning only, not blocking).
+#
 #   pre-push  — runs unit tests before every push; blocks if they fail.
 #               Integration tests are intentionally excluded (too slow for
 #               a pre-push gate; they run in CI after the push).
+#
+# Why this matters:
+#   The previous session wasted 4+ CI iterations on trivial issues (bad YAML,
+#   wrong Docker image tag, Terraform syntax error) that a local check would
+#   have caught in 5 seconds. These hooks catch those BEFORE the commit lands,
+#   saving pipeline quota and time.
 # =============================================================================
+
+pre-commit:
+  parallel: true
+  commands:
+    gitlab-ci-lint:
+      # Validates .gitlab-ci.yml against GitLab's CI lint API before commit.
+      # Catches YAML syntax, unknown keywords, invalid rules, wrong stages, etc.
+      glob: ".gitlab-ci.yml"
+      run: |
+        if command -v glab >/dev/null 2>&1; then
+          glab ci lint
+        else
+          echo "⚠️  glab not installed — skipping .gitlab-ci.yml lint. Install: brew install glab"
+        fi
+      fail_text: ".gitlab-ci.yml has syntax errors. Fix before committing."
+
+    dockerfile-lint:
+      # Hadolint catches ~40 common Dockerfile bugs (wrong COPY, missing USER, etc.).
+      glob: "Dockerfile*"
+      run: |
+        if command -v hadolint >/dev/null 2>&1; then
+          hadolint {staged_files}
+        else
+          echo "⚠️  hadolint not installed — skipping Dockerfile lint. Install: brew install hadolint"
+        fi
+      fail_text: "Dockerfile failed hadolint. Fix the issues before committing."
+
+    k8s-dry-run:
+      # Client-side validation: YAML syntax + basic K8s schema.
+      # Does NOT hit the cluster — safe to run even without a connected context.
+      glob: "k8s/**/*.yaml"
+      run: |
+        if command -v kubectl >/dev/null 2>&1; then
+          for f in {staged_files}; do
+            kubectl apply --dry-run=client -f "$f" >/dev/null
+          done
+        else
+          echo "⚠️  kubectl not installed — skipping k8s dry-run"
+        fi
+      fail_text: "K8s manifest(s) invalid. Run 'kubectl apply --dry-run=client -f <file>' for details."
+
+    terraform-validate:
+      # terraform fmt -check + terraform validate on the gcp/ module.
+      # Only runs when a .tf file is staged — no network call.
+      glob: "terraform/**/*.tf"
+      run: |
+        if command -v terraform >/dev/null 2>&1; then
+          terraform -chdir=terraform/gcp fmt -check -recursive
+          terraform -chdir=terraform/gcp init -backend=false -input=false >/dev/null
+          terraform -chdir=terraform/gcp validate
+        else
+          echo "⚠️  terraform not installed — skipping Terraform validate. Install: brew install terraform"
+        fi
+      fail_text: "Terraform files failed validation. Run 'terraform fmt' and fix syntax."
+
+    pom-xml-wellformed:
+      # Cheap sanity check that pom.xml is well-formed XML.
+      # Full model validation happens in mvn; this catches typos before push.
+      glob: "pom.xml"
+      run: |
+        if command -v xmllint >/dev/null 2>&1; then
+          xmllint --noout pom.xml
+        else
+          echo "⚠️  xmllint not installed (should ship with macOS)"
+        fi
+      fail_text: "pom.xml is not well-formed XML."
 
 pre-push:
   commands:
