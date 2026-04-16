@@ -45,9 +45,14 @@ spring:
     # Spring AI Ollama auto-configuration is incompatible with Spring Boot 4
     # (OllamaAutoConfiguration references classes not present in Boot 4 autoconfigure).
     # BioService is replaced by a Mockito stub via TestAiConfig in integration tests.
+    #
+    # resilience4j-spring-boot3 2.4.0 ships a SpringBoot3Verifier that fails
+    # fast on SB4 at context refresh; we opt out (see main application.yml
+    # for the full rationale).
     exclude:
       - org.springframework.ai.autoconfigure.ollama.OllamaAutoConfiguration
       - org.springdoc.core.configuration.SpringDocDataRestConfiguration
+      - io.github.resilience4j.springboot3.verifier.autoconfigure.SpringBoot3VerifierAutoConfiguration
 
 logging:
   level:
