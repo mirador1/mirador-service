@@ -1,4 +1,4 @@
-# `k8s/` — Kubernetes manifests
+# `deploy/kubernetes/` — Kubernetes manifests
 
 This directory holds the Kubernetes manifests applied by the `deploy:*`
 jobs in `.gitlab-ci.yml`. Each subdirectory groups resources for a single
@@ -29,9 +29,9 @@ The CI's `.kubectl-apply` template applies manifests in this order:
 
 ```
 k8s/namespace.yaml           # always
-k8s/infra/redis.yaml         # always
-k8s/infra/kafka.yaml         # always
-k8s/infra/postgres.yaml      # NOT on GKE (skipped — uses Cloud SQL)
+deploy/kubernetes/stateful/redis.yaml         # always
+deploy/kubernetes/stateful/kafka.yaml         # always
+deploy/kubernetes/stateful/postgres.yaml      # NOT on GKE (skipped — uses Cloud SQL)
 k8s/backend/configmap.yaml
 k8s/backend/deployment.yaml
 k8s/backend/service.yaml
@@ -50,13 +50,13 @@ k8s/gke/cloud-sql-proxy.yaml # if CLOUD_SQL_INSTANCE CI var is set
 
 ## What NOT to put here
 
-- **Cloud infrastructure** (VPC, GKE cluster, Cloud SQL instance) → `terraform/gcp/`
+- **Cloud infrastructure** (VPC, GKE cluster, Cloud SQL instance) → `deploy/terraform/gcp/`
 - **Local Docker Compose configs** → `infra/`
 - **Application source code** → `src/`
 
 ## Related docs
 
-- `terraform/gcp/README.md` — how the cluster and managed services are
+- `deploy/terraform/gcp/README.md` — how the cluster and managed services are
   provisioned.
 - `.gitlab-ci.yml` (`.kubectl-apply` template, `deploy:gke` job) — exact
   apply commands and ordering.

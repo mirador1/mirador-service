@@ -2,7 +2,7 @@
 
 This directory holds **configuration files mounted into the local Docker
 Compose stack**. Nothing here deploys to production — production
-infrastructure lives under `terraform/gcp/` and `k8s/`.
+infrastructure lives under `deploy/terraform/gcp/` and `deploy/kubernetes/`.
 
 Each sub-directory wraps a single service running in `docker-compose.yml`
 (or `docker-compose.observability.yml`) and contains only the files that
@@ -42,7 +42,7 @@ so the mount paths are obvious at a glance.
 
 ## Out of scope
 
-- **Kubernetes manifests** → `k8s/` (separate target, different mount semantics).
-- **Terraform code** → `terraform/` (provisions cloud infrastructure, not
+- **Kubernetes manifests** → `deploy/kubernetes/` (separate target, different mount semantics).
+- **Terraform code** → `deploy/terraform/` (provisions cloud infrastructure, not
   container configs).
 - **Dev scripts** → `scripts/` (e.g. traffic simulators, register-runner helpers).

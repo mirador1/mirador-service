@@ -28,7 +28,7 @@
       3. Next deploy:gke auto-injects the sidecar (already wired in .gitlab-ci.yml).
 
 - [ ] **Managed Kafka on GCP (OPTIONAL, ~$35/day)** — Deferred: not a simple toggle.
-      Requires uncommenting ~70 lines in terraform/gcp/kafka.tf + SASL config in
+      Requires uncommenting ~70 lines in deploy/terraform/gcp/kafka.tf + SASL config in
       backend configmap + secret creation. See migration path at end of kafka.tf.
 
 ## Recently Completed

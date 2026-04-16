@@ -52,4 +52,4 @@ open target/spotbugs.html
 - `.gitlab-ci.yml` — the `owasp-dependency-check`, `code-quality`, and
   related jobs that run these analyzers in CI.
 - `.owasp-data/` — local NVD cache populated by the OWASP plugin (see
-  `src/build/owasp-data-README.md`).
+  `build/owasp-data-README.md`).

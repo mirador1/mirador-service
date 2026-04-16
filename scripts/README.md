@@ -31,7 +31,7 @@ Think of this directory as the project's toolbox.
 | Local dev helper (this directory)        | `scripts/`                             |
 | CI-only one-liner                        | Inline in `.gitlab-ci.yml` `script:`   |
 | Docker/compose setup                     | `infra/<service>/` as a config file    |
-| Kubernetes cluster bootstrap             | `k8s/` or inline in `deploy:*` job     |
+| Kubernetes cluster bootstrap             | `deploy/kubernetes/` or inline in `deploy:*` job     |
 | Multi-file/compiled tool                 | Separate sub-repo                      |
 
 ## Running

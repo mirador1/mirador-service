@@ -782,7 +782,7 @@
           owasp-data-readme — drops a README.md into .owasp-data/ the first time
           the OWASP scan populates it, so the directory self-documents for anyone
           who stumbles on 240 MB of files and wonders "what is this?".
-          The template is committed at src/build/owasp-data-README.md; here it's
+          The template is committed at build/owasp-data-README.md; here it's
           just copied to the cache directory. Only runs when the OWASP plugin is
           actually active (-Preport triggers the prepare-package execution above).
         -->
@@ -801,7 +801,7 @@
                                  Without it, Ant's plain <copy> rejects the if= attribute. -->
                             <available file="${project.basedir}/.owasp-data/odc.mv.db"
                                        property="owasp.data.populated"/>
-                            <copy file="${project.basedir}/src/build/owasp-data-README.md"
+                            <copy file="${project.basedir}/build/owasp-data-README.md"
                                   tofile="${project.basedir}/.owasp-data/README.md"
                                   overwrite="true"
                                   failonerror="false"

@@ -1,4 +1,4 @@
-# `terraform/` — Infrastructure-as-Code for production deployments
+# `deploy/terraform/` — Infrastructure-as-Code for production deployments
 
 This directory holds the Terraform modules that provision the **cloud
 infrastructure** the application runs on in production. Local development
@@ -25,7 +25,7 @@ directory is only relevant when deploying to a managed cloud.
 
 More cloud targets (AWS EKS, Azure AKS, bare-metal k3s) could be added as
 sibling directories — but their Kubernetes manifests already live under
-`k8s/` and are applied by the corresponding `deploy:*` CI jobs, so for now
+`deploy/kubernetes/` and are applied by the corresponding `deploy:*` CI jobs, so for now
 Terraform is scoped to GCP only.
 
 ## How this is wired into the CI pipeline
@@ -86,7 +86,7 @@ gcloud services enable container.googleapis.com sqladmin.googleapis.com \
 
 ## What NOT to put here
 
-- **Kubernetes manifests** → `k8s/` (Terraform doesn't manage workloads, only
+- **Kubernetes manifests** → `deploy/kubernetes/` (Terraform doesn't manage workloads, only
   the cluster they run on).
 - **Application secrets** → GitLab CI masked variables injected as K8s
   Secrets at deploy time.

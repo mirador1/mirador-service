@@ -26,7 +26,7 @@ desktop mode (no login screen). This is fine because:
 - the same credentials are used everywhere in the stack for local dev
 
 **None of this is used in production.** Cloud SQL uses IAM auth via the
-Cloud SQL Auth Proxy (see `k8s/gke/cloud-sql-proxy.yaml`).
+Cloud SQL Auth Proxy (see `deploy/kubernetes/gke/cloud-sql-proxy.yaml`).
 
 ## Files in this directory
 

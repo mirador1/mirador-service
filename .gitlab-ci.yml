@@ -54,8 +54,8 @@ workflow:
         - ".dockerignore"
         - "docker-compose*.yml"
         - ".gitlab-ci.yml"
-        - "k8s/**/*"
-        - "terraform/**/*"
+        - "deploy/kubernetes/**/*"
+        - "deploy/terraform/**/*"
         - "scripts/**/*"
     # Main branch pushes — same allowlist, compared against HEAD~1 (last commit).
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE != "schedule"
@@ -69,8 +69,8 @@ workflow:
         - ".dockerignore"
         - "docker-compose*.yml"
         - ".gitlab-ci.yml"
-        - "k8s/**/*"
-        - "terraform/**/*"
+        - "deploy/kubernetes/**/*"
+        - "deploy/terraform/**/*"
         - "scripts/**/*"
     # Scheduled pipelines: two named schedules (native build + report generation).
     # Configure each in GitLab → CI/CD → Schedules. The REPORT_PIPELINE variable
@@ -992,7 +992,7 @@ build-native:
     # Also export GOOGLE_CLOUD_PROJECT as belt-and-suspenders — some codepaths
     # in the Go Cloud SDK consult the env var before the credential JSON.
     - export GOOGLE_CLOUD_PROJECT="${TF_VAR_project_id}"
-    - cd terraform/gcp
+    - cd deploy/terraform/gcp
     - terraform init
         -backend-config="bucket=${TF_STATE_BUCKET}"
         -backend-config="prefix=mirador/gcp"
@@ -1017,7 +1017,7 @@ terraform-plan:
         -input=false
   artifacts:
     paths:
-      - terraform/gcp/tfplan
+      - deploy/terraform/gcp/tfplan
     expire_in: 1 day   # plan is only valid for the pipeline that generated it
 
 # Apply the Terraform plan — manual trigger required (prevents accidental infra changes).
@@ -1092,16 +1092,16 @@ terraform-apply:
     - |
       # Apply all manifests — envsubst replaces ${K8S_HOST}, ${IMAGE_REGISTRY}, ${IMAGE_TAG},
       # ${CORS_ALLOWED_ORIGINS} with CI variable values.
-      # GKE production skips k8s/infra/postgres.yaml — use Cloud SQL + Cloud SQL Auth Proxy instead.
+      # GKE production skips deploy/kubernetes/stateful/postgres.yaml — use Cloud SQL + Cloud SQL Auth Proxy instead.
       # For non-GKE targets (EKS, k3s) postgres.yaml provides an in-cluster PostgreSQL StatefulSet.
-      # NOTE: k8s/frontend/ manifests are NOT applied here — the frontend (mirador-ui) image is
+      # NOTE: deploy/kubernetes/frontend/ manifests are NOT applied here — the frontend (mirador-ui) image is
       # built and deployed by the mirador-ui CI pipeline (registry.gitlab.com/mirador1/mirador-ui).
       # Applying them from the service pipeline would use the wrong image tag.
-      for f in k8s/namespace.yaml \
-                k8s/infra/redis.yaml k8s/infra/kafka.yaml \
-                k8s/backend/configmap.yaml \
-                k8s/backend/deployment.yaml k8s/backend/service.yaml k8s/backend/hpa.yaml \
-                k8s/ingress.yaml; do
+      for f in deploy/kubernetes/namespace.yaml \
+                deploy/kubernetes/stateful/redis.yaml deploy/kubernetes/stateful/kafka.yaml \
+                deploy/kubernetes/backend/configmap.yaml \
+                deploy/kubernetes/backend/deployment.yaml deploy/kubernetes/backend/service.yaml deploy/kubernetes/backend/hpa.yaml \
+                deploy/kubernetes/ingress.yaml; do
         [ -f "$f" ] && envsubst < "$f" | kubectl apply -f -
       done
     # Wait for the rolling update to complete. 6 min is enough for cold-start
@@ -1194,7 +1194,7 @@ deploy:gke:
     # deployment patch below. Requires CI vars: GCP_PROJECT, CLOUD_SQL_INSTANCE.
     - |
       if [ -n "${CLOUD_SQL_INSTANCE:-}" ]; then
-        envsubst < k8s/gke/cloud-sql-proxy.yaml | kubectl apply -f -
+        envsubst < deploy/kubernetes/gke/cloud-sql-proxy.yaml | kubectl apply -f -
         # Patch backend deployment: set serviceAccount + cloud-sql-proxy sidecar.
         # Strategic merge patch is idempotent — safe to re-apply on every deploy.
         kubectl patch deployment customer-service -n app --type=strategic -p="{
