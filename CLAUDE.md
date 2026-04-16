@@ -45,12 +45,29 @@ Always run the default `./mvnw verify` after any change unless testing a specifi
 
 ## Git workflow
 
+- **Always run this BEFORE making changes**:
+  ```
+  git fetch --all
+  git log --oneline origin/dev..HEAD    # commits ahead
+  git log --oneline HEAD..origin/dev    # commits behind — if non-empty, git pull --rebase
+  git status
+  ```
 - Branch: `dev`. One commit per logical change.
 - Push with `git push origin dev`.
 - If an MR exists: `glab mr merge <id> --auto-merge --squash=false --remove-source-branch=false`.
   **Always pass `--remove-source-branch=false`** — GitLab deletes the source branch by default,
   which would destroy `dev`. The `dev` branch must never be deleted.
 - Never push directly to `main`.
+- Resolve merge conflicts by `git pull --rebase`, never by force-push.
+
+## CI workflow rules
+
+The pipeline runs ONLY when code/build/infra files change (see `workflow:rules` in `.gitlab-ci.yml`).
+Pure documentation commits (`**/*.md`, `docs/**`) do NOT trigger a pipeline — this is intentional.
+If a doc change really needs CI validation, use GitLab UI → "Run pipeline" on the branch.
+
+Expensive jobs (`docker-build`, `terraform-apply`, `deploy:gke`) have `interruptible: false` —
+they survive a new push mid-run. Don't remove this flag without understanding the cost.
 
 ## GCP Production Environment
 

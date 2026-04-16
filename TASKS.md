@@ -7,42 +7,45 @@
   Format: - [ ] pending   - [~] in progress   - [x] done (keep last 10 done for context)
 -->
 
+## In Progress
+
+- [~] **deploy:gke first run** — Pipeline running on MR !39 (docker-build OOM fix).
+      Once merged, main pipeline will build, then deploy:gke runs → cert-manager emits
+      Let's Encrypt TLS cert automatically → HTTPS live on mirador1.duckdns.org.
+      Monitored by cron job (every 3 min) to detect failures.
+
 ## Pending — Kubernetes & Cloud deployment
 
-- [ ] **HTTPS — first cert issuance** — cert-manager + letsencrypt-prod ClusterIssuer
-      are deployed and READY. The TLS cert will be auto-issued on the next successful
-      `deploy:gke` run (Ingress has cert-manager.io/cluster-issuer annotation).
-      CORS_ALLOWED_ORIGINS is already set to `https://${K8S_HOST}` in CI.
-      **Action**: just trigger a deploy:gke pipeline on main (push or retry).
+- [ ] **Terraform apply on GCP infra** — State bucket exists
+      (gs://project-8d6ea68c-33ac-412b-8aa-tf-state, versioning on).
+      After MR !39 merges, terraform-plan should succeed. Then manually trigger
+      terraform-apply job (it's gated by `when: manual`) to provision:
+      VPC + GKE Autopilot + Cloud SQL PostgreSQL 17 + Memorystore Redis + IAM SAs.
 
-- [ ] **Cloud SQL Auth Proxy** — deploy:gke CI job now conditionally applies the sidecar
-      when `CLOUD_SQL_INSTANCE` CI variable is set. Steps to enable:
-      1. Create GCS state bucket: `gsutil mb -p $GCP_PROJECT gs://$GCP_PROJECT-tf-state`
-      2. Run `terraform apply` to provision Cloud SQL + VPC peering
-      3. Set `CLOUD_SQL_INSTANCE=$GCP_PROJECT:$GKE_REGION:mirador-db` as GitLab CI variable
-      4. Next deploy:gke will auto-apply the proxy sidecar + DB_HOST override
+- [ ] **Cloud SQL Auth Proxy enablement** — After terraform-apply succeeds:
+      1. `terraform output -raw cloud_sql_instance_name` → get connection name
+      2. Set GitLab CI variable `CLOUD_SQL_INSTANCE=$GCP_PROJECT:$GKE_REGION:mirador-db`
+      3. Next deploy:gke auto-injects the sidecar (already wired in .gitlab-ci.yml).
 
-- [ ] **Managed Kafka on GCP** — Google Cloud Managed Kafka (GA 2024, Kafka-compatible):
-      set `kafka_enabled = true` in terraform/gcp/terraform.tfvars; see terraform/gcp/kafka.tf.
-
-- [ ] **Terraform state bucket** — `terraform-plan` CI job fails because the GCS state
-      bucket doesn't exist yet. Create it once:
-      `gsutil mb -p $GCP_PROJECT -l europe-west1 gs://$GCP_PROJECT-tf-state`
-      `gsutil versioning set on gs://$GCP_PROJECT-tf-state`
+- [ ] **Managed Kafka on GCP (OPTIONAL, ~$35/day)** — Deferred: not a simple toggle.
+      Requires uncommenting ~70 lines in terraform/gcp/kafka.tf + SASL config in
+      backend configmap + secret creation. See migration path at end of kafka.tf.
 
 ## Recently Completed
 
-- [x] Pipeline fixes (2026-04-16): trivy image → aquasecurity/trivy, removed
-      configuration-snippet annotation (blocked by nginx-ingress ≥1.9 on GKE),
-      fixed duplicate terraform backend block, cleaned deploy-local.sh.
+- [x] Created Terraform state GCS bucket (versioning enabled) — already existed.
+- [x] Pipeline fixes (2026-04-16): trivy → aquasecurity/trivy, suppression nginx
+      configuration-snippet, fix duplicate terraform backend, strategic merge patch
+      for cloud-sql-proxy sidecar, Maven heap cap in Dockerfile (OOM fix).
 - [x] Cloud SQL Auth Proxy CI wiring — deploy:gke conditionally applies sidecar
       when CLOUD_SQL_INSTANCE env var is set.
-- [x] MR !38 merged — GitLab Code Quality widget (SpotBugs+PMD+Checkstyle) + Semgrep.
+- [x] CORS headers hardened (explicit allowlist instead of wildcard).
+- [x] RateLimitingFilter hardened (IP validation + 50k bucket cap) against
+      X-Forwarded-For spoofing DoS.
+- [x] MR !38 merged — GitLab Code Quality widget + Semgrep.
 - [x] Auth0 backend wiring — audience validation + role extraction fallback.
-- [x] Grafana Cloud OTLP push — direct push via OTel, no DaemonSet (GKE Autopilot).
-- [x] DuckDNS domain: mirador1.duckdns.org → 34.52.233.183.
+- [x] Grafana Cloud OTLP push — direct push via OTel, no DaemonSet.
 - [x] SonarCloud migration + SonarQube BLOCKER/CRITICAL fixes.
-- [x] K8s local test (kind) + Terraform GCP infra (VPC, GKE, Cloud SQL, Redis, Kafka).
-- [x] All Maven site enrichments (trivy, licenses, cyclomatic complexity, slowest tests,
-      untested classes, dependency freshness/tree/conflicts, startup time, pipelines, branches).
-- [x] Pitest 1.23.0 (ASM 9.8 for Java 25), Compodoc, GitLab link in quality page.
+- [x] All Maven site enrichments (trivy, licenses, cyclomatic complexity,
+      slowest tests, untested classes, dependency freshness/tree/conflicts,
+      startup time, pipelines, branches).

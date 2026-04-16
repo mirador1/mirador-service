@@ -22,15 +22,21 @@
 FROM eclipse-temurin:25-jdk AS builder
 WORKDIR /app
 
+# Cap Maven/JVM heap to avoid OOM on constrained builders (Kaniko on GitLab
+# SaaS runners default to ~2 GB total RAM; without this cap, Maven + JaCoCo
+# + plugin classloaders can blow past the cgroup limit → exit 137).
+# -T 1 forces single-threaded build to halve peak memory usage.
+ENV MAVEN_OPTS="-Xmx512m -Xss512k -XX:+UseSerialGC"
+
 # Copy Maven wrapper first so the dependency layer is cached independently
 COPY .mvn/ .mvn/
 COPY mvnw pom.xml ./
 # Download all dependencies before copying source — this layer is only
 # invalidated when pom.xml changes, not on every source file change.
-RUN ./mvnw dependency:go-offline -q
+RUN ./mvnw dependency:go-offline -q -T 1
 
 COPY src/ src/
-RUN ./mvnw package -DskipTests -q
+RUN ./mvnw package -DskipTests -q -T 1
 
 # ---------------------------------------------------------------------------
 # Stage 2 — extract layers                               [Spring Boot 3+]
