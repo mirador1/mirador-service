@@ -527,46 +527,49 @@ build-jar:
 # Only runs on the default branch and on tags — skip on every MR to
 # avoid flooding the registry with images that are never deployed.
 docker-build:
-  # Kaniko builds the Docker image without Docker daemon — no DinD, no privileged mode.
-  # MUST run on an amd64 runner — the local Mac runner is Apple Silicon (arm64) and
-  # would produce arm64 images that fail with "exec format error" on GKE amd64 nodes.
-  # saas-linux-medium-amd64 guarantees the build matches the target platform.
-  # Kaniko reads the Dockerfile and pushes directly to the registry in one step.
-  # Cache: --cache=true + --cache-repo stores layer snapshots in the registry,
-  # equivalent to --cache-from in Docker buildx (first run is slow, subsequent runs fast).
+  # Build a multi-arch (amd64) image using Docker buildx on the local macbook runner.
+  # Why not Kaniko anymore:
+  #   - The macbook-local runner is Apple Silicon (arm64); Kaniko is NOT a cross-compiler,
+  #     so it produces arm64-only images that fail on GKE amd64 nodes with "exec format error".
+  #   - Forcing Kaniko onto saas-linux-medium-amd64 works but burns GitLab SaaS quota fast.
+  # buildx + QEMU on the local runner cross-compiles amd64 at the cost of wall-clock time
+  # (emulation is ~2-3x slower than native) but runs on local hardware with no quota impact.
+  # The runner has Docker Desktop with buildx + QEMU preinstalled.
   stage: package
-  interruptible: false   # Expensive (~5 min build). Don't restart on a new push mid-run.
-  tags:
-    - saas-linux-medium-amd64
-  image:
-    name: gcr.io/kaniko-project/executor:debug
-    entrypoint: [""]
+  interruptible: false   # Expensive build. Don't restart mid-run on a new push.
+  image: docker:28
+  services:
+    - name: docker:28-dind
+      alias: docker
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+    DOCKER_BUILDKIT: "1"
   needs:
-    - job: unit-test        # both test gates must pass before producing the image
+    - job: unit-test
     - job: integration-test
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH    # push to registry on main
-    - if: $CI_COMMIT_TAG                             # push to registry on version tags (e.g. v1.2.0)
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+  before_script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+    # Register QEMU to cross-build amd64 on an arm64 host (no-op on native amd64).
+    - docker run --privileged --rm tonistiigi/binfmt --install amd64 || true
+    - docker buildx create --name multi --use || docker buildx use multi
   script:
     - |
-      # Write registry auth for Kaniko (base64-encoded JSON, same format as ~/.docker/config.json)
-      mkdir -p /kaniko/.docker
-      printf '{"auths":{"%s":{"auth":"%s"}}}' \
-        "$CI_REGISTRY" \
-        "$(printf '%s:%s' "$CI_REGISTRY_USER" "$CI_REGISTRY_PASSWORD" | base64 | tr -d '\n')" \
-        > /kaniko/.docker/config.json
-    - |
-      /kaniko/executor \
-        --context "$CI_PROJECT_DIR" \
-        --dockerfile "$CI_PROJECT_DIR/Dockerfile" \
-        --destination "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA" \
-        --destination "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_REF_SLUG" \
-        --cache=true \
-        --cache-repo "$CI_REGISTRY_IMAGE/backend/cache" \
+      docker buildx build \
+        --platform linux/amd64 \
+        --tag "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA" \
+        --tag "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_REF_SLUG" \
         --label "org.opencontainers.image.revision=$CI_COMMIT_SHA" \
-        --label "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        --label "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        --cache-from "type=registry,ref=$CI_REGISTRY_IMAGE/backend:cache" \
+        --cache-to "type=registry,ref=$CI_REGISTRY_IMAGE/backend:cache,mode=max" \
+        --push \
+        .
 
 trivy:scan:
   # Scans the freshly built Docker image for OS + Java CVEs using Trivy.
