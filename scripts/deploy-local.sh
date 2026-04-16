@@ -169,8 +169,11 @@ fi
 ok "Images loaded into kind."
 
 # ── 5. Namespaces + Secrets ───────────────────────────────────────────────────
+# Apply the namespace manifest FIRST — secrets need the namespaces to exist.
+# Kustomize will recreate these idempotently in step 6, so this is just a
+# one-shot bootstrap to unblock secret creation.
 log "Creating namespaces..."
-kubectl apply -f "$BACKEND_DIR/deploy/kubernetes/namespace.yaml"
+kubectl apply -f "$BACKEND_DIR/deploy/kubernetes/base/namespace.yaml"
 
 log "Creating secrets..."
 # The secret is needed in both namespaces:
@@ -186,61 +189,20 @@ for ns in app infra; do
 done
 ok "Secrets applied."
 
-# ── 6. Apply manifests ────────────────────────────────────────────────────────
-log "Applying infrastructure manifests..."
-kubectl apply -f "$BACKEND_DIR/deploy/kubernetes/stateful/postgres.yaml"
-kubectl apply -f "$BACKEND_DIR/deploy/kubernetes/stateful/redis.yaml"
-kubectl apply -f "$BACKEND_DIR/deploy/kubernetes/stateful/kafka.yaml"
-
-log "Applying backend manifests..."
+# ── 6. Apply manifests via Kustomize ──────────────────────────────────────────
+# One command renders the full local overlay:
+#   • base (namespace, ingress HTTP-only, backend, frontend, kafka, redis, keycloak)
+#   • base/postgres (in-cluster StatefulSet — not included in GKE overlay)
+#   • images-pullpolicy-patch.yaml → Never (kind loads images directly, no registry)
+#
+# envsubst handles ${IMAGE_REGISTRY}, ${IMAGE_TAG}, ${UI_IMAGE_TAG}, ${K8S_HOST}
+# inside the rendered stream. Kustomize itself does NOT do variable substitution.
+log "Rendering + applying Kustomize overlay 'local'..."
 export IMAGE_REGISTRY IMAGE_TAG UI_IMAGE_TAG K8S_HOST
-# Override imagePullPolicy to IfNotPresent for local registry (avoids Always pull of local images)
-for f in \
-  "$BACKEND_DIR/deploy/kubernetes/backend/configmap.yaml" \
-  "$BACKEND_DIR/deploy/kubernetes/backend/deployment.yaml" \
-  "$BACKEND_DIR/deploy/kubernetes/backend/service.yaml" \
-  "$BACKEND_DIR/deploy/kubernetes/backend/hpa.yaml"; do
-  envsubst < "$f" | kubectl apply -f -
-done
-# Switch imagePullPolicy to IfNotPresent for local registry
-kubectl patch deployment mirador -n app \
-  -p '{"spec":{"template":{"spec":{"containers":[{"name":"mirador","imagePullPolicy":"IfNotPresent"}]}}}}' \
-  2>/dev/null || true
-
-log "Applying frontend manifests..."
-if kubectl get namespace app &>/dev/null; then
-  for f in \
-    "$BACKEND_DIR/deploy/kubernetes/frontend/deployment.yaml" \
-    "$BACKEND_DIR/deploy/kubernetes/frontend/service.yaml"; do
-    [[ -f "$f" ]] && envsubst < "$f" | kubectl apply -f -
-  done
-  kubectl patch deployment customer-ui -n app \
-    -p '{"spec":{"template":{"spec":{"containers":[{"name":"customer-ui","imagePullPolicy":"IfNotPresent"}]}}}}' \
-    2>/dev/null || true
-fi
-
-log "Applying Ingress..."
-# No configuration-snippet in ingress.yaml anymore — apply directly.
-# Disable SSL redirect below (no cert-manager/TLS in a local cluster).
-envsubst < "$BACKEND_DIR/deploy/kubernetes/ingress.yaml" | kubectl apply -f -
-
-# Disable HTTPS redirect (nginx-ingress defaults to redirect HTTP → HTTPS when
-# a TLS block is present; not needed for local development).
-kubectl annotate ingress mirador-ingress -n app \
-  nginx.ingress.kubernetes.io/ssl-redirect="false" \
-  nginx.ingress.kubernetes.io/force-ssl-redirect="false" \
-  --overwrite 2>/dev/null || true
-# Remove the TLS spec so no redirect occurs at all
-kubectl patch ingress mirador-ingress -n app \
-  --type=json \
-  -p='[{"op":"remove","path":"/spec/tls"}]' 2>/dev/null || true
-
-# Use IfNotPresent so pods don't try to pull from an external registry — the
-# images are already loaded into kind's containerd via `kind load` above.
-kubectl patch deployment mirador -n app \
-  -p '{"spec":{"template":{"spec":{"containers":[{"name":"mirador","imagePullPolicy":"Never"}]}}}}' 2>/dev/null || true
-kubectl patch deployment customer-ui -n app \
-  -p '{"spec":{"template":{"spec":{"containers":[{"name":"customer-ui","imagePullPolicy":"Never"}]}}}}' 2>/dev/null || true
+kubectl kustomize "$BACKEND_DIR/deploy/kubernetes/overlays/local" \
+  | envsubst \
+  | kubectl apply -f -
+ok "Overlay applied."
 
 # ── 7. Wait for rollouts ──────────────────────────────────────────────────────
 log "Waiting for infra (Postgres, Redis, Kafka) to be ready..."

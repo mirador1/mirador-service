@@ -1056,11 +1056,16 @@ terraform-apply:
 # Set variables in GitLab → Settings → CI/CD → Variables (masked + protected).
 # ──────────────────────────────────────────────────────────────────────────────
 
-# Common kubectl apply fragment — reused by GKE, EKS, AKS, and k3s jobs via
+# Common kubectl-apply fragment — reused by GKE, EKS, AKS, and k3s jobs via
 # GitLab's `!reference` tag (expanded at pipeline parse time, not YAML merge).
+#
+# Each caller sets K8S_OVERLAY to the directory under deploy/kubernetes/overlays/
+# to apply (gke, eks, aks, local). Kustomize resolves base + overlay; envsubst
+# substitutes ${K8S_HOST}, ${IMAGE_REGISTRY}, ${IMAGE_TAG}, ${UI_IMAGE_TAG},
+# ${CLOUD_SQL_INSTANCE}, ${GCP_PROJECT}, etc. into the rendered YAML stream.
 .kubectl-apply:
   script:
-    # Export substitution variables consumed by envsubst in the manifests.
+    # Export substitution variables consumed by envsubst in the rendered manifests.
     # IMAGE_REGISTRY points to the registry sub-path so manifests resolve correctly:
     #   ${IMAGE_REGISTRY}/backend:${IMAGE_TAG} → registry.gitlab.com/<group>/<project>/backend:<sha>
     - export IMAGE_REGISTRY="$CI_REGISTRY_IMAGE"
@@ -1090,22 +1095,17 @@ terraform-apply:
         --from-literal=GITLAB_API_TOKEN="${GITLAB_API_TOKEN:-}" \
         --namespace=app --dry-run=client -o yaml | kubectl apply -f -
     - |
-      # Apply all manifests — envsubst replaces ${K8S_HOST}, ${IMAGE_REGISTRY}, ${IMAGE_TAG},
-      # ${CORS_ALLOWED_ORIGINS} with CI variable values.
-      # GKE production skips deploy/kubernetes/stateful/postgres.yaml — use Cloud SQL + Cloud SQL Auth Proxy instead.
-      # For non-GKE targets (EKS, k3s) postgres.yaml provides an in-cluster PostgreSQL StatefulSet.
-      # NOTE: deploy/kubernetes/frontend/ manifests are NOT applied here — the frontend (mirador-ui) image is
-      # built and deployed by the mirador-ui CI pipeline (registry.gitlab.com/mirador1/mirador-ui).
-      # Applying them from the service pipeline would use the wrong image tag.
-      for f in deploy/kubernetes/namespace.yaml \
-                deploy/kubernetes/stateful/redis.yaml deploy/kubernetes/stateful/kafka.yaml \
-                deploy/kubernetes/backend/configmap.yaml \
-                deploy/kubernetes/backend/deployment.yaml deploy/kubernetes/backend/service.yaml deploy/kubernetes/backend/hpa.yaml \
-                deploy/kubernetes/ingress.yaml; do
-        [ -f "$f" ] && envsubst < "$f" | kubectl apply -f -
-      done
-    # Wait for the rolling update to complete. 6 min is enough for cold-start
-    # on GKE Autopilot (image pull + JVM warmup + Flyway), matches startupProbe budget.
+      # Render the overlay with kustomize, then substitute ${VAR} placeholders
+      # (Kustomize itself does NOT process env vars — envsubst fills them in).
+      # GKE overlay includes the Cloud SQL sidecar + TLS patch; local/eks/aks
+      # include the in-cluster Postgres mini-base.
+      : "${K8S_OVERLAY:?must be set to an overlay name under deploy/kubernetes/overlays/}"
+      echo "Applying overlay: deploy/kubernetes/overlays/${K8S_OVERLAY}"
+      kubectl kustomize "deploy/kubernetes/overlays/${K8S_OVERLAY}" \
+        | envsubst \
+        | kubectl apply -f -
+    # Wait for the rolling update to complete. 6 min covers cold-start on GKE
+    # Autopilot (image pull + JVM warmup + Flyway); matches startupProbe budget.
     - kubectl rollout status deployment/mirador -n app --timeout=360s
 
 # ── GKE Autopilot — DEFAULT production (runs automatically on main) ───────────
@@ -1188,33 +1188,11 @@ deploy:gke:
     - gcloud auth login --cred-file=/tmp/gcp_credentials.json --quiet
     - gcloud container clusters get-credentials "$GKE_CLUSTER"
         --region "$GKE_REGION" --project "$GCP_PROJECT"
+    # The GKE overlay already includes the Cloud SQL Auth Proxy sidecar patch
+    # and the TLS/cert-manager ingress patch — no ad-hoc `kubectl patch` needed.
+    # CLOUD_SQL_INSTANCE must be set as a CI variable for the sidecar to resolve.
+    - export K8S_OVERLAY="gke"
     - !reference [.kubectl-apply, script]
-    # GKE-specific: Cloud SQL Auth Proxy — ServiceAccount (Workload Identity) +
-    # ConfigMap override (DB_HOST=127.0.0.1). The proxy sidecar is embedded in the
-    # deployment patch below. Requires CI vars: GCP_PROJECT, CLOUD_SQL_INSTANCE.
-    - |
-      if [ -n "${CLOUD_SQL_INSTANCE:-}" ]; then
-        envsubst < deploy/kubernetes/gke/cloud-sql-proxy.yaml | kubectl apply -f -
-        # Patch backend deployment: set serviceAccount + cloud-sql-proxy sidecar.
-        # Strategic merge patch is idempotent — safe to re-apply on every deploy.
-        kubectl patch deployment mirador -n app --type=strategic -p="{
-          \"spec\":{\"template\":{\"spec\":{
-            \"serviceAccountName\":\"mirador-backend\",
-            \"containers\":[{
-              \"name\":\"cloud-sql-proxy\",
-              \"image\":\"gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.15.1\",
-              \"args\":[\"--structured-logs\",\"--port=5432\",\"--auto-iam-authn\",\"${CLOUD_SQL_INSTANCE}\"],
-              \"resources\":{\"requests\":{\"memory\":\"32Mi\",\"cpu\":\"10m\"},\"limits\":{\"memory\":\"64Mi\",\"cpu\":\"100m\"}},
-              \"securityContext\":{\"allowPrivilegeEscalation\":false}
-            }]
-          }}}
-        }"
-        # Override DB_HOST in running pods — the ConfigMap override triggers a rollout
-        kubectl set env deployment/mirador -n app DB_HOST=127.0.0.1
-        kubectl rollout status deployment/mirador -n app --timeout=180s
-      else
-        echo "CLOUD_SQL_INSTANCE not set — skipping Cloud SQL Auth Proxy (using in-cluster PostgreSQL)"
-      fi
 
 # ── AWS EKS — manual ──────────────────────────────────────────────────────────
 #
@@ -1238,6 +1216,7 @@ deploy:eks:
     url: "https://$K8S_HOST"
   script:
     - aws eks update-kubeconfig --name "$EKS_CLUSTER" --region "$AWS_REGION"
+    - export K8S_OVERLAY="eks"
     - !reference [.kubectl-apply, script]
 
 # ── Azure AKS — manual ────────────────────────────────────────────────────────
@@ -1266,6 +1245,7 @@ deploy:aks:
     - az login --service-principal -u "$AZURE_APP_ID" -p "$AZURE_PASSWORD"
         --tenant "$AZURE_TENANT" --output none
     - az aks get-credentials --resource-group "$AKS_RG" --name "$AKS_CLUSTER"
+    - export K8S_OVERLAY="aks"
     - !reference [.kubectl-apply, script]
 
 # ── Google Cloud Run — manual ─────────────────────────────────────────────────

@@ -1,0 +1,20 @@
+# =============================================================================
+# eks/ overlay — AWS EKS cluster with in-cluster Postgres.
+#
+# Deliberately minimal: EKS uses the same base as local. The only cluster-
+# specific differences (AWS IAM roles for service accounts, EBS storage class
+# for Postgres PVC, ALB vs nginx-ingress) are NOT expressed here — they're
+# provisioned by deploy/terraform/aws/.
+#
+# If TLS via aws-load-balancer-controller + ACM becomes needed, add an
+# ingress-tls-patch.yaml here modelled after overlays/gke/.
+#
+# Apply:
+#   kubectl apply -k deploy/kubernetes/overlays/eks
+# =============================================================================
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+  - ../../base/postgres

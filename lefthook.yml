@@ -56,16 +56,44 @@ pre-commit:
     k8s-dry-run:
       # Client-side validation: YAML syntax + basic K8s schema.
       # Does NOT hit the cluster — safe to run even without a connected context.
+      #
+      # Two-mode strategy:
+      #   • kustomization.yaml files → collect the containing directories and
+      #     run `kubectl kustomize <dir> | kubectl apply --dry-run=client -f -`
+      #     for each (a kustomization.yaml cannot be dry-run'd directly).
+      #   • Other .yaml files → run `kubectl apply --dry-run=client -f` per file.
+      #
+      # Kustomization files are skipped in the per-file loop because:
+      #   1. They have `kind: Kustomization` with apiVersion kustomize.config.k8s.io
+      #      which is NOT a real K8s resource → `kubectl apply -f` fails with
+      #      "no matches for kind Kustomization".
+      #   2. The relevant validation for a kustomization.yaml is the full
+      #      overlay build + dry-run, which we run once per directory.
       glob: "deploy/kubernetes/**/*.yaml"
       run: |
-        if command -v kubectl >/dev/null 2>&1; then
-          for f in {staged_files}; do
-            kubectl apply --dry-run=client -f "$f" >/dev/null
-          done
-        else
+        if ! command -v kubectl >/dev/null 2>&1; then
           echo "⚠️  kubectl not installed — skipping k8s dry-run"
+          exit 0
         fi
-      fail_text: "K8s manifest(s) invalid. Run 'kubectl apply --dry-run=client -f <file>' for details."
+        # Collect unique directories containing a staged kustomization.yaml.
+        kustomize_dirs=""
+        other_files=""
+        for f in {staged_files}; do
+          if [[ "$(basename "$f")" == "kustomization.yaml" ]]; then
+            kustomize_dirs="$kustomize_dirs $(dirname "$f")"
+          else
+            other_files="$other_files $f"
+          fi
+        done
+        # Dedupe kustomize dirs, render + dry-run each.
+        for d in $(printf '%s\n' $kustomize_dirs | sort -u); do
+          kubectl kustomize "$d" | kubectl apply --dry-run=client -f - >/dev/null
+        done
+        # Plain resource files still go through the classic dry-run.
+        for f in $other_files; do
+          [ -f "$f" ] && kubectl apply --dry-run=client -f "$f" >/dev/null
+        done
+      fail_text: "K8s manifest(s) invalid. Run 'kubectl kustomize <dir>' or 'kubectl apply --dry-run=client -f <file>' for details."
 
     terraform-validate:
       # terraform fmt -check + terraform validate on the gcp/ module.

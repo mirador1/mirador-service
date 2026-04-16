@@ -1,0 +1,31 @@
+# =============================================================================
+# Ingress TLS patch (GKE)
+#
+# Adds cert-manager annotation + a tls: block to the base Ingress so
+# Let's Encrypt issues a certificate for ${K8S_HOST}.
+#
+# Why strategic merge and not JSON patch?
+#   • Strategic merge is declarative: "here are the extra fields; merge them".
+#   • Ingress annotations and tls[] are both additive in strategic merge.
+#   • JSON patch would need the exact path `/spec/tls`, which doesn't exist
+#     in the base and would fail with "path doesn't exist" on first apply.
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mirador-ingress
+  namespace: app
+  annotations:
+    # cert-manager watches Ingresses with this annotation and creates
+    # a Certificate resource automatically. The ClusterIssuer must exist
+    # (letsencrypt-prod) — provisioned by the terraform step.
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    # Force HTTP → HTTPS redirect at the ingress level.
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+spec:
+  tls:
+    # Hostname substituted by envsubst before `kubectl apply -k`.
+    - hosts:
+        - "${K8S_HOST}"
+      secretName: mirador-tls
