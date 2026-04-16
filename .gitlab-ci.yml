@@ -1085,8 +1085,9 @@ terraform-apply:
                 k8s/ingress.yaml; do
         [ -f "$f" ] && envsubst < "$f" | kubectl apply -f -
       done
-    # Wait for the rolling update to complete (180 s timeout)
-    - kubectl rollout status deployment/customer-service -n app --timeout=180s
+    # Wait for the rolling update to complete. 6 min is enough for cold-start
+    # on GKE Autopilot (image pull + JVM warmup + Flyway), matches startupProbe budget.
+    - kubectl rollout status deployment/customer-service -n app --timeout=360s
 
 # ── GKE Autopilot — DEFAULT production (runs automatically on main) ───────────
 #
