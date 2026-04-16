@@ -1135,22 +1135,33 @@ deploy:gke:
     name: production/gke
     url: "https://$K8S_HOST"
   before_script:
-    # The alpine base image has nothing — install what we need natively for arm64.
-    # - bash/curl/python3/gettext: required by gcloud installer + envsubst + token script
-    # - Google Cloud CLI: download the arm64 tarball and extract (architecture detected
-    #   at runtime; same logic works if the job ever runs on amd64)
-    # - gke-gcloud-auth-plugin + kubectl: gcloud components, arm64-compatible
-    - apk add --no-cache bash curl python3 gettext
+    # Alpine base + install each tool natively for the host architecture.
+    #   bash/curl/python3/gettext: runtime deps for gcloud + envsubst + OIDC script
+    #   gcompat:                   glibc shim for kubectl static binary on musl Alpine
+    #   Google Cloud CLI:          official tarball (arm/x86_64 detected)
+    #   kubectl:                   install by direct download, NOT via
+    #                              `gcloud components install` — components don't
+    #                              expose the binary on PATH in the tarball install
+    #                              and caused `kubectl: not found` in a previous run.
+    #   gke-gcloud-auth-plugin:    via gcloud components — used by kubectl to auth
+    - apk add --no-cache bash curl python3 gettext gcompat
     - |
       ARCH=$(uname -m)
       case "$ARCH" in
-        aarch64) GCLOUD_ARCH="arm" ;;
-        x86_64)  GCLOUD_ARCH="x86_64" ;;
+        aarch64) GCLOUD_ARCH="arm";    KUBECTL_ARCH="arm64" ;;
+        x86_64)  GCLOUD_ARCH="x86_64"; KUBECTL_ARCH="amd64" ;;
         *) echo "Unsupported arch: $ARCH"; exit 1 ;;
       esac
+      # Install gcloud (includes gke-gcloud-auth-plugin component).
       curl -sSL "https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-${GCLOUD_ARCH}.tar.gz" | tar -xz -C /
       /google-cloud-sdk/install.sh --quiet --path-update false --usage-reporting false
-    - gcloud components install kubectl gke-gcloud-auth-plugin --quiet
+      gcloud components install gke-gcloud-auth-plugin --quiet
+      # Install kubectl directly — stable release, matches current Kubernetes.
+      KUBECTL_VERSION=$(curl -sL https://dl.k8s.io/release/stable.txt)
+      curl -sSL -o /usr/local/bin/kubectl \
+        "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${KUBECTL_ARCH}/kubectl"
+      chmod +x /usr/local/bin/kubectl
+      kubectl version --client --output=yaml | head -5
   script:
     # Write OIDC token to file; gcloud reads it via credentials config (WIF, no key file)
     - echo "$GCP_OIDC_TOKEN" > /tmp/gcp_oidc_token.txt
