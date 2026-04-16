@@ -582,7 +582,11 @@ trivy:scan:
   stage: package
   # aquasec/trivy no longer publishes :latest (since ~0.60). Pin a real tag.
   # Check https://hub.docker.com/r/aquasec/trivy/tags for the current stable.
-  image: aquasec/trivy:0.69.3
+  # entrypoint:[""] overrides the default `trivy` entrypoint — GitLab CI wraps
+  # the script in `sh -c`, which trivy rejects with `unknown command "sh"`.
+  image:
+    name: aquasec/trivy:0.69.3
+    entrypoint: [""]
   needs:
     - job: docker-build
   rules:
