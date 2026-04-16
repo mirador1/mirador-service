@@ -972,6 +972,11 @@ build-native:
     # no gcloud needed; the provider handles STS exchange natively.
     - echo "$GCP_OIDC_TOKEN" > /tmp/gcp_oidc_token.txt
     - |
+      # quota_project_id is REQUIRED for external_account creds with GCS backend.
+      # Without it, the Go Cloud Storage SDK sees no X-Goog-User-Project header
+      # and Cloud Storage rejects the request with `bucket doesn't exist` (a
+      # misleading-by-design 403 to avoid leaking bucket existence). Docs:
+      # https://github.com/hashicorp/terraform-provider-google/issues/15570
       cat > /tmp/gcp_credentials.json <<EOF
       {
         "type": "external_account",
@@ -979,10 +984,14 @@ build-native:
         "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
         "token_url": "https://sts.googleapis.com/v1/token",
         "credential_source": {"file": "/tmp/gcp_oidc_token.txt", "format": {"type": "text"}},
-        "service_account_impersonation_url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${GCP_SERVICE_ACCOUNT}:generateAccessToken"
+        "service_account_impersonation_url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${GCP_SERVICE_ACCOUNT}:generateAccessToken",
+        "quota_project_id": "${TF_VAR_project_id}"
       }
       EOF
     - export GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp_credentials.json
+    # Also export GOOGLE_CLOUD_PROJECT as belt-and-suspenders — some codepaths
+    # in the Go Cloud SDK consult the env var before the credential JSON.
+    - export GOOGLE_CLOUD_PROJECT="${TF_VAR_project_id}"
     - cd terraform/gcp
     - terraform init
         -backend-config="bucket=${TF_STATE_BUCKET}"
