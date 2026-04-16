@@ -44,10 +44,11 @@ pre-commit:
 
     dockerfile-lint:
       # Hadolint catches ~40 common Dockerfile bugs (wrong COPY, missing USER, etc.).
+      # --failure-threshold error: warnings don't block (matches CI policy).
       glob: "Dockerfile*"
       run: |
         if command -v hadolint >/dev/null 2>&1; then
-          hadolint {staged_files}
+          hadolint --failure-threshold error {staged_files}
         else
           echo "⚠️  hadolint not installed — skipping Dockerfile lint. Install: brew install hadolint"
         fi
@@ -56,16 +57,44 @@ pre-commit:
     k8s-dry-run:
       # Client-side validation: YAML syntax + basic K8s schema.
       # Does NOT hit the cluster — safe to run even without a connected context.
+      #
+      # Two-mode strategy:
+      #   • kustomization.yaml files → collect the containing directories and
+      #     run `kubectl kustomize <dir> | kubectl apply --dry-run=client -f -`
+      #     for each (a kustomization.yaml cannot be dry-run'd directly).
+      #   • Other .yaml files → run `kubectl apply --dry-run=client -f` per file.
+      #
+      # Kustomization files are skipped in the per-file loop because:
+      #   1. They have `kind: Kustomization` with apiVersion kustomize.config.k8s.io
+      #      which is NOT a real K8s resource → `kubectl apply -f` fails with
+      #      "no matches for kind Kustomization".
+      #   2. The relevant validation for a kustomization.yaml is the full
+      #      overlay build + dry-run, which we run once per directory.
       glob: "deploy/kubernetes/**/*.yaml"
       run: |
-        if command -v kubectl >/dev/null 2>&1; then
-          for f in {staged_files}; do
-            kubectl apply --dry-run=client -f "$f" >/dev/null
-          done
-        else
+        if ! command -v kubectl >/dev/null 2>&1; then
           echo "⚠️  kubectl not installed — skipping k8s dry-run"
+          exit 0
         fi
-      fail_text: "K8s manifest(s) invalid. Run 'kubectl apply --dry-run=client -f <file>' for details."
+        # Collect unique directories containing a staged kustomization.yaml.
+        kustomize_dirs=""
+        other_files=""
+        for f in {staged_files}; do
+          if [[ "$(basename "$f")" == "kustomization.yaml" ]]; then
+            kustomize_dirs="$kustomize_dirs $(dirname "$f")"
+          else
+            other_files="$other_files $f"
+          fi
+        done
+        # Dedupe kustomize dirs, render + dry-run each.
+        for d in $(printf '%s\n' $kustomize_dirs | sort -u); do
+          kubectl kustomize "$d" | kubectl apply --dry-run=client -f - >/dev/null
+        done
+        # Plain resource files still go through the classic dry-run.
+        for f in $other_files; do
+          [ -f "$f" ] && kubectl apply --dry-run=client -f "$f" >/dev/null
+        done
+      fail_text: "K8s manifest(s) invalid. Run 'kubectl kustomize <dir>' or 'kubectl apply --dry-run=client -f <file>' for details."
 
     terraform-validate:
       # terraform fmt -check + terraform validate on the gcp/ module.
@@ -81,6 +110,65 @@ pre-commit:
         fi
       fail_text: "Terraform files failed validation. Run 'terraform fmt' and fix syntax."
 
+    env-keys-in-sync:
+      # .env and .env.example MUST have the same keys (values can differ).
+      # A missing key in .env.example leaves new devs without the variable
+      # documented; a stale key in .env.example is dead weight.
+      # Only fires when one of the two files is staged.
+      glob: "{.env,.env.example}"
+      run: |
+        if [ ! -f .env ] || [ ! -f .env.example ]; then
+          echo "⚠️  .env or .env.example missing — skipping key-parity check."
+          exit 0
+        fi
+        diff=$(diff <(grep -E '^[A-Z_][A-Z0-9_]*=' .env.example | cut -d= -f1 | sort) \
+                    <(grep -E '^[A-Z_][A-Z0-9_]*=' .env | cut -d= -f1 | sort) || true)
+        if [ -n "$diff" ]; then
+          echo "❌  .env and .env.example have different keys:"
+          echo "$diff" | sed 's/^/    /'
+          exit 1
+        fi
+      fail_text: "Keys differ between .env and .env.example. Add/remove the missing variable in both files."
+
+    pom-hardcoded-versions:
+      # Every plugin/dependency <version> MUST live under <properties> so
+      # bumps land in one place and duplicates across profiles can't drift.
+      # The ONLY legitimate hardcoded version is <parent><version>…</version>
+      # because Maven resolves the parent before evaluating properties.
+      glob: "pom.xml"
+      run: |
+        # Strip comments, then flag any <version>LITERAL</version> that isn't ${…}
+        # and isn't inside a <parent> block.
+        violations=$(python3 - <<'PY'
+        import re, sys
+        with open('pom.xml') as f:
+            raw = f.read()
+        content = re.sub(r'<!--.*?-->', '', raw, flags=re.DOTALL)
+        # Remove the single <parent>…</parent> block so its <version> is exempt.
+        content = re.sub(r'<parent>.*?</parent>', '', content, flags=re.DOTALL, count=1)
+        pattern = re.compile(
+            r'<artifactId>([^<]+)</artifactId>\s*'
+            r'(?:<groupId>[^<]+</groupId>\s*)?'
+            r'<version>([^<]+)</version>',
+            re.DOTALL,
+        )
+        bad = [(m.group(1).strip(), m.group(2).strip())
+               for m in pattern.finditer(content)
+               if not m.group(2).strip().startswith('${')
+               and m.group(1).strip() != 'mirador']
+        for a, v in bad:
+            print(f"  {a}: {v}")
+        sys.exit(1 if bad else 0)
+        PY
+        )
+        if [ $? -ne 0 ]; then
+          echo "❌  Hardcoded <version> found in pom.xml outside <parent>:"
+          echo "$violations"
+          echo "Fix: extract to a property under <properties> and reference as \${name.version}."
+          exit 1
+        fi
+      fail_text: "pom.xml has hardcoded versions. Move them to <properties>."
+
     pom-xml-wellformed:
       # Cheap sanity check that pom.xml is well-formed XML.
       # Full model validation happens in mvn; this catches typos before push.
@@ -92,6 +180,81 @@ pre-commit:
           echo "⚠️  xmllint not installed (should ship with macOS)"
         fi
       fail_text: "pom.xml is not well-formed XML."
+
+    gitleaks:
+      # Scan staged changes for hardcoded secrets (AWS/GCP keys, JWTs,
+      # high-entropy tokens, etc.). Config in .gitleaks.toml defines
+      # allowlist for demo credentials and test fixtures.
+      # Runs on EVERY commit — not just when specific files change, because
+      # a secret can leak into any file type.
+      run: |
+        if command -v gitleaks >/dev/null 2>&1; then
+          gitleaks protect --staged --config .gitleaks.toml --no-banner
+        else
+          echo "⚠️  gitleaks not installed — skipping secret scan. Install: brew install gitleaks"
+        fi
+      fail_text: "Secret-looking content detected. Review above; if false positive, add to .gitleaks.toml allowlist."
+
+commit-msg:
+  commands:
+    conventional-commits:
+      # Enforce Conventional Commits on every commit message.
+      # Enables release-please CHANGELOG + automatic semver bumping on main.
+      #
+      # Implemented in pure bash (no Node.js / commitlint install) — this is a
+      # Java project; adding a node_modules/ for a commit-msg check is absurd.
+      # The regex mirrors @commitlint/config-conventional defaults:
+      #   type(scope)!: subject
+      #   types: feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert
+      #   scope: optional, alphanum + dash/slash/dot
+      #   !: optional breaking-change marker
+      #   subject: required, no trailing period
+      #
+      # Allow merge commits (Git uses the default "Merge branch 'foo'" which
+      # doesn't fit the pattern, but there's no way to rewrite a merge commit
+      # message during the conflict resolution flow).
+      # Allow revert commits generated by `git revert` ("Revert \"...\"").
+      # Allow GitLab auto-generated "Merge remote-tracking branch" messages.
+      #
+      # The {1} placeholder is the commit message file path.
+      run: |
+        msg_file="{1}"
+        first_line=$(head -n1 "$msg_file" | tr -d '\r')
+        # Skip allowed non-conventional commit types.
+        case "$first_line" in
+          "Merge "*|"Revert "*|"fixup! "*|"squash! "*|"amend! "*)
+            exit 0 ;;
+        esac
+        # Accept only:
+        #   type: subject
+        #   type(scope): subject
+        #   type!: subject
+        #   type(scope)!: subject
+        # with types from the allowed list.
+        if ! printf '%s' "$first_line" | grep -Eq '^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-zA-Z0-9/_.-]+\))?!?: .+'; then
+          echo "Commit message doesn't follow Conventional Commits."
+          echo "  First line was: $first_line"
+          echo ""
+          echo "Expected: <type>(<optional scope>)!?: <subject>"
+          echo "Types: feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert"
+          echo "Examples:"
+          echo "  feat(customer): add idempotency key support"
+          echo "  fix: handle null email in CustomerController"
+          echo "  docs(adr): record Kustomize decision"
+          echo "  chore(deps): bump jjwt 0.12.6 -> 0.13.0"
+          echo "  refactor!: rename package com.example.app -> com.mirador"
+          echo ""
+          echo "Doc: commitlint.config.mjs describes the rules."
+          exit 1
+        fi
+        # Enforce max header length (72 chars).
+        len=${#first_line}
+        if [ "$len" -gt 72 ]; then
+          echo "Commit subject is $len chars — must be ≤72."
+          echo "  $first_line"
+          exit 1
+        fi
+      fail_text: "Fix the commit message and retry."
 
 pre-push:
   commands:

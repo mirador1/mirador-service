@@ -15,7 +15,16 @@ spring:
     # spring-data-rest-hal-explorer is on the classpath for the HAL browser UI,
     # but we don't use the full Spring Data REST layer — exclude SpringDoc's
     # Data REST auto-config to avoid a missing RepositoryRestConfiguration bean.
-    exclude: org.springdoc.core.configuration.SpringDocDataRestConfiguration
+    #
+    # resilience4j-spring-boot3 2.4.0 ships a SpringBoot3Verifier that throws
+    # IncompatibleSpringBootVersionException at context refresh on SB4. The
+    # library itself is SB-version-agnostic at runtime — the verifier is a
+    # defensive check we intentionally opt out of because SB4 + Java 25 is
+    # our declared default profile (pom.xml). resilience4j has no -spring-boot4
+    # artifact yet; re-evaluate when upstream ships one.
+    exclude: >-
+      org.springdoc.core.configuration.SpringDocDataRestConfiguration,
+      io.github.resilience4j.springboot3.verifier.autoconfigure.SpringBoot3VerifierAutoConfiguration
 
   # ---------------------------------------------------------------------------
   # Database — PostgreSQL via Spring Data JPA + Flyway

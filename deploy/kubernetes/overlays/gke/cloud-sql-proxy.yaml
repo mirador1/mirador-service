@@ -80,10 +80,10 @@ metadata:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: customer-service-config-gke-overrides
+  name: mirador-config-gke-overrides
   namespace: app
   labels:
-    app.kubernetes.io/name: customer-service
+    app.kubernetes.io/name: mirador
     app.kubernetes.io/component: backend-gke-overrides
 data:
   # Cloud SQL Auth Proxy sidecar listens on localhost:5432 — no cross-pod networking needed.
@@ -93,7 +93,7 @@ data:
 # =============================================================================
 # To add the Cloud SQL Auth Proxy sidecar to the backend Deployment, patch it:
 #
-#   kubectl patch deployment customer-service -n app --type=json -p='[
+#   kubectl patch deployment mirador -n app --type=json -p='[
 #     {
 #       "op": "add",
 #       "path": "/spec/template/spec/serviceAccountName",

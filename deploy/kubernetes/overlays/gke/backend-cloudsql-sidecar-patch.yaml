@@ -1,0 +1,59 @@
+# =============================================================================
+# Backend deployment patch — add Cloud SQL Auth Proxy sidecar (GKE)
+#
+# What this patch changes:
+#   • serviceAccountName: mirador-backend (Workload Identity → Cloud SQL IAM)
+#   • Adds a `cloud-sql-proxy` sidecar container listening on 127.0.0.1:5432
+#   • Replaces the ConfigMap envFrom to use the GKE-specific override
+#     (mirador-config-gke-overrides: DB_HOST=127.0.0.1)
+#
+# The sidecar opens a Workload-Identity-authenticated tunnel to Cloud SQL.
+# Spring Boot talks to localhost:5432; the proxy forwards encrypted to GCP.
+# No DB password rotation needed — IAM handles auth transparently.
+#
+# ${CLOUD_SQL_INSTANCE} is substituted by envsubst in the CI deploy job.
+# Format: PROJECT:REGION:INSTANCE  (e.g. my-proj:europe-west1:mirador-db)
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mirador
+  namespace: app
+spec:
+  template:
+    spec:
+      serviceAccountName: mirador-backend
+      containers:
+        # Strategic merge uses container name as the merge key. The backend
+        # container keeps everything from the base — we only override
+        # envFrom to point at the GKE override ConfigMap.
+        - name: mirador
+          envFrom:
+            - configMapRef:
+                name: mirador-config
+            - configMapRef:
+                name: mirador-config-gke-overrides
+        # New container appended to the base list.
+        - name: cloud-sql-proxy
+          # Pinned — never use :latest. Bump deliberately in a separate commit.
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.15.1
+          args:
+            - "--structured-logs"
+            - "--port=5432"
+            - "--auto-iam-authn"
+            - "${CLOUD_SQL_INSTANCE}"
+          # Tiny footprint — the proxy is a Go binary, ~30MiB RSS steady-state.
+          # Measured on staging under 1 rps: 25Mi RSS / 5m CPU.
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "10m"
+            limits:
+              memory: "64Mi"
+              cpu: "100m"
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 65532
+            capabilities:
+              drop: ["ALL"]

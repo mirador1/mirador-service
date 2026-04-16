@@ -20,6 +20,9 @@
 - **Comments explain why**, not what. Write comments that a future Claude session with no conversation history can understand.
 - After significant feature work, **do a code review pass**: unused imports, broad catches, missing Javadoc, test gaps.
 - **Never modify files outside this project** unless explicitly asked.
+- **Architectural decisions get an ADR.** Anything that locks in a pattern — new tool, replaced library, contract change — goes in `docs/adr/NNNN-*.md` using the Michael Nygard format. Code style / bug fixes / patch bumps do NOT get an ADR (see `docs/adr/README.md` for the criteria). This prevents the same decisions being relitigated in every new session.
+- **Conventional Commits are mandatory.** Every commit message must start with one of `feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert`, optionally followed by a scope in parens, then `: subject` in lowercase. Enforced by `lefthook.yml` commit-msg hook + `commitlint.config.mjs`. Enables automatic CHANGELOG + semver bump on main via release-please.
+- **Versions-freshness pass — weekly, or at the start of any session that touches dependencies.** Renovate (`renovate.json`) runs the automated weekly sweep and opens MRs. If you add a new dependency manually, check Maven Central / npm for the latest stable BEFORE pinning — don't paste an old version. For properties already in `pom.xml`, `npm outdated` / `mvn versions:display-property-updates` gives the current lag. Security-sensitive libs (`@auth0/*`, `sonar-scanner`, `findsecbugs-plugin`, `dependency-check-maven`, Spring AI) are always worth checking manually. Archived/deprecated packages must be replaced **the same session they're discovered**.
 
 ## Project overview
 

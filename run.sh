@@ -392,7 +392,7 @@ case "$1" in
     DB_PASSWORD="${DB_PASSWORD:-localdev-pg-pass}"
     JWT_SECRET="${JWT_SECRET:-localdev-jwt-secret-32charss!}"
     API_KEY="${API_KEY:-localdev-api-key}"
-    kubectl create secret generic customer-service-secrets \
+    kubectl create secret generic mirador-secrets \
       --from-literal=DB_PASSWORD="${DB_PASSWORD}" \
       --from-literal=JWT_SECRET="${JWT_SECRET}" \
       --from-literal=API_KEY="${API_KEY}" \
@@ -432,7 +432,7 @@ case "$1" in
     kubectl rollout status deployment/kafka       -n infra --timeout=120s
     kubectl rollout status deployment/redis       -n infra --timeout=120s
     echo "Waiting for application pods (Flyway migrations run on first start)..."
-    kubectl rollout status deployment/customer-service -n app --timeout=300s
+    kubectl rollout status deployment/mirador -n app --timeout=300s
     kubectl rollout status deployment/customer-ui      -n app --timeout=120s
 
     echo ""
@@ -444,7 +444,7 @@ case "$1" in
     echo ""
     echo "  kubectl get pods -n app"
     echo "  kubectl get pods -n infra"
-    echo "  kubectl logs -n app deployment/customer-service -f"
+    echo "  kubectl logs -n app deployment/mirador -f"
     echo ""
     echo "  To delete the cluster: ./run.sh k8s-local-delete"
     ;;

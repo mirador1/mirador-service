@@ -1,0 +1,34 @@
+# =============================================================================
+# local/ overlay — kind cluster, HTTP-only, in-cluster Postgres
+#
+# Target: `kind` running locally (deploy-local.sh creates the cluster).
+#
+# What this overlay adds to the base:
+#   • stateful/postgres.yaml — base does NOT ship Postgres so that GKE can
+#     swap it out for Cloud SQL. Local / eks / aks need the StatefulSet.
+#   • ingress-disable-tls-patch.yaml — keeps the ingress in HTTP-only mode
+#     (the base is already HTTP-only, but this patch is idempotent and
+#     makes the intent explicit).
+#
+# Apply:
+#   kubectl apply -k deploy/kubernetes/overlays/local
+#
+# Or use the helper:
+#   ./scripts/deploy-local.sh
+# =============================================================================
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+  - ../../base/postgres
+
+# Patch imagePullPolicy to Never for the backend and frontend — kind loads
+# images via `kind load docker-image`, so a remote pull would fail.
+# The patch file contains both Deployments; kustomize matches by kind+name
+# automatically (no `target:` field — that's for single-resource patches).
+patches:
+  - path: images-pullpolicy-patch.yaml
+
+# No common labels / namespace mutation here — base resources already have
+# the correct namespace (app / infra / observability) baked in.

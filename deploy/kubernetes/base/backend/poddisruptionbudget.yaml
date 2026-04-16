@@ -1,0 +1,30 @@
+# =============================================================================
+# PodDisruptionBudget — keep at least 1 mirador backend replica up during
+# voluntary disruptions (node drains for upgrades, Autopilot bin-packing).
+#
+# With 2 replicas (replicas: 2 in deployment.yaml) and minAvailable: 1:
+#   • kubectl drain <node> will evict at most 1 mirador pod at a time.
+#   • GKE Autopilot node consolidation waits for PDB compliance.
+#
+# Without a PDB, a multi-pod eviction causes a brief (~30s) outage while
+# pods reschedule. With PDB = minAvailable:1, one pod always stays up.
+#
+# This does NOT protect against involuntary disruptions (node crash,
+# kernel panic, cloud-provider maintenance). For that we'd need
+# topologySpreadConstraints (spreading replicas across zones) — added
+# in the backend Deployment itself.
+# =============================================================================
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: mirador-backend-pdb
+  namespace: app
+  labels:
+    app.kubernetes.io/name: mirador
+    app.kubernetes.io/component: backend
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mirador
+      app.kubernetes.io/component: backend

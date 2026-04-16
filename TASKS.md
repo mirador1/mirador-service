@@ -1,51 +1,90 @@
 # Mirador Service — Persistent Task Backlog
 
 <!--
-  This file is the source of truth for pending work across sessions.
-  Claude must READ this file at the start of every session.
-  Claude must UPDATE this file whenever a task is added, started, or completed.
+  Source of truth for pending work across Claude sessions.
+  Read at session start; update immediately on task changes.
   Format: - [ ] pending   - [~] in progress   - [x] done (keep last 10 done for context)
+  When all tasks are done, delete this file and commit the deletion.
 -->
 
-## In Progress
+## Pending — Cluster bring-up
 
-- [~] **deploy:gke first run** — Pipeline running on MR !39 (docker-build OOM fix).
-      Once merged, main pipeline will build, then deploy:gke runs → cert-manager emits
-      Let's Encrypt TLS cert automatically → HTTPS live on mirador1.duckdns.org.
-      Monitored by cron job (every 3 min) to detect failures.
+- [~] **deploy:gke first run** — pipeline on `main` builds image + deploys
+      to GKE Autopilot. Once Cloud SQL is provisioned (below), cert-manager
+      emits a Let's Encrypt cert and HTTPS goes live at
+      `https://mirador1.duckdns.org`.
 
-## Pending — Kubernetes & Cloud deployment
+- [ ] **Cloud SQL instance** — provision via `gcloud` (faster iteration
+      than fixing the current terraform-plan "bucket doesn't exist" error).
+      Commands are documented in
+      `deploy/kubernetes/overlays/gke/cloud-sql-proxy.yaml` (setup section).
+      Then:
+      1. `gcloud sql instances describe mirador-db --format='value(connectionName)'`
+      2. Set GitLab CI var `CLOUD_SQL_INSTANCE=$GCP_PROJECT:$GKE_REGION:mirador-db`
+      3. Re-trigger deploy:gke — the GKE Kustomize overlay embeds the
+         sidecar patch + ConfigMap override automatically.
+      4. After verification, **pause the instance** to minimise cost.
 
-- [ ] **Terraform apply on GCP infra** — State bucket exists
-      (gs://project-8d6ea68c-33ac-412b-8aa-tf-state, versioning on).
-      After MR !39 merges, terraform-plan should succeed. Then manually trigger
-      terraform-apply job (it's gated by `when: manual`) to provision:
-      VPC + GKE Autopilot + Cloud SQL PostgreSQL 17 + Memorystore Redis + IAM SAs.
+- [ ] **Terraform apply** — after Cloud SQL is manual-provisioned and the
+      terraform-plan bucket issue is resolved, run the full terraform-apply
+      to bring VPC + GKE Autopilot + Memorystore Redis + IAM SAs into code.
 
-- [ ] **Cloud SQL Auth Proxy enablement** — After terraform-apply succeeds:
-      1. `terraform output -raw cloud_sql_instance_name` → get connection name
-      2. Set GitLab CI variable `CLOUD_SQL_INSTANCE=$GCP_PROJECT:$GKE_REGION:mirador-db`
-      3. Next deploy:gke auto-injects the sidecar (already wired in .gitlab-ci.yml).
+- [ ] **Managed Kafka on GCP** (~$35/day) — deferred. Requires
+      uncommenting ~70 lines in `deploy/terraform/gcp/kafka.tf` + SASL
+      config in backend ConfigMap. See ADR-0005 for the cost trade-off.
 
-- [ ] **Managed Kafka on GCP (OPTIONAL, ~$35/day)** — Deferred: not a simple toggle.
-      Requires uncommenting ~70 lines in deploy/terraform/gcp/kafka.tf + SASL config in
-      backend configmap + secret creation. See migration path at end of kafka.tf.
+## Pending — Version upgrades (deferred majors, separate MRs each)
+
+- [ ] **Spring AI** `1.0.0-M6` → `1.1.4` GA (or `2.0.0-M4`). Closes 5
+      known CVEs. Requires artifact rename
+      (`spring-ai-ollama-spring-boot-starter` → `spring-ai-starter-model-ollama`)
+      and API-surface validation.
+- [ ] **ShedLock** 6 → 7 (major; distributed-lock library).
+- [ ] **Testcontainers** 1.21 → 2.0 (major; breaking changes).
+- [ ] **testcontainers-keycloak** 3 → 4 (major).
+- [ ] **Checkstyle** 10.26.1 → 13.4.0 (3 majors; Checkstyle-config review).
+
+## Pending — Industry-standard upgrades
+
+- [ ] **Argo CD GitOps** — replace push-based CI deploy with pull-based
+      reconciliation. Argo `Application` points at
+      `deploy/kubernetes/overlays/gke`. Rollback = `git revert`.
+
+- [ ] **External Secrets Operator + Google Secret Manager** — replace the
+      `kubectl create secret` step in `.kubectl-apply` with ExternalSecret
+      CRDs. Auto-rotation, no secrets in CI variable storage.
+
+- [ ] **distroless java25 image** — switch once Google publishes it (track
+      https://github.com/GoogleContainerTools/distroless). Drops ~90 CVEs
+      vs `eclipse-temurin:25-jre`.
+
+- [ ] **Argo Rollouts / Flagger** — progressive traffic split for canary
+      deploys. Requires Istio or Linkerd; deferred until Argo CD lands.
 
 ## Recently Completed
 
-- [x] Created Terraform state GCS bucket (versioning enabled) — already existed.
-- [x] Pipeline fixes (2026-04-16): trivy → aquasecurity/trivy, suppression nginx
-      configuration-snippet, fix duplicate terraform backend, strategic merge patch
-      for cloud-sql-proxy sidecar, Maven heap cap in Dockerfile (OOM fix).
-- [x] Cloud SQL Auth Proxy CI wiring — deploy:gke conditionally applies sidecar
-      when CLOUD_SQL_INSTANCE env var is set.
-- [x] CORS headers hardened (explicit allowlist instead of wildcard).
-- [x] RateLimitingFilter hardened (IP validation + 50k bucket cap) against
-      X-Forwarded-For spoofing DoS.
-- [x] MR !38 merged — GitLab Code Quality widget + Semgrep.
-- [x] Auth0 backend wiring — audience validation + role extraction fallback.
-- [x] Grafana Cloud OTLP push — direct push via OTel, no DaemonSet.
-- [x] SonarCloud migration + SonarQube BLOCKER/CRITICAL fixes.
-- [x] All Maven site enrichments (trivy, licenses, cyclomatic complexity,
-      slowest tests, untested classes, dependency freshness/tree/conflicts,
-      startup time, pipelines, branches).
+- [x] ADR-0009 (container runtime: `eclipse-temurin:25-jre`), ADR-0010
+      (OTLP push to Collector, not Prometheus scrape), and ADR-0011
+      (minimal `@Transactional` surface, no `readOnly = true`) — three
+      previously tacit decisions now recorded.
+- [x] Tech glossary verification pass — corrected SSE (actively used via
+      `SseEmitterRegistry`), consolidated the duplicate SSE entry, removed
+      WireMock + JSONB placeholder entries (neither present in code), and
+      tightened Memorystore / Artifact Registry usage claims.
+- [x] OpenAPI lint via Spectral (`.spectral.yaml` + CI job).
+- [x] k6 post-deploy smoke test (`scripts/load-test/smoke.js` + CI job).
+- [x] `.mise.toml` pins Java 25 + Maven + kubectl + Terraform + gcloud +
+      Node per repo (commit `8bbd8f9`).
+- [x] Kustomize base + overlays (`local`/`gke`/`eks`/`aks`) with postgres
+      mini-base, TLS patch, Cloud SQL sidecar patch.
+- [x] 8 ADRs under `docs/adr/` (Kustomize, Cloud SQL, local runner,
+      in-cluster Kafka, version hoisting, WIF, feature-sliced packages).
+- [x] Renovate + gitleaks + commitlint + release-please tooling.
+- [x] K8s hardening — NetworkPolicies default-deny, PodDisruptionBudget,
+      topologySpreadConstraints, PodSecurity admission, restricted
+      securityContext + readOnlyRootFilesystem.
+- [x] Docker image supply-chain — syft SBOM, Grype CVE scan, Dockle,
+      hadolint, cosign keyless via GitLab OIDC + Sigstore.
+- [x] 1100-line technology glossary (`docs/reference/technologies.md`).
+- [x] Bumped 12 safe minor/patch versions (resilience4j, pyroscope, jjwt,
+      maven plugins, spotbugs, pmd, asm, OTel appender, sonar-maven-plugin).

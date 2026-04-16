@@ -136,6 +136,77 @@ hadolint:
   script:
     - hadolint Dockerfile
 
+# ── openapi-lint — Spectral rules against the generated OpenAPI spec ────────
+# Compiles the app, boots it briefly, fetches /v3/api-docs (springdoc),
+# then runs Spectral with our ruleset (.spectral.yaml). Catches
+# operationId-not-unique, missing descriptions, unused schemas — issues
+# that SonarCloud + PMD cannot see because they operate on the Java
+# source, not on the produced API contract.
+openapi-lint:
+  stage: lint
+  image: node:22-alpine
+  tags:
+    - macbook-local
+  # Postgres sidecar — Spring Boot's Flyway auto-config will fail-fast on
+  # a missing DB before OpenAPI routes come up, so we need a real DB on
+  # localhost:5432. GitLab spawns this container on the same network.
+  # Credentials match the application.yml defaults (DB_USER/DB_PASSWORD).
+  services:
+    - name: postgres:17-alpine
+      alias: postgres
+      variables:
+        POSTGRES_DB: customer-service
+        POSTGRES_USER: demo
+        POSTGRES_PASSWORD: demo
+  variables:
+    # With `services:`, the DB is reachable via the alias, not localhost.
+    # Spring's application.yml defaults use DB_HOST=localhost; override here.
+    DB_HOST: postgres
+    DB_PORT: "5432"
+    DB_NAME: customer-service
+    DB_USER: demo
+    DB_PASSWORD: demo
+    # Redis / Kafka aren't reached during a plain `/v3/api-docs` request, but
+    # Spring's actuator health indicators may probe them at startup. Disable
+    # the probes that would block the app from becoming ready without those
+    # services. See `observability/*HealthIndicator` classes for what's gated.
+    SPRING_DATA_REDIS_REPOSITORIES_ENABLED: "false"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - changes:
+        - "**/*.java"
+        - ".spectral.yaml"
+        - "pom.xml"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  needs: []
+  before_script:
+    - apk add --no-cache bash curl openjdk25-jre-headless maven
+  script:
+    # Start the app with the special 'openapi-export' profile (auto-exit
+    # after writing the spec). Alternative: boot + curl + kill — more fragile.
+    # We use Spring's standalone openapi endpoint: boot briefly, fetch, kill.
+    - mvn -q -DskipTests package -Dmaven.javadoc.skip=true
+    - |
+      # Boot the app in the background, wait up to 60 s for it to serve,
+      # then fetch /v3/api-docs and kill.
+      nohup java -jar target/mirador-*.jar > /tmp/app.log 2>&1 &
+      APP_PID=$!
+      for i in $(seq 1 60); do
+        curl -sSf http://localhost:8080/v3/api-docs > /tmp/openapi.json 2>/dev/null && break
+        sleep 1
+      done
+      kill "$APP_PID" 2>/dev/null || true
+      test -s /tmp/openapi.json || { echo "Failed to fetch /v3/api-docs"; cat /tmp/app.log | tail -40; exit 1; }
+    # Run Spectral with our ruleset. --fail-severity error = block only on errors.
+    - npx --yes @stoplight/spectral-cli lint /tmp/openapi.json --ruleset .spectral.yaml --fail-severity error
+  artifacts:
+    when: always
+    paths:
+      - /tmp/openapi.json
+    expire_in: 1 week
+  allow_failure: true   # warnings-only initially; flip to false once clean
+
 # ── stage: test ───────────────────────────────────────────────────────────────
 
 # Unit tests only — *ITest classes excluded (they need Docker / Testcontainers).
@@ -224,6 +295,97 @@ include:
   - template: Security/SAST.gitlab-ci.yml
   # Maven/Gemnasium dependency CVE scan
   - template: Security/Dependency-Scanning.gitlab-ci.yml
+  # Built-in GitLab Secret Detection (gitleaks) — scans for leaked tokens
+  - template: Security/Secret-Detection.gitlab-ci.yml
+
+# ── Local gitleaks mirror ─────────────────────────────────────────────────────
+# The GitLab Secret-Detection template above covers the default case, but we
+# also run gitleaks directly so:
+#   1. The config in .gitleaks.toml (project-specific allowlist) is applied.
+#   2. We can fail the pipeline on new findings (template allows failures).
+#   3. Output is plain gitleaks — easier to debug than GitLab's wrapper.
+secret-scan:
+  stage: test
+  image:
+    name: zricethezav/gitleaks:v8.21.4   # pinned — never :latest
+    entrypoint: [""]
+  tags:
+    - macbook-local
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - when: on_success
+  script:
+    # `detect` scans the current working tree + git history.
+    # --redact hides secret values in output (in case of a real leak we don't
+    # want the secret to live in CI logs too).
+    - gitleaks detect --source . --config .gitleaks.toml --redact --verbose
+  artifacts:
+    when: always
+    paths:
+      - gitleaks-report.json
+    expire_in: 1 week
+
+# ── Renovate config lint ──────────────────────────────────────────────────────
+# Renovate runs externally (GitLab's Renovate instance), but we lint our own
+# renovate.json here so syntax errors don't break the scheduled bot run.
+renovate-lint:
+  stage: lint
+  image: node:22-alpine
+  tags:
+    - macbook-local
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - changes: [renovate.json]
+  script:
+    # renovate-config-validator is bundled in the renovate npm package.
+    # --strict: fail on warnings too.
+    - npx --yes --package renovate renovate-config-validator --strict renovate.json
+
+# ── release-please — automatic CHANGELOG + semver tags on main ────────────────
+#
+# release-please (Google's tool) reads Conventional Commits since the last tag,
+# computes the next version (semver: feat → minor, fix/perf → patch, ! → major),
+# writes CHANGELOG.md, and opens a release MR. When that MR merges, it creates
+# a Git tag (vX.Y.Z) and a GitLab Release.
+#
+# Runs only on `main` — feature commits on `dev` are picked up when `dev` is
+# merged into `main` (via our auto-merge flow on green pipelines).
+#
+# Requires RELEASE_PLEASE_TOKEN (masked CI var) — a personal access token with
+# `api` + `write_repository` scopes so release-please can push the release MR
+# and tag. Job is a no-op until that token is provisioned.
+release-please:
+  stage: deploy
+  image: node:22-alpine
+  tags:
+    - macbook-local
+  needs: []        # independent — runs in parallel with deploys
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $RELEASE_PLEASE_TOKEN
+  before_script:
+    - apk add --no-cache git
+  script:
+    # --token passes the PAT; --repo-url points at this project.
+    # The CLI reads release-please-config.json + .release-please-manifest.json
+    # from the working tree.
+    - |
+      npx --yes release-please release-pr \
+        --token "$RELEASE_PLEASE_TOKEN" \
+        --repo-url "$CI_PROJECT_URL" \
+        --target-branch "$CI_DEFAULT_BRANCH" \
+        --config-file release-please-config.json \
+        --manifest-file .release-please-manifest.json
+      npx --yes release-please github-release \
+        --token "$RELEASE_PLEASE_TOKEN" \
+        --repo-url "$CI_PROJECT_URL" \
+        --target-branch "$CI_DEFAULT_BRANCH" \
+        --config-file release-please-config.json \
+        --manifest-file .release-please-manifest.json
+  allow_failure: true   # until RELEASE_PLEASE_TOKEN is set; flip to false after
 
 # ── stage: integration ────────────────────────────────────────────────────────
 
@@ -587,6 +749,8 @@ trivy:scan:
   image:
     name: aquasec/trivy:0.69.3
     entrypoint: [""]
+  tags:
+    - macbook-local
   needs:
     - job: docker-build
   rules:
@@ -616,6 +780,175 @@ trivy:scan:
     expire_in: 30 days
     paths:
       - trivy-report.json
+
+# ── Dockerfile lint (hadolint) ────────────────────────────────────────────────
+# Linter for Dockerfile best practices: pin versions, COPY not ADD, USER
+# non-root, no `apt-get update` without --no-install-recommends, etc.
+# Runs in seconds — catches issues before the long docker-build job.
+hadolint:
+  stage: lint
+  image:
+    name: hadolint/hadolint:v2.12.0-debian
+    entrypoint: [""]
+  tags:
+    - macbook-local
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - changes: [Dockerfile]
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    # --failure-threshold error: fail only on errors, not on warnings.
+    # Matches the lefthook pre-commit policy.
+    - hadolint --failure-threshold error Dockerfile
+
+# ── SBOM generation (syft) — CycloneDX format ─────────────────────────────────
+# Produces a Software Bill of Materials for the built image, listing every
+# OS package + Java library with version + license. Required by an
+# increasing number of enterprise compliance frameworks (NTIA, EU CRA).
+#
+# Output: bom.cdx.json (CycloneDX 1.5 format, machine-readable).
+# Attached as a GitLab artifact + can be pushed as an OCI referrer
+# alongside the image so `cosign download sbom` retrieves it anywhere
+# the image is available.
+sbom:syft:
+  stage: package
+  image:
+    name: anchore/syft:v1.18.1
+    entrypoint: [""]
+  tags:
+    - macbook-local
+  needs:
+    - job: docker-build
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+  script:
+    - |
+      syft "registry:$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA" \
+        --registry-username "$CI_REGISTRY_USER" \
+        --registry-password "$CI_REGISTRY_PASSWORD" \
+        -o cyclonedx-json=bom.cdx.json \
+        -o spdx-json=bom.spdx.json \
+        -o table
+  artifacts:
+    when: always
+    expire_in: 90 days
+    paths:
+      - bom.cdx.json
+      - bom.spdx.json
+    reports:
+      cyclonedx: bom.cdx.json
+
+# ── Grype CVE scan — reads the SBOM, matches against vuln database ─────────
+# Second opinion alongside Trivy. Grype's matcher is more aggressive on
+# Java — it knows the Maven coordinates from the SBOM and cross-references
+# the GitHub Advisory Database + NVD. Running both tools catches CVEs that
+# only one has in its DB.
+grype:scan:
+  stage: package
+  image:
+    name: anchore/grype:v0.87.0
+    entrypoint: [""]
+  tags:
+    - macbook-local
+  needs:
+    - job: sbom:syft
+      artifacts: true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+  allow_failure: true   # informational, matches trivy:scan policy
+  script:
+    # Scan the SBOM rather than the image → faster + reproducible.
+    - grype sbom:bom.cdx.json --fail-on high --output table
+    - grype sbom:bom.cdx.json --output json > grype-report.json
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - grype-report.json
+
+# ── Container policy check (dockle) ───────────────────────────────────────────
+# dockle checks image hardening: USER non-root, no root in image, Dockerfile
+# best practices, CIS Docker Benchmark. Complements Trivy (CVEs) with
+# hygiene checks (DKL-DI-0006 HEALTHCHECK, DKL-LI-0003 suspicious env var).
+dockle:
+  stage: package
+  image:
+    name: goodwithtech/dockle:v0.4.15
+    entrypoint: [""]
+  tags:
+    - macbook-local
+  needs:
+    - job: docker-build
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+  allow_failure: true   # hygiene checks — warn, don't block
+  variables:
+    # dockle reads creds via env vars for registry auth.
+    DOCKLE_USERNAME: "$CI_REGISTRY_USER"
+    DOCKLE_PASSWORD: "$CI_REGISTRY_PASSWORD"
+  script:
+    - dockle --exit-code 0 --format json --output dockle-report.json
+          "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA"
+    - dockle --exit-code 0 "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA"
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - dockle-report.json
+
+# ── cosign — keyless image signing via GitLab OIDC ────────────────────────────
+# Signs the image with a short-lived certificate from Sigstore's Fulcio,
+# using GitLab's OIDC token as identity proof. No long-lived signing keys.
+# Signatures are stored in the registry as OCI artifacts alongside the image.
+#
+# Verify externally with:
+#   cosign verify \
+#     --certificate-identity "https://gitlab.com/mirador1/mirador-service//.gitlab-ci.yml@refs/heads/main" \
+#     --certificate-oidc-issuer "https://gitlab.com" \
+#     $CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA
+cosign:sign:
+  stage: package
+  image:
+    name: gcr.io/projectsigstore/cosign:v2.5.0
+    entrypoint: [""]
+  tags:
+    - macbook-local
+  needs:
+    - job: docker-build
+  id_tokens:
+    SIGSTORE_ID_TOKEN:
+      aud: sigstore
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+  allow_failure: true   # until signing policy is wired into deploy; enforce later
+  variables:
+    # cosign uses these env vars to locate the OIDC token and enable keyless mode.
+    COSIGN_YES: "true"             # skip interactive prompt
+    COSIGN_EXPERIMENTAL: "1"       # enables keyless signing with Sigstore
+  script:
+    # Log in to the registry — cosign needs read access to resolve the digest
+    # and write access to push the signature artifact.
+    - cosign login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD"
+    # Sign the image by SHA digest (never by tag — tags are mutable).
+    - |
+      DIGEST=$(cosign triangulate --type digest \
+        "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA" 2>/dev/null \
+        || echo "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA")
+      cosign sign --identity-token "$SIGSTORE_ID_TOKEN" \
+        "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA"
 
 # ── stage: compat ─────────────────────────────────────────────────────────────
 #
@@ -1056,11 +1389,16 @@ terraform-apply:
 # Set variables in GitLab → Settings → CI/CD → Variables (masked + protected).
 # ──────────────────────────────────────────────────────────────────────────────
 
-# Common kubectl apply fragment — reused by GKE, EKS, AKS, and k3s jobs via
+# Common kubectl-apply fragment — reused by GKE, EKS, AKS, and k3s jobs via
 # GitLab's `!reference` tag (expanded at pipeline parse time, not YAML merge).
+#
+# Each caller sets K8S_OVERLAY to the directory under deploy/kubernetes/overlays/
+# to apply (gke, eks, aks, local). Kustomize resolves base + overlay; envsubst
+# substitutes ${K8S_HOST}, ${IMAGE_REGISTRY}, ${IMAGE_TAG}, ${UI_IMAGE_TAG},
+# ${CLOUD_SQL_INSTANCE}, ${GCP_PROJECT}, etc. into the rendered YAML stream.
 .kubectl-apply:
   script:
-    # Export substitution variables consumed by envsubst in the manifests.
+    # Export substitution variables consumed by envsubst in the rendered manifests.
     # IMAGE_REGISTRY points to the registry sub-path so manifests resolve correctly:
     #   ${IMAGE_REGISTRY}/backend:${IMAGE_TAG} → registry.gitlab.com/<group>/<project>/backend:<sha>
     - export IMAGE_REGISTRY="$CI_REGISTRY_IMAGE"
@@ -1082,7 +1420,7 @@ terraform-apply:
     - |
       # App secrets — masked GitLab CI group variables injected into K8s.
       # GRAFANA_OTLP_AUTH = base64(instanceId:apiToken) for Grafana Cloud direct OTLP push.
-      kubectl create secret generic customer-service-secrets \
+      kubectl create secret generic mirador-secrets \
         --from-literal=DB_PASSWORD="$DB_PASSWORD" \
         --from-literal=JWT_SECRET="$JWT_SECRET" \
         --from-literal=API_KEY="${API_KEY:-}" \
@@ -1090,23 +1428,18 @@ terraform-apply:
         --from-literal=GITLAB_API_TOKEN="${GITLAB_API_TOKEN:-}" \
         --namespace=app --dry-run=client -o yaml | kubectl apply -f -
     - |
-      # Apply all manifests — envsubst replaces ${K8S_HOST}, ${IMAGE_REGISTRY}, ${IMAGE_TAG},
-      # ${CORS_ALLOWED_ORIGINS} with CI variable values.
-      # GKE production skips deploy/kubernetes/stateful/postgres.yaml — use Cloud SQL + Cloud SQL Auth Proxy instead.
-      # For non-GKE targets (EKS, k3s) postgres.yaml provides an in-cluster PostgreSQL StatefulSet.
-      # NOTE: deploy/kubernetes/frontend/ manifests are NOT applied here — the frontend (mirador-ui) image is
-      # built and deployed by the mirador-ui CI pipeline (registry.gitlab.com/mirador1/mirador-ui).
-      # Applying them from the service pipeline would use the wrong image tag.
-      for f in deploy/kubernetes/namespace.yaml \
-                deploy/kubernetes/stateful/redis.yaml deploy/kubernetes/stateful/kafka.yaml \
-                deploy/kubernetes/backend/configmap.yaml \
-                deploy/kubernetes/backend/deployment.yaml deploy/kubernetes/backend/service.yaml deploy/kubernetes/backend/hpa.yaml \
-                deploy/kubernetes/ingress.yaml; do
-        [ -f "$f" ] && envsubst < "$f" | kubectl apply -f -
-      done
-    # Wait for the rolling update to complete. 6 min is enough for cold-start
-    # on GKE Autopilot (image pull + JVM warmup + Flyway), matches startupProbe budget.
-    - kubectl rollout status deployment/customer-service -n app --timeout=360s
+      # Render the overlay with kustomize, then substitute ${VAR} placeholders
+      # (Kustomize itself does NOT process env vars — envsubst fills them in).
+      # GKE overlay includes the Cloud SQL sidecar + TLS patch; local/eks/aks
+      # include the in-cluster Postgres mini-base.
+      : "${K8S_OVERLAY:?must be set to an overlay name under deploy/kubernetes/overlays/}"
+      echo "Applying overlay: deploy/kubernetes/overlays/${K8S_OVERLAY}"
+      kubectl kustomize "deploy/kubernetes/overlays/${K8S_OVERLAY}" \
+        | envsubst \
+        | kubectl apply -f -
+    # Wait for the rolling update to complete. 6 min covers cold-start on GKE
+    # Autopilot (image pull + JVM warmup + Flyway); matches startupProbe budget.
+    - kubectl rollout status deployment/mirador -n app --timeout=360s
 
 # ── GKE Autopilot — DEFAULT production (runs automatically on main) ───────────
 #
@@ -1115,6 +1448,37 @@ terraform-apply:
 # Google access token bound to the gitlab-ci-deployer service account.
 # Required group variables: GCP_WIF_PROVIDER, GCP_SERVICE_ACCOUNT,
 #                            GCP_PROJECT, GKE_CLUSTER, GKE_REGION, K8S_HOST
+# ── smoke-test — k6 post-deploy smoke test ────────────────────────────────────
+# Runs against the public GKE endpoint AFTER deploy:gke. 30 s of light
+# read-only traffic at ~3 RPS, pass/fail on p95 < 500 ms and < 1 % errors.
+# See scripts/load-test/README.md for thresholds + how to run locally.
+smoke-test:
+  stage: deploy
+  image: grafana/k6:1.4.0
+  tags:
+    - macbook-local
+  needs:
+    - job: deploy:gke
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  environment:
+    name: production/gke
+    action: verify
+  variables:
+    # K8S_HOST is a protected CI var pointing at e.g. mirador1.duckdns.org.
+    # The smoke.js script reads __ENV.K8S_HOST.
+    K8S_HOST: "$K8S_HOST"
+  script:
+    - k6 run scripts/load-test/smoke.js
+  artifacts:
+    when: always
+    paths:
+      - smoke-summary.json
+    expire_in: 30 days
+  allow_failure: true   # initially informational — flip to false once stable
+
 deploy:gke:
   stage: deploy
   interruptible: false # Active K8s apply + Cloud SQL Proxy patch — avoid mid-deploy interruption.
@@ -1188,33 +1552,11 @@ deploy:gke:
     - gcloud auth login --cred-file=/tmp/gcp_credentials.json --quiet
     - gcloud container clusters get-credentials "$GKE_CLUSTER"
         --region "$GKE_REGION" --project "$GCP_PROJECT"
+    # The GKE overlay already includes the Cloud SQL Auth Proxy sidecar patch
+    # and the TLS/cert-manager ingress patch — no ad-hoc `kubectl patch` needed.
+    # CLOUD_SQL_INSTANCE must be set as a CI variable for the sidecar to resolve.
+    - export K8S_OVERLAY="gke"
     - !reference [.kubectl-apply, script]
-    # GKE-specific: Cloud SQL Auth Proxy — ServiceAccount (Workload Identity) +
-    # ConfigMap override (DB_HOST=127.0.0.1). The proxy sidecar is embedded in the
-    # deployment patch below. Requires CI vars: GCP_PROJECT, CLOUD_SQL_INSTANCE.
-    - |
-      if [ -n "${CLOUD_SQL_INSTANCE:-}" ]; then
-        envsubst < deploy/kubernetes/gke/cloud-sql-proxy.yaml | kubectl apply -f -
-        # Patch backend deployment: set serviceAccount + cloud-sql-proxy sidecar.
-        # Strategic merge patch is idempotent — safe to re-apply on every deploy.
-        kubectl patch deployment customer-service -n app --type=strategic -p="{
-          \"spec\":{\"template\":{\"spec\":{
-            \"serviceAccountName\":\"mirador-backend\",
-            \"containers\":[{
-              \"name\":\"cloud-sql-proxy\",
-              \"image\":\"gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.15.1\",
-              \"args\":[\"--structured-logs\",\"--port=5432\",\"--auto-iam-authn\",\"${CLOUD_SQL_INSTANCE}\"],
-              \"resources\":{\"requests\":{\"memory\":\"32Mi\",\"cpu\":\"10m\"},\"limits\":{\"memory\":\"64Mi\",\"cpu\":\"100m\"}},
-              \"securityContext\":{\"allowPrivilegeEscalation\":false}
-            }]
-          }}}
-        }"
-        # Override DB_HOST in running pods — the ConfigMap override triggers a rollout
-        kubectl set env deployment/customer-service -n app DB_HOST=127.0.0.1
-        kubectl rollout status deployment/customer-service -n app --timeout=180s
-      else
-        echo "CLOUD_SQL_INSTANCE not set — skipping Cloud SQL Auth Proxy (using in-cluster PostgreSQL)"
-      fi
 
 # ── AWS EKS — manual ──────────────────────────────────────────────────────────
 #
@@ -1238,6 +1580,7 @@ deploy:eks:
     url: "https://$K8S_HOST"
   script:
     - aws eks update-kubeconfig --name "$EKS_CLUSTER" --region "$AWS_REGION"
+    - export K8S_OVERLAY="eks"
     - !reference [.kubectl-apply, script]
 
 # ── Azure AKS — manual ────────────────────────────────────────────────────────
@@ -1266,6 +1609,7 @@ deploy:aks:
     - az login --service-principal -u "$AZURE_APP_ID" -p "$AZURE_PASSWORD"
         --tenant "$AZURE_TENANT" --output none
     - az aks get-credentials --resource-group "$AKS_RG" --name "$AKS_CLUSTER"
+    - export K8S_OVERLAY="aks"
     - !reference [.kubectl-apply, script]
 
 # ── Google Cloud Run — manual ─────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 # =============================================================================
-# Deployment — Spring Boot backend (customer-service)
+# Deployment — Spring Boot backend (mirador)
 #
 # Key design decisions:
 #   - 2 replicas by default (HPA will scale 1→5 based on CPU)
@@ -8,23 +8,25 @@
 #   - Readiness probe: /actuator/health/readiness (DB + Kafka + Redis)
 #   - Graceful termination: 30s for in-flight requests to complete
 #   - Non-root user (UID 1000) from the Dockerfile
+#   - topologySpreadConstraints: spread replicas across ≥2 zones (HA)
+#   - restricted PodSecurity profile: drop ALL capabilities, runAsNonRoot
 #
 # The image tag ${IMAGE_TAG} is substituted by envsubst in the CI deploy job.
 # =============================================================================
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: customer-service
+  name: mirador
   namespace: app
   labels:
-    app.kubernetes.io/name: customer-service
+    app.kubernetes.io/name: mirador
     app.kubernetes.io/component: backend
     app.kubernetes.io/version: "${IMAGE_TAG}"
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app.kubernetes.io/name: customer-service
+      app.kubernetes.io/name: mirador
       app.kubernetes.io/component: backend
   strategy:
     # RollingUpdate: Kubernetes replaces pods one at a time. With readinessProbe,
@@ -36,7 +38,7 @@ spec:
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: customer-service
+        app.kubernetes.io/name: mirador
         app.kubernetes.io/component: backend
         app.kubernetes.io/version: "${IMAGE_TAG}"
       annotations:
@@ -47,40 +49,79 @@ spec:
     spec:
       # 30s grace period allows in-flight requests and Kafka consumers to finish
       terminationGracePeriodSeconds: 30
+      # ── Pod-level security context ─────────────────────────────────────
+      # Enforces the "restricted" PodSecurity standard even if the namespace
+      # PodSecurity admission label isn't present (defense in depth).
+      # Required by GKE Autopilot in strict mode anyway.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      # ── Zone-level HA — spread replicas across availability zones ─────
+      # maxSkew: 1 means no two zones can have more than a 1-pod difference.
+      # whenUnsatisfiable: ScheduleAnyway — if only one zone has capacity
+      # at rollout time, still schedule. DoNotSchedule would block rollouts
+      # on single-zone kind / eks-single-az clusters.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: mirador
+              app.kubernetes.io/component: backend
       containers:
-        - name: customer-service
+        - name: mirador
           image: "${IMAGE_REGISTRY}/backend:${IMAGE_TAG}"
           imagePullPolicy: Always
+          # Container-level security context. Every field here is a CKS
+          # audit checkpoint: no privileged, no root, no caps, no writable FS.
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop: ["ALL"]
           ports:
             - name: http
               containerPort: 8080
               protocol: TCP
+          # Read-only root FS needs writable mounts for JVM tempfiles + logs.
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: logs
+              mountPath: /var/log/app
           # Non-sensitive config from ConfigMap
           envFrom:
             - configMapRef:
-                name: customer-service-config
+                name: mirador-config
           # Sensitive secrets (DB_PASSWORD, JWT_SECRET, API_KEY) from Kubernetes Secret
-          # Created by the CI pipeline: kubectl create secret generic customer-service-secrets ...
+          # Created by the CI pipeline: kubectl create secret generic mirador-secrets ...
           env:
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: customer-service-secrets
+                  name: mirador-secrets
                   key: DB_PASSWORD
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: customer-service-secrets
+                  name: mirador-secrets
                   key: JWT_SECRET
             - name: API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: customer-service-secrets
+                  name: mirador-secrets
                   key: API_KEY
             - name: OTEL_EXPORTER_OTLP_AUTH
               valueFrom:
                 secretKeyRef:
-                  name: customer-service-secrets
+                  name: mirador-secrets
                   key: OTEL_EXPORTER_OTLP_AUTH
             # Spring Boot relaxed-binding: maps this env var to
             # management.tracing.export.otlp.headers.Authorization
@@ -94,7 +135,7 @@ spec:
             - name: GITLAB_API_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: customer-service-secrets
+                  name: mirador-secrets
                   key: GITLAB_API_TOKEN
           resources:
             # GKE Autopilot: request = limit for deterministic pod sizing and billing.
@@ -136,3 +177,13 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 5
             failureThreshold: 60    # up to 5 min for first boot (60 × 5s)
+      volumes:
+        # emptyDir-backed tmpfs for JVM tempfiles. Node-local, cleared on pod exit.
+        - name: tmp
+          emptyDir:
+            sizeLimit: 128Mi
+        # Logs can also go to stdout; this volume is for tools that can only
+        # write to a file (e.g., some JFR dumps).
+        - name: logs
+          emptyDir:
+            sizeLimit: 256Mi

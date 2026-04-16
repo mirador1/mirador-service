@@ -6,7 +6,7 @@
  * <h2>Kafka</h2>
  * <dl>
  *   <dt>{@link CustomerEventPublisher}</dt>
- *   <dd>Emits {@link CustomerCreatedEvent} to the {@code customer.events} topic
+ *   <dd>Emits {@link CustomerCreatedEvent} to the {@code customer.created} topic
  *       whenever a customer is created or updated. Uses Spring's
  *       {@code KafkaTemplate} with {@code JsonSerializer}.</dd>
  *   <dt>{@link CustomerEventListener}</dt>
@@ -33,7 +33,7 @@
  *
  * <h2>Topics</h2>
  * <ul>
- *   <li>{@code customer.events} — fire-and-forget change events.</li>
+ *   <li>{@code customer.created} — fire-and-forget change events.</li>
  *   <li>{@code customer.request} + {@code customer.reply} — RPC-style enrichment.</li>
  * </ul>
  *

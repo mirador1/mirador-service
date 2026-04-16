@@ -1,0 +1,36 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "packages": {
+    ".": {
+      "package-name": "mirador-service",
+      "release-type": "maven",
+      "include-component-in-tag": false,
+      "changelog-path": "CHANGELOG.md",
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": false,
+      "draft": false,
+      "prerelease": false,
+      "extra-files": [
+        {
+          "type": "xml",
+          "path": "pom.xml",
+          "xpath": "./project/version"
+        }
+      ]
+    }
+  },
+  "release-type": "maven",
+  "changelog-sections": [
+    { "type": "feat",     "section": "Features",                     "hidden": false },
+    { "type": "fix",      "section": "Bug fixes",                    "hidden": false },
+    { "type": "perf",     "section": "Performance",                  "hidden": false },
+    { "type": "revert",   "section": "Reverts",                      "hidden": false },
+    { "type": "docs",     "section": "Documentation",                "hidden": false },
+    { "type": "refactor", "section": "Refactoring",                  "hidden": false },
+    { "type": "test",     "section": "Tests",                        "hidden": true  },
+    { "type": "build",    "section": "Build / dependencies",         "hidden": false },
+    { "type": "ci",       "section": "CI / tooling",                 "hidden": true  },
+    { "type": "chore",    "section": "Chores",                       "hidden": true  },
+    { "type": "style",    "section": "Style",                        "hidden": true  }
+  ]
+}

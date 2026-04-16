@@ -1,0 +1,33 @@
+# =============================================================================
+# Base kustomization — HTTP-only, no TLS, no cloud-specific patches.
+#
+# This base is never applied directly — pick an overlay under ../overlays/.
+# Overlays add:
+#   • local/ — in-cluster Postgres (for kind clusters)
+#   • gke/   — TLS + cert-manager + Cloud SQL Auth Proxy + GKE RBAC fix
+#   • eks/   — TLS + in-cluster Postgres (AWS-specific cluster auth in CI)
+#
+# Apply via:  kubectl apply -k deploy/kubernetes/overlays/<target>
+# =============================================================================
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - networkpolicies.yaml
+  - ingress.yaml
+  - backend/configmap.yaml
+  - backend/deployment.yaml
+  - backend/service.yaml
+  - backend/hpa.yaml
+  - backend/poddisruptionbudget.yaml
+  - frontend/deployment.yaml
+  - frontend/service.yaml
+  - stateful/kafka.yaml
+  - stateful/redis.yaml
+  - stateful/keycloak.yaml
+
+# NOTE: Postgres is NOT in the base. It lives in `base/postgres/` as a
+# standalone mini-base and is pulled in only by overlays that need an
+# in-cluster DB (local, eks, aks). GKE uses Cloud SQL instead, wired in
+# by the `overlays/gke/` overlay.

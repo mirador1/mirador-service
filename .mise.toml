@@ -1,0 +1,37 @@
+# =============================================================================
+# mise — tool version manifest (replaces asdf, nvm, jenv, tfenv, etc.)
+#
+# Install mise once: https://mise.jdx.dev/getting-started.html
+#   curl https://mise.run | sh       # or `brew install mise`
+#
+# Then `cd` into this repo and every listed tool auto-activates at the
+# pinned version. No global conflicts, no "works on my machine".
+#
+# Why a TOML file and not .tool-versions?
+#   TOML accepts inline comments + structured sections, which .tool-versions
+#   (asdf format) does not. mise reads both, so we pick the richer format.
+# =============================================================================
+
+[tools]
+# Java 25 — primary runtime (pom.xml java.version=25). Temurin build via Eclipse.
+java = "temurin-25.0.2"
+
+# Maven 3.9 — matches the Maven wrapper (.mvn/wrapper/) and the Docker build
+# stage (maven:3.9.14-eclipse-temurin-25-noble). Kept in sync manually.
+maven = "3.9.14"
+
+# kubectl — bundle includes Kustomize (v5). Pinned to a stable release; bump
+# deliberately in a dedicated MR. Client/server mismatch with GKE Autopilot
+# is tolerated up to ±2 minor versions per Kubernetes version-skew policy.
+kubectl = "1.31.3"
+
+# Terraform — used by deploy/terraform/gcp/. Must match state file compat.
+terraform = "1.9.8"
+
+# GCloud SDK — used by CI scripts + local ops. mise installs the tarball,
+# including gke-gcloud-auth-plugin component needed by kubectl on GKE.
+gcloud = "509.0.0"
+
+# Node.js 22 LTS — only needed for local runs of npx (Renovate config
+# validator, release-please). Not required for the Maven / Spring build.
+node = "22.12.0"

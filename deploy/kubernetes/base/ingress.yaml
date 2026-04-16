@@ -1,16 +1,22 @@
 # =============================================================================
-# Local (kind) Ingress — HTTP only, no TLS, no cert-manager.
+# Nginx Ingress — HTTP-only base. Overlays add TLS via a strategic merge patch.
 #
-# Used by `./run.sh k8s-local` in place of deploy/kubernetes/ingress.yaml which is
-# designed for production (cert-manager + Let's Encrypt + HTTPS).
+# Why a single Ingress on one hostname?
+#   Angular (frontend) and Spring Boot (backend) are served from the SAME
+#   hostname. The browser calls `/api/customers` — Nginx strips `/api` and
+#   proxies to the backend. This eliminates CORS entirely: the browser never
+#   makes a cross-origin request because it always talks to the same origin.
 #
-# K8S_HOST is set to mirador.127.0.0.1.nip.io by the k8s-local script.
-# nip.io resolves *.127.0.0.1.nip.io → 127.0.0.1, so the app is
-# reachable at http://mirador.127.0.0.1.nip.io:8090 on the host.
+# Routing rules:
+#   /api/(.*) → mirador:8080/$1        (backend — strip /api prefix)
+#   /(.*)     → customer-ui:80         (frontend — Angular SPA)
 #
-# Routing (same as production):
-#   /api/(.*) → customer-service:8080/$1   (backend, strip /api prefix)
-#   /(.*)     → customer-ui:80             (Angular SPA)
+# TLS: NOT configured in this base — overlays for production clusters
+# (gke, eks, aks) add cert-manager annotations + a tls: block via patch.
+# The local overlay (kind) inherits HTTP-only as-is.
+#
+# `${K8S_HOST}` is substituted by envsubst in the CI deploy loop (it is
+# NOT a kustomize variable).
 # =============================================================================
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -19,10 +25,11 @@ metadata:
   namespace: app
   labels:
     app.kubernetes.io/name: mirador-ingress
-    app.kubernetes.io/part-of: mirador
   annotations:
     nginx.ingress.kubernetes.io/use-regex: "true"
+    # Rewrite /api/customers → /customers (strip the /api prefix before proxying)
     nginx.ingress.kubernetes.io/rewrite-target: "/$2"
+    # Increase timeouts for Kafka request-reply (default 60s may be too short)
     nginx.ingress.kubernetes.io/proxy-read-timeout: "90"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "90"
     # WebSocket support — nginx-ingress natively handles Upgrade headers
@@ -35,15 +42,13 @@ spec:
     - host: "${K8S_HOST}"
       http:
         paths:
-          # /api/(...) → backend (strip /api prefix via rewrite-target /$2)
           - path: /api(/|$)(.*)
             pathType: ImplementationSpecific
             backend:
               service:
-                name: customer-service
+                name: mirador
                 port:
                   number: 8080
-          # All other paths → Angular SPA
           - path: /()(.*)
             pathType: ImplementationSpecific
             backend:

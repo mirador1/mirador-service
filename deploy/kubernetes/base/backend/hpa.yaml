@@ -1,5 +1,5 @@
 # =============================================================================
-# HorizontalPodAutoscaler — auto-scale customer-service on CPU
+# HorizontalPodAutoscaler — auto-scale mirador on CPU
 #
 # Scales between 1 and 5 replicas when CPU usage exceeds 70%.
 # With virtual threads (Project Loom), CPU is a better signal than thread count.
@@ -11,16 +11,16 @@
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: customer-service
+  name: mirador
   namespace: app
   labels:
-    app.kubernetes.io/name: customer-service
+    app.kubernetes.io/name: mirador
     app.kubernetes.io/component: backend
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: customer-service
+    name: mirador
   minReplicas: 1
   maxReplicas: 5
   metrics:

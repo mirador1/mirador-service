@@ -293,12 +293,63 @@ Pre-push hook (via lefthook) runs unit tests automatically before every `git pus
 
 ## Detailed documentation
 
-| Document | Content |
-|----------|---------|
-| [Architecture](docs/architecture.md) | Component reference, call flows, code organisation |
-| [API Reference](docs/api.md) | All endpoints with curl examples |
-| [Security](docs/security.md) | OWASP patterns, demo scenarios, headers |
-| [Observability](docs/observability.md) | Dashboards, diagnostic scenarios, Kafka patterns, resilience |
+### Topic guides (`docs/`)
+
+| Document | Audience | Content |
+|----------|----------|---------|
+| [Architecture](docs/architecture/overview.md) | New contributors | Component reference, call flows, code organisation |
+| [API Reference](docs/api/api.md) | API consumers | All endpoints with curl examples |
+| [API Contract](docs/api/contract.md) | API consumers | Versioning policy (`X-API-Version` vs URL), deprecation rules, BC guarantees |
+| [Security](docs/architecture/security.md) | Security reviewers | OWASP patterns, threat model, auth flows, CVE handling |
+| [Observability](docs/architecture/observability.md) | SRE / ops | Dashboards, trace/log/metric flow, diagnostic scenarios, Kafka, resilience, Grafana Cloud |
+
+### Architecture decisions (ADRs)
+
+Non-obvious choices are justified in Michael-Nygard–style ADRs under
+[`docs/adr/`](docs/adr/README.md):
+
+- [0001 — Record architecture decisions](docs/adr/0001-record-architecture-decisions.md)
+- [0002 — Kustomize over Helm for K8s manifests](docs/adr/0002-kustomize-over-helm.md)
+- [0003 — Cloud SQL over in-cluster Postgres on GKE](docs/adr/0003-cloud-sql-over-in-cluster-postgres.md)
+- [0004 — Local CI runner, no paid SaaS quota](docs/adr/0004-local-ci-runner.md)
+- [0005 — In-cluster Kafka (not Managed) for cost reasons](docs/adr/0005-in-cluster-kafka.md)
+- [0006 — Hoist every Maven version into `<properties>`](docs/adr/0006-maven-version-hoisting.md)
+- [0007 — Workload Identity Federation for GCP auth in CI](docs/adr/0007-workload-identity-federation.md)
+- [0008 — Feature-sliced package layout in `com.mirador.*`](docs/adr/0008-feature-sliced-packages.md)
+- [0009 — Container runtime base image — `eclipse-temurin:25-jre`](docs/adr/0009-container-runtime-base-image.md)
+- [0010 — OpenTelemetry OTLP push to a Collector (not Prometheus scrape)](docs/adr/0010-otlp-push-to-collector.md)
+- [0011 — Minimal `@Transactional` surface, no `@Transactional(readOnly = true)`](docs/adr/0011-transactional-read-strategy.md)
+
+### Folder-level orientation (`README.md` in each directory)
+
+| Folder | README points at |
+|--------|------------------|
+| [`infra/`](infra/README.md) | Local Docker Compose mount configs (Keycloak, nginx, observability, pgAdmin, Postgres) |
+| [`infra/keycloak/`](infra/keycloak/README.md) | Realm imports for dev and prod |
+| [`infra/nginx/`](infra/nginx/README.md) | Compodoc + Maven-site reverse proxies |
+| [`infra/observability/`](infra/observability/README.md) | LGTM stack + OTel collector + CORS proxy |
+| [`infra/pgadmin/`](infra/pgadmin/README.md) | Pre-registered Postgres server for zero-click admin |
+| [`infra/postgres/`](infra/postgres/README.md) | One-shot SQL init scripts (SonarQube DB, etc.) |
+| [`deploy/`](deploy/README.md) | Production deployment artefacts (Terraform + Kubernetes) |
+| [`deploy/kubernetes/`](deploy/kubernetes/README.md) | K8s manifests per target (backend/frontend/stateful/gke/local) |
+| [`deploy/terraform/`](deploy/terraform/README.md) | IaC for GCP — VPC, GKE, Cloud SQL, Memorystore, IAM |
+| [`deploy/terraform/gcp/`](deploy/terraform/gcp/README.md) | File-by-file walkthrough of the GCP module |
+| [`config/`](config/README.md) | Static analyzer configs (OWASP, PMD, SpotBugs) |
+| [`scripts/`](scripts/README.md) | Dev scripts (deploy-local, simulate-traffic, register-runner) |
+| [`build/`](build/owasp-data-README.md) | Build-time templates (OWASP README generator) |
+| [`src/main/resources/`](src/main/resources/README.md) | Classpath layout (application.yml, Flyway, logback, cached CI reports) |
+| [`src/site/`](src/site/README.md) | Maven site descriptor (may be deprecated — see note) |
+
+### Auto-generated API docs
+
+- **Javadoc** (via `mvn site`) — `target/site/apidocs/` when built locally.
+- **OpenAPI / Swagger UI** — served at `/swagger-ui.html` when the app is running.
+- **Angular API reference (Compodoc)** — in the [`mirador-ui`](https://gitlab.com/mirador1/mirador-ui) repo, reachable at <http://localhost:8085> via the local `compodoc` nginx container.
+
+### Task tracking
+
+- [`TASKS.md`](TASKS.md) — pending work backlog (source of truth across sessions).
+- [`CLAUDE.md`](CLAUDE.md) — project-specific instructions for Claude Code sessions.
 
 ---
 

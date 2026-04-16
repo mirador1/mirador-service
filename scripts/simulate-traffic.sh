@@ -2,7 +2,7 @@
 # =============================================================================
 # simulate-traffic.sh — generates realistic API traffic for demo/observability
 #
-# Simulates a mix of client operations against the customer-service API:
+# Simulates a mix of client operations against the mirador API:
 #   - Login and JWT token refresh
 #   - List customers (v1.0 and v2.0)
 #   - Create, update, and delete customers

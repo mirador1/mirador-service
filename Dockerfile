@@ -1,17 +1,21 @@
 # =============================================================================
-# Multi-stage Dockerfile — JVM runtime (standard deployment)
+# Multi-stage Dockerfile — JVM runtime, non-root, OCI-labelled.
 #
 # Three stages:
 #   1. builder  — compiles the project with Maven (full JDK, Maven wrapper)
 #   2. layers   — extracts the Spring Boot layered JAR into separate directories
 #   3. runtime  — minimal JRE image with only the application layers
 #
-# Why three stages?
-#   - The build environment (JDK + Maven ~700 MB) is discarded — the final image
-#     contains only the JRE (~220 MB) and the application layers.
-#   - Layered JARs improve Docker layer cache hits: the "dependencies" layer
-#     (rarely changing) is cached separately from the "application" layer
-#     (changes on every build), so pushes are faster after the first build.
+# Runtime base choice — why eclipse-temurin:25-jre and not distroless?
+#   Google distroless-java only ships up to Java 21 at the time of writing.
+#   Our bytecode target is Java 25 (pom.xml → java.version=25), so
+#   distroless-java21 would fail with UnsupportedClassVersionError. When
+#   Google publishes distroless-java25, we migrate (tracked in TASKS.md).
+#
+# Image tagging strategy:
+#   The CI pipeline tags each build with $CI_COMMIT_SHA + $CI_COMMIT_REF_SLUG
+#   AND adds OCI image labels (org.opencontainers.image.*) for supply-chain
+#   traceability. cosign signs the image by SHA digest, not tag.
 # =============================================================================
 
 # ---------------------------------------------------------------------------
@@ -53,11 +57,23 @@ COPY --from=builder /app/target/*.jar app.jar
 RUN java -Djarmode=tools -jar app.jar extract --layers --launcher
 
 # ---------------------------------------------------------------------------
-# Stage 3 — runtime (minimal image)
+# Stage 3 — runtime (JRE-only, non-root, OCI-labelled)
 # Only the JRE is needed at runtime — no compiler, no Maven, no source code.
 # ---------------------------------------------------------------------------
-FROM eclipse-temurin:25-jre
+FROM eclipse-temurin:25-jre AS runtime
 WORKDIR /app
+
+# OCI image labels — read by cosign, Trivy, GitLab container registry UI,
+# and the org.opencontainers spec tooling in general. These survive into
+# the image manifest and are visible via `docker inspect` and GitLab's
+# "Container Registry" tab without pulling the image. Concrete values
+# (revision, created) are injected by the CI --label flags at build time.
+LABEL org.opencontainers.image.title="mirador-service" \
+      org.opencontainers.image.description="Mirador Spring Boot 4 / Java 25 backend" \
+      org.opencontainers.image.source="https://gitlab.com/mirador1/mirador-service" \
+      org.opencontainers.image.licenses="Proprietary" \
+      org.opencontainers.image.vendor="mirador1" \
+      org.opencontainers.image.base.name="eclipse-temurin:25-jre"
 
 # Security: run as a dedicated non-root system user.
 # If the application is compromised, the attacker cannot write to system directories.
@@ -66,12 +82,18 @@ RUN groupadd --system spring && useradd --system --gid spring spring
 # Copy layers in order from least-frequently-changed to most-frequently-changed.
 # This maximises Docker layer cache reuse: only the "application" layer is
 # rebuilt on each code change.
-COPY --from=layers /app/app/dependencies/ ./
-COPY --from=layers /app/app/spring-boot-loader/ ./
-COPY --from=layers /app/app/snapshot-dependencies/ ./
-COPY --from=layers /app/app/application/ ./
+#
+# --chown ensures files are owned by the spring user — this matters because
+# the K8s deployment mounts /tmp and /var/log/app as emptyDir volumes and
+# needs the main process user to own them.
+COPY --from=layers --chown=spring:spring /app/app/dependencies/ ./
+COPY --from=layers --chown=spring:spring /app/app/spring-boot-loader/ ./
+COPY --from=layers --chown=spring:spring /app/app/snapshot-dependencies/ ./
+COPY --from=layers --chown=spring:spring /app/app/application/ ./
 
-USER spring
+USER spring:spring
+
+EXPOSE 8080
 
 # JarLauncher is the Spring Boot launcher class — it handles the exploded layer structure.
 # Do NOT use "java -jar app.jar" here since the JAR was extracted, not kept intact.
