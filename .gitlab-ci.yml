@@ -38,6 +38,26 @@
 
 workflow:
   rules:
+    # Skip the pipeline entirely when only documentation files change.
+    # Avoids burning 20+ CI jobs for a typo fix or TASKS.md update.
+    # Applies to both MR events and direct pushes on any branch (including main).
+    # If truly needed, force a pipeline via the GitLab UI ("Run pipeline").
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - "**/*.md"
+        - "docs/**/*"
+        - ".gitignore"
+        - "LICENSE"
+      when: never
+    - if: $CI_COMMIT_BRANCH
+      changes:
+        paths:
+          - "**/*.md"
+          - "docs/**/*"
+          - ".gitignore"
+          - "LICENSE"
+        compare_to: refs/heads/main
+      when: never
     # Regular pipelines: code-review feedback on MRs + artifact production on main.
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE != "schedule"
@@ -63,7 +83,9 @@ stages:
 
 default:
   image: maven:3.9.14-eclipse-temurin-25-noble   # JDK 25 + Maven 3.9 — mirrors the pom.xml java.version
-  interruptible: true   # MR pipelines can be cancelled when a new commit is pushed
+  interruptible: true   # Most jobs can be cancelled when a new commit is pushed.
+  # Exception: docker-build, terraform-apply, deploy:* override this to false
+  # so expensive or side-effect-producing jobs survive a new push mid-run.
   # No global runner tag — jobs run on any available runner (local Mac runner or SaaS).
   # docker-build uses Kaniko (no DinD, no privileged mode) — runs on any runner.
   # trivy scans the registry image directly (no DinD needed either).
@@ -500,6 +522,7 @@ docker-build:
   # Cache: --cache=true + --cache-repo stores layer snapshots in the registry,
   # equivalent to --cache-from in Docker buildx (first run is slow, subsequent runs fast).
   stage: package
+  interruptible: false   # Expensive (~5 min build). Don't restart on a new push mid-run.
   image:
     name: gcr.io/kaniko-project/executor:debug
     entrypoint: [""]
@@ -964,6 +987,7 @@ terraform-plan:
 # Apply the Terraform plan — manual trigger required (prevents accidental infra changes).
 terraform-apply:
   extends: .terraform-base
+  interruptible: false   # Provisioning real GCP resources — must not be killed mid-apply.
   script:
     - terraform apply -input=false tfplan
   needs:
@@ -1056,6 +1080,7 @@ terraform-apply:
 #                            GCP_PROJECT, GKE_CLUSTER, GKE_REGION, K8S_HOST
 deploy:gke:
   stage: deploy
+  interruptible: false   # Active K8s apply + Cloud SQL Proxy patch — avoid mid-deploy interruption.
   image: google/cloud-sdk:alpine
   id_tokens:
     # GitLab generates a JWT token for this job; audience must match the WIF provider.
