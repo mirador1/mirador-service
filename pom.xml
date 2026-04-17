@@ -553,6 +553,21 @@
                     <excludes>
                         <exclude>**/*ITest.java</exclude>
                     </excludes>
+                    <!--
+                      Kept at the default single fork after a parallel trial:
+                      forkCount=1C caused AggregationServiceTest
+                      `aggregate_runsBothTasksInParallel` to flake on CI because
+                      the test asserts that two 200 ms virtual-thread tasks
+                      complete in under 360 ms — the CPU contention between
+                      sibling forks blows that budget (observed 1.2 s wall-clock
+                      in pipeline 345). The unit-test job is already short
+                      (~31 s on CI) so the payoff didn't justify the flakiness.
+                      Revisit once timing-sensitive tests are tagged for
+                      single-thread execution or the assertion is loosened to
+                      cope with parallel forks.
+                    -->
+                    <forkCount>1</forkCount>
+                    <reuseForks>true</reuseForks>
                 </configuration>
             </plugin>
 
@@ -575,6 +590,20 @@
                         <junit.platform.listeners.uid.tracking.enabled>true</junit.platform.listeners.uid.tracking.enabled>
                         <junit.platform.listeners.uid.tracking.output.dir>${project.build.directory}/test-ids</junit.platform.listeners.uid.tracking.output.dir>
                     </systemPropertyVariables>
+                    <!--
+                      Kept at the default (single fork) after measurement:
+                      forkCount=2 actually SLOWED the integration-test job
+                      (~120 s → ~121 s) because the two heaviest tests
+                      (KeycloakAuthITest ~95 s, AuthITest ~50 s) each have
+                      their own Testcontainers boot cost (Postgres + Keycloak
+                      image pull) — paid once per fork instead of being
+                      amortised by the JVM's ContextCache. The long-tail
+                      test dominates wall-clock regardless of parallelism.
+                      Revisit if ITest mass grows or we split KeycloakAuthITest
+                      into smaller, more parallelisable pieces.
+                    -->
+                    <forkCount>1</forkCount>
+                    <reuseForks>true</reuseForks>
                 </configuration>
                 <executions>
                     <execution>

@@ -882,11 +882,17 @@ grype:scan:
 # dockle checks image hardening: USER non-root, no root in image, Dockerfile
 # best practices, CIS Docker Benchmark. Complements Trivy (CVEs) with
 # hygiene checks (DKL-DI-0006 HEALTHCHECK, DKL-LI-0003 suspicious env var).
+#
+# Runner quirk: our macbook-local runner is arm64 and the backend image
+# is amd64-only (we buildx cross-compile specifically for GKE). dockle's
+# registry client auto-detects host arch and fails with "no image found
+# for architecture arm64" when talking straight to the registry. Work
+# around by pulling the amd64 variant explicitly via docker:28 + the
+# host's Docker Desktop socket, `docker save`-ing to a tarball, and
+# pointing dockle at the file via `--input`.
 dockle:
   stage: package
-  image:
-    name: goodwithtech/dockle:v0.4.15
-    entrypoint: [""]
+  image: docker:28
   tags:
     - macbook-local
   needs:
@@ -898,13 +904,33 @@ dockle:
     - if: $CI_COMMIT_TAG
   allow_failure: true   # hygiene checks — warn, don't block
   variables:
-    # dockle reads creds via env vars for registry auth.
-    DOCKLE_USERNAME: "$CI_REGISTRY_USER"
-    DOCKLE_PASSWORD: "$CI_REGISTRY_PASSWORD"
+    DOCKLE_VERSION: "0.4.15"
+  before_script:
+    - apk add --no-cache curl ca-certificates
+    - |
+      # Install dockle binary for the runner's native arch so no
+      # emulation is needed; dockle itself is arch-agnostic as long as
+      # it reads the image from a tarball (--input).
+      ARCH="$(uname -m)"
+      case "$ARCH" in
+        x86_64)  DK_ARCH=64bit ;;
+        aarch64|arm64) DK_ARCH=ARM64 ;;
+        *) echo "unsupported arch: $ARCH"; exit 1 ;;
+      esac
+      curl -sSL -o /tmp/dockle.tgz \
+        "https://github.com/goodwithtech/dockle/releases/download/v${DOCKLE_VERSION}/dockle_${DOCKLE_VERSION}_Linux-${DK_ARCH}.tar.gz"
+      tar -xzf /tmp/dockle.tgz -C /usr/local/bin dockle
+      dockle --version
   script:
-    - dockle --exit-code 0 --format json --output dockle-report.json
-          "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA"
-    - dockle --exit-code 0 "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA"
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+    # Explicit --platform selects the amd64 variant of a single-platform
+    # image without pulling the arm64 variant (which doesn't exist).
+    - |
+      docker pull --platform linux/amd64 \
+        "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA"
+      docker save "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA" -o /tmp/image.tar
+    - dockle --exit-code 0 --input /tmp/image.tar --format json --output dockle-report.json
+    - dockle --exit-code 0 --input /tmp/image.tar
   artifacts:
     when: always
     expire_in: 30 days

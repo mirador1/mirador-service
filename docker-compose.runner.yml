@@ -40,6 +40,23 @@ services:
       # Speed up job pickup — default is 3s; 1s feels more responsive locally
       - RUNNER_REQUEST_CONCURRENCY=4
 
+      # TOP-LEVEL runner concurrency. This is what actually lets independent
+      # CI jobs run in parallel on this machine. Default is 1 (pure serial
+      # execution) which makes every pipeline wall-clock equal to the sum
+      # of job durations. Setting it to 4 lets up to four jobs run
+      # simultaneously — empirically the sweet spot on an 8-core M-series
+      # with Docker Desktop (leaves headroom for Testcontainers fork
+      # containers spawned by integration-test).
+      #
+      # NOTE: this env var is only read on FIRST start (when config.toml
+      # does not yet exist in the volume). If the runner was registered
+      # before this line was added, patch the live config:
+      #   docker exec gitlab-runner sed -i \\
+      #     's/^concurrent = [0-9]\\+/concurrent = 4/' \\
+      #     /etc/gitlab-runner/config.toml
+      #   docker restart gitlab-runner
+      - CONCURRENT=4
+
     # Keep the runner on the default bridge so it can reach gitlab.com
     # and local services (kind cluster, local registry) by IP if needed.
     network_mode: bridge

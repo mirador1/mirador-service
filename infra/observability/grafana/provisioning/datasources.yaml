@@ -60,7 +60,20 @@ datasources:
     uid: loki
     url: http://127.0.0.1:3100
     editable: true
+    # `isDefault: true` puts Loki at the top of the Explore datasource list
+    # so the Logs view opens with it selected by default (instead of Prometheus).
+    isDefault: false
     jsonData:
+      # Pre-fills the Explore Logs query box with a `service_name=mirador`
+      # selector so the default Logs view only shows backend logs. Users can
+      # still edit or remove the filter in Explore — this is a starting
+      # point, not a hard restriction (Loki queries are still client-side
+      # evaluated against whatever log lines are in the time range).
+      #
+      # Requires Grafana 10.4+ (otel-lgtm 0.22.1 ships Grafana 11.x, so this
+      # is supported). The field is recognised by the Loki data-source
+      # plugin; older versions silently ignore it.
+      defaultQuery: '{service_name="mirador"} |= ``'
       derivedFields:
         # trace_id label on a Loki log entry → jump to the matching Tempo trace.
         - name: trace_id
