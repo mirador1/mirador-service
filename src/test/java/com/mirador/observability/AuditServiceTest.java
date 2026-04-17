@@ -71,8 +71,8 @@ class AuditServiceTest {
         assertThat(page.totalElements()).isEqualTo(2L);
         // Verify COUNT query contains WHERE
         verify(jdbc).queryForObject(
-                eq("SELECT COUNT(*) FROM audit_event WHERE action = ?"),
-                eq(Long.class), eq(new Object[]{"LOGIN_SUCCESS"}));
+                "SELECT COUNT(*) FROM audit_event WHERE action = ?",
+                Long.class, new Object[]{"LOGIN_SUCCESS"});
     }
 
     @Test

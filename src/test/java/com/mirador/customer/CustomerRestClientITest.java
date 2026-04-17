@@ -1,7 +1,6 @@
 package com.mirador.customer;
 import com.mirador.AbstractIntegrationTest;
 
-import com.mirador.customer.CustomerRepository;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

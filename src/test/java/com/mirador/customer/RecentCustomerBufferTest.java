@@ -15,7 +15,6 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -66,8 +65,8 @@ class RecentCustomerBufferTest {
 
         // LPUSH then LTRIM — order is critical; swapping them would lose the new entry
         InOrder order = inOrder(listOps);
-        order.verify(listOps).leftPush(eq(RecentCustomerBuffer.KEY), eq(expectedJson));
-        order.verify(listOps).trim(eq(RecentCustomerBuffer.KEY), eq(0L), eq(9L));
+        order.verify(listOps).leftPush(RecentCustomerBuffer.KEY, expectedJson);
+        order.verify(listOps).trim(RecentCustomerBuffer.KEY, 0L, 9L);
     }
 
     @Test
@@ -77,7 +76,7 @@ class RecentCustomerBufferTest {
         List<String> jsons = List.of(
                 objectMapper.writeValueAsString(d1),
                 objectMapper.writeValueAsString(d2));
-        when(listOps.range(eq(RecentCustomerBuffer.KEY), eq(0L), eq(9L))).thenReturn(jsons);
+        when(listOps.range(RecentCustomerBuffer.KEY, 0L, 9L)).thenReturn(jsons);
 
         List<CustomerDto> result = buffer.getRecent();
 

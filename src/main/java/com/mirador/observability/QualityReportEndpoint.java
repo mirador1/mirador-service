@@ -875,7 +875,11 @@ public class QualityReportEndpoint {
      * @return map with {@code usedUndeclared} and {@code unusedDeclared} lists, or {@code null}
      *         if the file is absent (not generated yet / build skipped analyze phase).
      */
-    @SuppressWarnings("java:S3776") // cognitive complexity — linear parsing, not reducible
+    // S1168: null is semantically distinct from Map.of() here — the caller uses it
+    // to decide whether to include the "dependencyAnalysis" key in the report at all.
+    // Returning an empty map would emit `"dependencyAnalysis": {}` even when the
+    // source file is missing, misleading the UI.
+    @SuppressWarnings({"java:S3776", "java:S1168"})
     private Map<String,Object> parseDependencyAnalysis() {
         InputStream is = loadResource(CP_DEP_ANALYZE, "target/dependency-analysis.txt");
         if (is == null) return null;
@@ -901,7 +905,7 @@ public class QualityReportEndpoint {
                     if ("unused".equals(section)) unusedDeclared.add(trimmed);
                 }
             }
-        } catch (IOException e) {
+        } catch (IOException _) {
             return null;
         }
 
@@ -1509,12 +1513,12 @@ public class QualityReportEndpoint {
 
     private static Integer parseIntOrNull(String v) {
         if (v == null || v.isBlank()) return null;
-        try { return Integer.parseInt(v.trim()); } catch (NumberFormatException e) { return null; }
+        try { return Integer.parseInt(v.trim()); } catch (NumberFormatException _) { return null; }
     }
 
     private static Double parseDoubleOrNull(String v) {
         if (v == null || v.isBlank()) return null;
-        try { return round1(Double.parseDouble(v.trim())); } catch (NumberFormatException e) { return null; }
+        try { return round1(Double.parseDouble(v.trim())); } catch (NumberFormatException _) { return null; }
     }
 
     // -------------------------------------------------------------------------
@@ -1548,7 +1552,7 @@ public class QualityReportEndpoint {
     private static int intAttr(Element el, String attr) {
         try {
             return Integer.parseInt(el.getAttribute(attr));
-        } catch (NumberFormatException e) {
+        } catch (NumberFormatException _) {
             return 0;
         }
     }
@@ -1556,7 +1560,7 @@ public class QualityReportEndpoint {
     private static double doubleAttr(Element el, String attr) {
         try {
             return Double.parseDouble(el.getAttribute(attr));
-        } catch (NumberFormatException e) {
+        } catch (NumberFormatException _) {
             return 0.0;
         }
     }
@@ -1743,7 +1747,7 @@ public class QualityReportEndpoint {
                 layers.add(l);
             }
             return layers;
-        } catch (Exception e) {
+        } catch (Exception _) {
             return List.of();
         }
     }

@@ -1,6 +1,5 @@
 package com.mirador.auth;
 
-import com.mirador.auth.JwtTokenProvider;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.junit.jupiter.api.Test;
