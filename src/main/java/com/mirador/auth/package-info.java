@@ -20,7 +20,7 @@
  *   <li><b>API key</b> — {@link ApiKeyAuthenticationFilter} accepts the
  *       {@code X-API-Key} header and grants ROLE_USER + ROLE_ADMIN when the
  *       value matches the configured {@code app.api-key}. Intended for
- *       machine-to-machine calls; see the TODO in the filter about scoped keys.</li>
+ *       machine-to-machine calls; scoped per-caller keys are tracked as a follow-up.</li>
  * </ol>
  *
  * <p>Local user storage uses JPA ({@link AppUser} + {@link AppUserRepository}),

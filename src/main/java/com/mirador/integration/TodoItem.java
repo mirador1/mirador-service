@@ -1,7 +1,7 @@
 package com.mirador.integration;
 
 /**
- * Immutable DTO representing a todo item from the JSONPlaceholder API.
+ * Immutable DTO representing a task item from the JSONPlaceholder API.
  *
  * <p>Deserialized from {@code https://jsonplaceholder.typicode.com/users/{id}/todos} JSON:
  * <pre>

@@ -24,7 +24,7 @@
  *       {@link JsonPlaceholderClient} with Resilience4J (circuit breaker + retry).</dd>
  *
  *   <dt>{@link TodoService} / {@link TodoItem}</dt>
- *   <dd>Fetches per-user TODO lists from the same upstream. Used to demonstrate
+ *   <dd>Fetches per-user task lists from the same upstream. Used to demonstrate
  *       parallel external calls and timeline aggregation.</dd>
  * </dl>
  *
