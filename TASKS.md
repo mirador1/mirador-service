@@ -39,10 +39,10 @@
       known CVEs. Requires artifact rename
       (`spring-ai-ollama-spring-boot-starter` → `spring-ai-starter-model-ollama`)
       and API-surface validation.
-- [ ] **ShedLock** 6 → 7 (major; distributed-lock library).
-- [ ] **Testcontainers** 1.21 → 2.0 (major; breaking changes).
-- [ ] **testcontainers-keycloak** 3 → 4 (major).
-- [ ] **Checkstyle** 10.26.1 → 13.4.0 (3 majors; Checkstyle-config review).
+- [ ] **Testcontainers** 1.21 → 2.0 — **blocked**. 2.0.x core is on
+      Maven Central but companion modules (`junit-jupiter`,
+      `postgresql`, `kafka`) only ship for 1.21.x; stay on 1.21.4
+      until modules catch up. Revisit periodically.
 
 ## Pending — Industry-standard upgrades
 
@@ -73,9 +73,24 @@
 
 ## Recently Completed
 
-- [x] SonarCloud cleanup — S1874 (JSpecify migration), S1130 (unused throws),
-      S1192 (literal constants), S5838 (AssertJ idioms), S1141 (nested try),
-      S1710 (@ApiResponses flatten). 6 commits merged via MR 56.
+- [x] **Version bumps (post-Sonar)**: Checkstyle 10.26.1 → 13.4.0
+      (3 majors; Java 25 parser verified clean, only stylistic
+      warnings emitted), ShedLock 6.0.2 → 7.7.0 (same import paths),
+      testcontainers-keycloak 3.5.0 → 4.1.1 (API compatible),
+      tools.jackson.core 3.1.0 → 3.1.1 pinned (CVE
+      GHSA-2m67-wjpj-xhg9).
+- [x] **SonarCloud cleanup — zero actionable issues**. Five merged MRs
+      (56-60) drove the inventory from 146 open issues to 0: S7467
+      (unused-catch pattern), S1128 (unused imports), S1192 (literal
+      constants), S1710 (flattened @ApiResponses wrappers), S6068
+      (redundant eq() matchers), S1874 (JSpecify migration), S1130
+      (unused throws), S1141 (nested try — parseOneSuite / ParsedSuite
+      record, parseDurationSeconds), S135 (multi-break parsers), S5838
+      (AssertJ idioms), S1481/S1168/S2094 (suppressions with intent),
+      S6353/S2293/S6813/S8491, S125/S1135/S107/S3776/S6541/S5853/S5976,
+      javasecurity:S3649 + S5131 (intentional-demo suppressions +
+      HtmlUtils.htmlEscape on /xss-safe), Trivy GHSA-2m67-wjpj-xhg9
+      (jackson-core 3.1.0 → 3.1.1 pinned).
 - [x] ADR-0009 (container runtime: `eclipse-temurin:25-jre`), ADR-0010
       (OTLP push to Collector, not Prometheus scrape), and ADR-0011
       (minimal `@Transactional` surface, no `readOnly = true`) — three
