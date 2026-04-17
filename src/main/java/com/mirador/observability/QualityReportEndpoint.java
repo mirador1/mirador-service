@@ -274,56 +274,23 @@ public class QualityReportEndpoint {
         // (after a rename without mvn clean) would otherwise double-count.
         java.util.Set<String> seenShortNames = new java.util.LinkedHashSet<>();
 
+        DocumentBuilder docBuilder;
         try {
-            DocumentBuilder docBuilder = secureDocumentBuilder();
-            for (InputStream is : streams) {
-                try (is) {
-                    Document doc = docBuilder.parse(is);
-                    Element suite = doc.getDocumentElement();
-                    int tests = intAttr(suite, K_TESTS);
-                    int failures = intAttr(suite, K_FAILURES);
-                    int errors = intAttr(suite, K_ERRORS);
-                    int skipped = intAttr(suite, K_SKIPPED);
-                    double time = doubleAttr(suite, "time");
-
-                    String fullName = suite.getAttribute("name");
-                    String shortName = fullName.contains(".")
-                            ? fullName.substring(fullName.lastIndexOf('.') + 1)
-                            : fullName;
-
-                    // Skip duplicate class names (e.g. old package + new package same class)
-                    if (!seenShortNames.add(shortName)) continue;
-
-                    totalTests += tests;
-                    totalFailures += failures;
-                    totalErrors += errors;
-                    totalSkipped += skipped;
-                    totalTime += time;
-
-                    Map<String, Object> suiteMap = new LinkedHashMap<>();
-                    suiteMap.put("name", shortName);
-                    suiteMap.put(K_TESTS, tests);
-                    suiteMap.put(K_FAILURES, failures);
-                    suiteMap.put(K_ERRORS, errors);
-                    suiteMap.put(K_SKIPPED, skipped);
-                    suiteMap.put("time", String.format("%.3fs", time));
-                    suites.add(suiteMap);
-
-                    // Parse individual test cases for slowest tests
-                    NodeList testCases = doc.getElementsByTagName("testcase");
-                    for (int k = 0; k < testCases.getLength(); k++) {
-                        Element tc = (Element) testCases.item(k);
-                        double tcTime = doubleAttr(tc, "time");
-                        String tcName = tc.getAttribute("classname") + "." + tc.getAttribute("name");
-                        allTestCases.add(new double[]{tcTime});
-                        allTestCaseNames.add(tcName);
-                    }
-                } catch (Exception _) {
-                    // skip malformed XML
-                }
-            }
+            docBuilder = secureDocumentBuilder();
         } catch (Exception e) {
             return Map.of(K_AVAILABLE, false, K_ERROR, e.getMessage());
+        }
+        for (InputStream is : streams) {
+            ParsedSuite p = parseOneSuite(is, docBuilder);
+            if (p == null || !seenShortNames.add(p.shortName())) continue;  // malformed or duplicate
+            totalTests    += p.tests();
+            totalFailures += p.failures();
+            totalErrors   += p.errors();
+            totalSkipped  += p.skipped();
+            totalTime     += p.time();
+            suites.add(p.display());
+            allTestCases.addAll(p.testCaseTimes());
+            allTestCaseNames.addAll(p.testCaseNames());
         }
 
         String runAt = LocalDateTime.ofInstant(
@@ -394,7 +361,10 @@ public class QualityReportEndpoint {
     // Coverage section
     // -------------------------------------------------------------------------
 
-    @SuppressWarnings("java:S3776") // parses JaCoCo CSV with per-package aggregation — inherently multi-branch
+    // S1141: the inner try/catch is idiomatic "skip malformed CSV row, continue" —
+    // extracting it to a helper would require a mutable 10-field accumulator
+    // that hurts rather than helps readability.
+    @SuppressWarnings({"java:S3776", "java:S1141"})
     private Map<String, Object> buildCoverageSection() {
         // Prefer the merged report (unit + IT). In dev, fall through to
         // the unit-only CSV when the merged one was not produced (e.g.
@@ -1030,6 +1000,8 @@ public class QualityReportEndpoint {
      * BRANCH_MISSED(5), BRANCH_COVERED(6), LINE_MISSED(7), LINE_COVERED(8),
      * COMPLEXITY_MISSED(9), COMPLEXITY_COVERED(10), METHOD_MISSED(11), METHOD_COVERED(12)
      */
+    // S1141: inner try/catch intentional (skip-malformed-row pattern, same as buildCoverageSection).
+    @SuppressWarnings("java:S1141")
     private Map<String, Object> buildMetricsSection() {
         // Same merged-first / unit-fallback strategy as buildCoverageSection.
         InputStream is = loadResource(CP_JACOCO, DEV_JACOCO);
@@ -1549,6 +1521,68 @@ public class QualityReportEndpoint {
         return null;
     }
 
+    /**
+     * Parses an ISO-8601 start/finish pair and returns the number of whole seconds
+     * between them. Extracted so {@link #buildPipelineHistorySection()} doesn't need
+     * a nested try/catch (Sonar S1141). A malformed timestamp simply omits the field.
+     */
+    private static java.util.OptionalLong parseDurationSeconds(String startIso, String finishIso) {
+        try {
+            Instant start  = Instant.parse(startIso);
+            Instant finish = Instant.parse(finishIso);
+            return java.util.OptionalLong.of(Duration.between(start, finish).getSeconds());
+        } catch (Exception _) {
+            return java.util.OptionalLong.empty();
+        }
+    }
+
+    /**
+     * Parsed representation of one surefire/failsafe {@code TEST-*.xml} suite.
+     * Used by {@link #parseOneSuite(InputStream, DocumentBuilder)} so the caller
+     * doesn't need a second try/catch inside the loop (Sonar S1141).
+     */
+    private record ParsedSuite(String shortName, Map<String, Object> display,
+                                int tests, int failures, int errors, int skipped, double time,
+                                List<double[]> testCaseTimes, List<String> testCaseNames) {}
+
+    private static ParsedSuite parseOneSuite(InputStream is, DocumentBuilder docBuilder) {
+        try (is) {
+            Document doc = docBuilder.parse(is);
+            Element suite = doc.getDocumentElement();
+            int tests    = intAttr(suite, K_TESTS);
+            int failures = intAttr(suite, K_FAILURES);
+            int errors   = intAttr(suite, K_ERRORS);
+            int skipped  = intAttr(suite, K_SKIPPED);
+            double time  = doubleAttr(suite, "time");
+
+            String fullName = suite.getAttribute("name");
+            String shortName = fullName.contains(".")
+                    ? fullName.substring(fullName.lastIndexOf('.') + 1)
+                    : fullName;
+
+            Map<String, Object> suiteMap = new LinkedHashMap<>();
+            suiteMap.put("name", shortName);
+            suiteMap.put(K_TESTS, tests);
+            suiteMap.put(K_FAILURES, failures);
+            suiteMap.put(K_ERRORS, errors);
+            suiteMap.put(K_SKIPPED, skipped);
+            suiteMap.put("time", String.format("%.3fs", time));
+
+            NodeList testCases = doc.getElementsByTagName("testcase");
+            List<double[]> tcTimes = new ArrayList<>(testCases.getLength());
+            List<String>   tcNames = new ArrayList<>(testCases.getLength());
+            for (int k = 0; k < testCases.getLength(); k++) {
+                Element tc = (Element) testCases.item(k);
+                tcTimes.add(new double[]{doubleAttr(tc, "time")});
+                tcNames.add(tc.getAttribute("classname") + "." + tc.getAttribute("name"));
+            }
+            return new ParsedSuite(shortName, suiteMap, tests, failures, errors, skipped, time,
+                    tcTimes, tcNames);
+        } catch (Exception _) {
+            return null;  // malformed XML silently skipped
+        }
+    }
+
     private static int intAttr(Element el, String attr) {
         try {
             return Integer.parseInt(el.getAttribute(attr));
@@ -1804,13 +1838,9 @@ public class QualityReportEndpoint {
                 JsonNode finishedAt = p.path("finished_at");
                 if (!startedAt.isNull() && !finishedAt.isNull()
                         && !startedAt.isMissingNode() && !finishedAt.isMissingNode()) {
-                    try {
-                        Instant start  = Instant.parse(startedAt.asText());
-                        Instant finish = Instant.parse(finishedAt.asText());
-                        entry.put("durationSeconds", Duration.between(start, finish).getSeconds());
-                    } catch (Exception _) {
-                        // Malformed timestamp — omit duration rather than break the section
-                    }
+                    // Helper call avoids a nested try/catch in the outer HTTP try (Sonar S1141).
+                    parseDurationSeconds(startedAt.asText(), finishedAt.asText())
+                            .ifPresent(secs -> entry.put("durationSeconds", secs));
                 }
                 entry.put("webUrl", p.path("web_url").asText(""));
                 pipelines.add(entry);
