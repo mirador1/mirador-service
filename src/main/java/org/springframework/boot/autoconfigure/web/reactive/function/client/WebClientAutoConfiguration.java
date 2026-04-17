@@ -15,5 +15,8 @@ package org.springframework.boot.autoconfigure.web.reactive.function.client;
  *
  * <p>Remove this class once Spring AI releases a version compatible with Spring Boot 4.
  */
+// S2094: intentionally empty — annotation-processing-time reference target
+// for Spring AI's @ImportAutoConfiguration. Making it an interface would break that.
+@SuppressWarnings("java:S2094")
 public class WebClientAutoConfiguration {
 }

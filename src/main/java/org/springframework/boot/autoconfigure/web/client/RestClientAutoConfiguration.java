@@ -15,5 +15,9 @@ package org.springframework.boot.autoconfigure.web.client;
  *
  * <p>Remove this class once Spring AI releases a version compatible with Spring Boot 4.
  */
+// S2094: intentionally empty — the class exists only so that Spring AI's
+// @ImportAutoConfiguration(RestClientAutoConfiguration.class) resolves at
+// annotation-processing time. Making it an interface would break that.
+@SuppressWarnings("java:S2094")
 public class RestClientAutoConfiguration {
 }

@@ -7,7 +7,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -19,7 +18,7 @@ class DatabaseReachabilityHealthIndicatorTest {
     @Test
     void selectOne_returnsOne_reportsUp() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
-        when(jdbc.queryForObject(eq("select 1"), eq(Integer.class))).thenReturn(1);
+        when(jdbc.queryForObject("select 1", Integer.class)).thenReturn(1);
 
         var indicator = new DatabaseReachabilityHealthIndicator(jdbc);
         Health h = indicator.health();
@@ -31,7 +30,7 @@ class DatabaseReachabilityHealthIndicatorTest {
     @Test
     void selectOne_returnsUnexpectedValue_reportsDown() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
-        when(jdbc.queryForObject(eq("select 1"), eq(Integer.class))).thenReturn(99);
+        when(jdbc.queryForObject("select 1", Integer.class)).thenReturn(99);
 
         var indicator = new DatabaseReachabilityHealthIndicator(jdbc);
         Health h = indicator.health();
@@ -43,7 +42,7 @@ class DatabaseReachabilityHealthIndicatorTest {
     @Test
     void selectOne_returnsNull_reportsDown() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
-        when(jdbc.queryForObject(eq("select 1"), eq(Integer.class))).thenReturn(null);
+        when(jdbc.queryForObject("select 1", Integer.class)).thenReturn(null);
 
         var indicator = new DatabaseReachabilityHealthIndicator(jdbc);
         Health h = indicator.health();
