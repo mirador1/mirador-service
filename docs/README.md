@@ -13,6 +13,7 @@ docs/
 ├── architecture/           ← high-level design, observability, security model
 ├── api/                    ← API contract, curl examples, Auth0 action code
 ├── reference/              ← technology glossary (~1100 lines)
+├── ops/                    ← CI timings and other run/build metrics
 ├── assets/                 ← banner, screenshots, images
 └── examples/               ← sample API payloads + Prometheus dumps
 ```
@@ -43,7 +44,13 @@ it lists every ADR with status, and the numbers are stable once merged.
 
 | Doc                                                                   | Topic                                                            |
 | --------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| [`reference/technologies.md`](reference/technologies.md)              | Long-form glossary — 199 entries over 22 categories.              |
+| [`reference/technologies.md`](reference/technologies.md)              | Long-form glossary — 196 entries with icon + official URL each.   |
+
+## Ops
+
+| Doc                                         | Topic                                                                           |
+| ------------------------------------------- | ------------------------------------------------------------------------------- |
+| [`ops/ci-timings.md`](ops/ci-timings.md)    | Measured per-job and per-stage CI/CD durations; refresh snippet included.        |
 
 Live technical reference (auto-generated, not committed):
 
