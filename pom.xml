@@ -554,15 +554,19 @@
                         <exclude>**/*ITest.java</exclude>
                     </excludes>
                     <!--
-                      Parallel unit-test execution. Each fork is a fresh JVM so Spring
-                      contexts, static state, and ThreadLocal are fully isolated. `1C`
-                      means one fork per CPU core (the macbook-local runner has 8+).
-                      reuseForks=true amortises JVM startup across test classes, which
-                      matters because our *Test classes are light (Mockito + pure logic).
-                      Class-level parallelism was validated on the default profile:
-                      ~30 s single-threaded → ~10–12 s with forkCount=1C.
+                      Kept at the default single fork after a parallel trial:
+                      forkCount=1C caused AggregationServiceTest
+                      `aggregate_runsBothTasksInParallel` to flake on CI because
+                      the test asserts that two 200 ms virtual-thread tasks
+                      complete in under 360 ms — the CPU contention between
+                      sibling forks blows that budget (observed 1.2 s wall-clock
+                      in pipeline 345). The unit-test job is already short
+                      (~31 s on CI) so the payoff didn't justify the flakiness.
+                      Revisit once timing-sensitive tests are tagged for
+                      single-thread execution or the assertion is loosened to
+                      cope with parallel forks.
                     -->
-                    <forkCount>1C</forkCount>
+                    <forkCount>1</forkCount>
                     <reuseForks>true</reuseForks>
                 </configuration>
             </plugin>
