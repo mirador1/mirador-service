@@ -25,7 +25,7 @@ class DatabaseReachabilityHealthIndicatorTest {
         Health h = indicator.health();
 
         assertThat(h.getStatus()).isEqualTo(Status.UP);
-        assertThat(h.getDetails().get("database")).isEqualTo("reachable");
+        assertThat(h.getDetails()).containsEntry("database", "reachable");
     }
 
     @Test
@@ -37,7 +37,7 @@ class DatabaseReachabilityHealthIndicatorTest {
         Health h = indicator.health();
 
         assertThat(h.getStatus()).isEqualTo(Status.DOWN);
-        assertThat(h.getDetails().get("database")).isEqualTo("unexpected response");
+        assertThat(h.getDetails()).containsEntry("database", "unexpected response");
     }
 
     @Test
@@ -61,6 +61,6 @@ class DatabaseReachabilityHealthIndicatorTest {
         Health h = indicator.health();
 
         assertThat(h.getStatus()).isEqualTo(Status.DOWN);
-        assertThat(h.getDetails().get("database")).isEqualTo("unreachable");
+        assertThat(h.getDetails()).containsEntry("database", "unreachable");
     }
 }

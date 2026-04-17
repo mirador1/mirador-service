@@ -27,7 +27,7 @@ class ApiExceptionHandlerTest {
         var ex = mock(MethodArgumentNotValidException.class);
         ProblemDetail pd = handler.handle(ex);
         assertThat(pd.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST.value());
-        assertThat(pd.getType().toString()).isEqualTo("urn:problem:validation-error");
+        assertThat(pd.getType()).hasToString("urn:problem:validation-error");
         assertThat(pd.getTitle()).isEqualTo("Validation Error");
     }
 
@@ -36,7 +36,7 @@ class ApiExceptionHandlerTest {
         var ex = new ConstraintViolationException("size must be < 50", Set.of());
         ProblemDetail pd = handler.handle(ex);
         assertThat(pd.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST.value());
-        assertThat(pd.getType().toString()).isEqualTo("urn:problem:constraint-violation");
+        assertThat(pd.getType()).hasToString("urn:problem:constraint-violation");
         assertThat(pd.getDetail()).contains("size must be < 50");
     }
 
@@ -45,7 +45,7 @@ class ApiExceptionHandlerTest {
         var ex = new IllegalArgumentException("invalid sort field");
         ProblemDetail pd = handler.handle(ex);
         assertThat(pd.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST.value());
-        assertThat(pd.getType().toString()).isEqualTo("urn:problem:bad-request");
+        assertThat(pd.getType()).hasToString("urn:problem:bad-request");
         assertThat(pd.getDetail()).isEqualTo("invalid sort field");
     }
 
@@ -54,7 +54,7 @@ class ApiExceptionHandlerTest {
         var ex = new NoSuchElementException("Customer 99 not found");
         ProblemDetail pd = handler.handle(ex);
         assertThat(pd.getStatus()).isEqualTo(HttpStatus.NOT_FOUND.value());
-        assertThat(pd.getType().toString()).isEqualTo("urn:problem:not-found");
+        assertThat(pd.getType()).hasToString("urn:problem:not-found");
     }
 
     @Test
@@ -62,7 +62,7 @@ class ApiExceptionHandlerTest {
         var ex = mock(NoResourceFoundException.class);
         ProblemDetail pd = handler.handle(ex);
         assertThat(pd.getStatus()).isEqualTo(HttpStatus.NOT_FOUND.value());
-        assertThat(pd.getType().toString()).isEqualTo("urn:problem:not-found");
+        assertThat(pd.getType()).hasToString("urn:problem:not-found");
     }
 
     @Test
@@ -71,7 +71,7 @@ class ApiExceptionHandlerTest {
         var ex = new IllegalStateException("Kafka error", cause);
         ProblemDetail pd = handler.handle(ex);
         assertThat(pd.getStatus()).isEqualTo(HttpStatus.GATEWAY_TIMEOUT.value());
-        assertThat(pd.getType().toString()).isEqualTo("urn:problem:kafka-timeout");
+        assertThat(pd.getType()).hasToString("urn:problem:kafka-timeout");
         assertThat(pd.getTitle()).isEqualTo("Kafka Reply Timeout");
     }
 
@@ -81,7 +81,7 @@ class ApiExceptionHandlerTest {
         var ex = new IllegalStateException("some other state issue");
         ProblemDetail pd = handler.handle(ex);
         assertThat(pd.getStatus()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR.value());
-        assertThat(pd.getType().toString()).isEqualTo("urn:problem:internal-error");
+        assertThat(pd.getType()).hasToString("urn:problem:internal-error");
     }
 
     @Test
@@ -89,7 +89,7 @@ class ApiExceptionHandlerTest {
         var ex = new RuntimeException("surprise");
         ProblemDetail pd = handler.handle(ex);
         assertThat(pd.getStatus()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR.value());
-        assertThat(pd.getType().toString()).isEqualTo("urn:problem:internal-error");
+        assertThat(pd.getType()).hasToString("urn:problem:internal-error");
         assertThat(pd.getDetail()).isEqualTo("An unexpected error occurred");
     }
 }

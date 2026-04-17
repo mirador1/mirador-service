@@ -117,6 +117,6 @@ class RecentCustomerBufferTest {
     void size_returnsZero_whenRedisReturnsNull() {
         when(listOps.size(anyString())).thenReturn(null);
 
-        assertThat(buffer.size()).isEqualTo(0L);
+        assertThat(buffer.size()).isZero();
     }
 }
