@@ -46,13 +46,23 @@
 
 ## Pending — Industry-standard upgrades
 
-- [ ] **Argo CD GitOps** — replace push-based CI deploy with pull-based
-      reconciliation. Argo `Application` points at
-      `deploy/kubernetes/overlays/gke`. Rollback = `git revert`.
+- [~] **Argo CD GitOps** — scaffolding at
+      [`deploy/argocd/application.yaml`](deploy/argocd/application.yaml)
+      ready to apply once Argo CD is installed on the cluster. Cutover
+      procedure documented in [`deploy/argocd/README.md`](deploy/argocd/README.md).
+      Remaining: install Argo CD in GKE, apply the Application, remove
+      the `deploy:gke` CI job.
 
-- [ ] **External Secrets Operator + Google Secret Manager** — replace the
-      `kubectl create secret` step in `.kubectl-apply` with ExternalSecret
-      CRDs. Auto-rotation, no secrets in CI variable storage.
+- [~] **External Secrets Operator + Google Secret Manager** — scaffolding
+      at [`deploy/external-secrets/`](deploy/external-secrets/)
+      (SecretStore + ExternalSecret using Workload Identity, kept
+      outside `deploy/kubernetes/base/` until the CRDs are installed
+      so the CI k8s-dry-run hook doesn't fail on unknown kinds).
+      Cutover procedure documented in the same folder's README.
+      Remaining: `helm install external-secrets`, create GCP secrets,
+      grant IAM, move the files under `base/external-secrets/`, wire
+      them into `base/kustomization.yaml`, and drop the
+      `kubectl create secret generic mirador-secrets` step in CI.
 
 - [ ] **distroless java25 image** — switch once Google publishes it (track
       https://github.com/GoogleContainerTools/distroless). Drops ~90 CVEs

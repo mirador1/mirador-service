@@ -1,0 +1,108 @@
+# =============================================================================
+# Argo CD Application — GitOps pull-based deploy for GKE Autopilot.
+#
+# What this flips vs today's pipeline:
+#   - Today: CI builds the image (docker-build) AND applies the Kustomize
+#            overlay (deploy:gke). The cluster's state is set by whatever
+#            ran in the last pipeline.
+#   - With Argo CD: CI only builds + pushes the image. Argo CD watches
+#            this repo's main branch, reconciles the Kustomize overlay
+#            below onto the cluster, and rolls back on drift.
+#            Rollback = `git revert`; there is no "redeploy" button.
+#
+# Prerequisites (one-time cluster setup — NOT done by this manifest):
+#   1. Install Argo CD:
+#        kubectl create namespace argocd
+#        kubectl apply -n argocd -f \
+#          https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+#   2. Expose the Argo CD UI (port-forward or a dedicated Ingress).
+#   3. Grant Argo CD read access to this repo (public repos work out of the
+#      box; private repos need a deploy token added as an `argocd-repo` Secret).
+#   4. Remove the `deploy:gke` job from .gitlab-ci.yml — once Argo CD
+#      reconciles, leaving the job in means two writers fight over the
+#      same resources.
+#
+# Apply this manifest (after the prerequisites):
+#   kubectl apply -f deploy/argocd/application.yaml
+#
+# Inspect sync state:
+#   argocd app get mirador
+#   kubectl describe application mirador -n argocd
+#
+# This file is tracked in git so the configuration itself is GitOps-managed:
+# editing `targetRevision`, `path`, or sync-policy is a commit here.
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: mirador
+  namespace: argocd
+  # Finalizer keeps the Argo CD Application around until Argo cleans up
+  # the managed resources (prevents orphaned Deployments on accidental
+  # Application deletion).
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  # Every Application belongs to a Project. `default` is fine for a single
+  # team; larger orgs would create a project-level RBAC scope here.
+  project: default
+
+  source:
+    repoURL: https://gitlab.com/mirador1/mirador-service.git
+    # `main` is the GitOps source of truth. Never point this at `dev` —
+    # every commit on dev would reach production.
+    targetRevision: main
+    path: deploy/kubernetes/overlays/gke
+    # Argo CD auto-detects Kustomize from `kustomization.yaml`. No extra
+    # `kustomize:` block needed unless we want image overrides or patches
+    # injected by Argo (we keep all patching in the overlay itself).
+
+  destination:
+    # `https://kubernetes.default.svc` is the in-cluster API server address —
+    # works in every cluster Argo CD is installed in.
+    server: https://kubernetes.default.svc
+    # Kustomize overlay already puts resources into `app` / `infra`; the
+    # namespace here is only used for resources that don't declare one.
+    namespace: app
+
+  syncPolicy:
+    automated:
+      # Reconcile drift: if someone `kubectl edit` on the cluster, Argo
+      # wipes the change on the next sync.
+      selfHeal: true
+      # Actually delete resources removed from git (default would only
+      # create/update — dead Services/ConfigMaps would linger).
+      prune: true
+    syncOptions:
+      # Create `app` / `infra` namespaces if they don't exist. Replaces the
+      # `kubectl create namespace --dry-run | kubectl apply` dance in
+      # .kubectl-apply.
+      - CreateNamespace=true
+      # Apply CRDs (like PodDisruptionBudget schemas) via server-side apply
+      # to avoid the "Last-applied-configuration annotation too big" error.
+      - ServerSideApply=true
+      # Wait for health checks before marking an app Healthy — ensures
+      # smoke-test runs after the new pods are actually ready.
+      - RespectIgnoreDifferences=true
+
+    retry:
+      # Three attempts, exponential backoff. Transient GCP API blips
+      # (especially during cert-manager challenges) shouldn't mark the
+      # app unhealthy immediately.
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 2m
+
+  # Don't fight with fields that GKE controllers write back (e.g.
+  # replica counts set by HPA, annotations added by GKE Autopilot).
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas         # HPA owns this
+    - group: ""
+      kind: Service
+      jsonPointers:
+        - /spec/clusterIP        # assigned by the cluster

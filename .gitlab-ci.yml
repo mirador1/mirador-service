@@ -54,8 +54,7 @@ workflow:
         - ".dockerignore"
         - "docker-compose*.yml"
         - ".gitlab-ci.yml"
-        - "deploy/kubernetes/**/*"
-        - "deploy/terraform/**/*"
+        - "deploy/**/*"
         - "scripts/**/*"
     # Main branch pushes — same allowlist, compared against HEAD~1 (last commit).
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE != "schedule"
@@ -69,8 +68,7 @@ workflow:
         - ".dockerignore"
         - "docker-compose*.yml"
         - ".gitlab-ci.yml"
-        - "deploy/kubernetes/**/*"
-        - "deploy/terraform/**/*"
+        - "deploy/**/*"
         - "scripts/**/*"
     # Scheduled pipelines: two named schedules (native build + report generation).
     # Configure each in GitLab → CI/CD → Schedules. The REPORT_PIPELINE variable
