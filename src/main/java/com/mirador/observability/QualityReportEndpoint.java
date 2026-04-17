@@ -593,26 +593,35 @@ public class QualityReportEndpoint {
     // Git section
     // -------------------------------------------------------------------------
 
-    private Map<String, Object> buildGitSection() {
+    /**
+     * Returns the {@code origin} remote URL, or {@code null} if git isn't available
+     * or the repo has no origin. Extracted from {@link #buildGitSection()} so the
+     * caller doesn't nest two try/catch blocks (Sonar S1141).
+     */
+    private String fetchGitRemoteUrl() {
         try {
-            // Fetch remote URL first so it can be shown as a link in the frontend.
-            String remoteUrl = null;
-            try {
-                Process remoteProc = new ProcessBuilder(GIT_BIN, "remote", "get-url", "origin")
-                        .directory(new File("."))
-                        .redirectErrorStream(true)
-                        .start();
-                try (BufferedReader br = new BufferedReader(
-                        new InputStreamReader(remoteProc.getInputStream(), StandardCharsets.UTF_8))) {
-                    String line = br.readLine();
-                    if (line != null && !line.isBlank()) remoteUrl = line.trim();
-                }
-                remoteProc.waitFor();
-            } catch (InterruptedException _) {
-                // Preserve interrupt so callers can react (Sonar S2142).
-                Thread.currentThread().interrupt();
-            } catch (Exception _) { /* remote URL is optional */ }
+            Process proc = new ProcessBuilder(GIT_BIN, "remote", "get-url", "origin")
+                    .directory(new File("."))
+                    .redirectErrorStream(true)
+                    .start();
+            try (BufferedReader br = new BufferedReader(
+                    new InputStreamReader(proc.getInputStream(), StandardCharsets.UTF_8))) {
+                String line = br.readLine();
+                proc.waitFor();
+                return (line != null && !line.isBlank()) ? line.trim() : null;
+            }
+        } catch (InterruptedException _) {
+            Thread.currentThread().interrupt();
+            return null;
+        } catch (Exception _) {
+            return null;
+        }
+    }
 
+    private Map<String, Object> buildGitSection() {
+        // Remote URL is optional (kept out of the outer try to avoid Sonar S1141 nested-try).
+        String remoteUrl = fetchGitRemoteUrl();
+        try {
             Process proc = new ProcessBuilder(GIT_BIN, "log", "--no-merges", "-15",
                     "--format=%h|%an|%ai|%s")
                     .directory(new File("."))
