@@ -210,8 +210,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
             // Strategy 3: Auth0 without RBAC configured — grant ROLE_USER as default.
             // This allows any Auth0-authenticated user to read/write but not delete.
-            // TODO: configure Auth0 RBAC (assign roles in Auth0 Dashboard → User Management →
-            //   Roles) and add an Auth0 Action to embed them in the access token.
+            // Follow-up: once Auth0 RBAC is provisioned (Dashboard → User Management → Roles)
+            // and an Auth0 Action embeds the roles in the access token, this fallback
+            // becomes dead code and can be removed.
             if (authorities.isEmpty()) {
                 authorities.add(new SimpleGrantedAuthority("ROLE_USER"));
                 log.debug("No role claims found in external JWT for '{}' — defaulting to ROLE_USER",

@@ -927,10 +927,7 @@ public class QualityReportEndpoint {
      *
      * <p>Incompatible licenses for commercial projects: GPL, AGPL, LGPL, CDDL, EPL.
      */
-    // S3776+S135: cognitive complexity is inherent to THIRD-PARTY.txt parsing;
-    // multiple `continue` statements skip rows that are not actual dependency
-    // entries (comments, section headers, malformed coordinates).
-    @SuppressWarnings({"java:S3776", "java:S135"})
+    @SuppressWarnings({"java:S3776", "java:S135"})   // THIRD-PARTY.txt parsing: multiple early-skip branches for header and malformed rows
     private Map<String,Object> buildLicensesSection() {
         InputStream is = loadResource(CP_THIRD_PARTY, "target/THIRD-PARTY.txt");
         if (is == null) return Map.of(K_AVAILABLE, false);

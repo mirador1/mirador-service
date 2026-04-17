@@ -115,6 +115,10 @@
 
         <!-- Non-BOM application dependencies -->
         <protobuf.version>4.34.1</protobuf.version>
+        <!-- Jackson 3.x (tools.jackson.core) pulled in transitively by
+             spring-data-rest-webmvc. 3.1.0 has CVE GHSA-2m67-wjpj-xhg9 (HIGH);
+             3.1.1 is the fix. Pin here until the BOM catches up. -->
+        <jackson3.version>3.1.1</jackson3.version>
         <!--
           opentelemetry-logback-appender-1.0 tracks OTel API tightly.
           2.26.1-alpha calls LogRecordBuilder.setException(Throwable) which
@@ -232,6 +236,22 @@
                 <groupId>org.ow2.asm</groupId>
                 <artifactId>asm-tree</artifactId>
                 <version>${asm.version}</version>
+            </dependency>
+            <!-- CVE override: see ${jackson3.version} property. -->
+            <dependency>
+                <groupId>tools.jackson.core</groupId>
+                <artifactId>jackson-core</artifactId>
+                <version>${jackson3.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>tools.jackson.core</groupId>
+                <artifactId>jackson-databind</artifactId>
+                <version>${jackson3.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>tools.jackson.core</groupId>
+                <artifactId>jackson-annotations</artifactId>
+                <version>${jackson3.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

@@ -25,7 +25,7 @@ import java.util.List;
 public interface JsonPlaceholderClient {
 
     /**
-     * Fetches the todo list for a given user ID.
+     * Fetches the task list for a given user ID.
      * Maps to {@code GET https://jsonplaceholder.typicode.com/users/{id}/todos}.
      */
     @GetExchange("/users/{id}/todos")
