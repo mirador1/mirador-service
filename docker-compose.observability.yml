@@ -37,7 +37,11 @@ services:
   # can reach the Spring Boot app running outside Docker.
   # ---------------------------------------------------------------------------
   lgtm:
-    image: grafana/otel-lgtm:0.22.1
+    # Pinned tag. Bumping from 0.22.1 (Loki 3.6.7 / Grafana 12.4.1 /
+    # Tempo 2.10.3 / Prom 3.10.0) to 0.25.0 (Loki 3.7.1 / Grafana 12.4.2
+    # / Tempo 2.10.4 / Prom 3.11.2) unlocks Loki bloom-filter support
+    # and Grafana 12.4's Logs Drilldown polish. See ADR-0012.
+    image: grafana/otel-lgtm:0.25.0
     container_name: customerservice-lgtm
     ports:
       - "3000:3000"    # Grafana UI
@@ -60,6 +64,9 @@ services:
       - ./infra/observability/grafana/dashboards-lgtm/:/otel-lgtm/dashboards/
       # Override OTEL collector config (Tempo-only pipeline, CORS allowed)
       - ./infra/observability/otelcol-override.yaml:/otel-lgtm/otelcol-config.yaml:ro
+      # Override Loki config to enable bloom filters (ADR-0012). The
+      # baseline file ships no bloom sections so blooms are off by default.
+      - ./infra/observability/loki-override.yaml:/otel-lgtm/loki-config.yaml:ro
       # Override Grafana datasource provisioning — fixes Tempo→Loki trace-to-logs query:
       # trace_id is a Loki stream label so the lookup must use {trace_id="<id>"},
       # not the default line-filter syntax (| trace_id = "<id>") shipped by otel-lgtm.

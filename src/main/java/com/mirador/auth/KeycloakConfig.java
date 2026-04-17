@@ -14,7 +14,6 @@ import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 
 import java.util.Collection;
-import java.util.List;
 
 /**
  * Provides the optional Keycloak {@link JwtDecoder} bean.

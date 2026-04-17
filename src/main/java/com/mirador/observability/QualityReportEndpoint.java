@@ -19,7 +19,6 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -103,7 +102,6 @@ public class QualityReportEndpoint {
     private static final String CP_SUREFIRE_PATTERN = "META-INF/build-reports/surefire/TEST-*.xml";
     private static final String CP_BUILD_INFO = "META-INF/build-info.properties";
     private static final String CP_PMD        = "META-INF/build-reports/pmd.xml";
-    private static final String CP_CPD        = "META-INF/build-reports/cpd.xml";
     private static final String CP_CHECKSTYLE = "META-INF/build-reports/checkstyle-result.xml";
     private static final String CP_OWASP      = "META-INF/build-reports/dependency-check-report.json";
     private static final String CP_PITEST     = "META-INF/build-reports/pit-reports/mutations.xml";
@@ -116,7 +114,6 @@ public class QualityReportEndpoint {
     private static final String DEV_SPOTBUGS = "target/spotbugsXml.xml";
     private static final String DEV_SUREFIRE_DIR = "target/surefire-reports";
     private static final String DEV_PMD        = "target/pmd.xml";
-    private static final String DEV_CPD        = "target/cpd.xml";
     private static final String DEV_CHECKSTYLE = "target/checkstyle-result.xml";
     private static final String DEV_OWASP      = "target/dependency-check-report.json";
     private static final String DEV_PITEST     = "target/pit-reports/mutations.xml";
@@ -404,10 +401,14 @@ public class QualityReportEndpoint {
             return Map.of(K_AVAILABLE, false);
         }
 
-        long instrCovered = 0, instrTotal = 0;
-        long branchCovered = 0, branchTotal = 0;
-        long lineCovered = 0, lineTotal = 0;
-        long methodCovered = 0, methodTotal = 0;
+        long instrCovered = 0;
+        long instrTotal = 0;
+        long branchCovered = 0;
+        long branchTotal = 0;
+        long lineCovered = 0;
+        long lineTotal = 0;
+        long methodCovered = 0;
+        long methodTotal = 0;
 
         // Map<packageName, [lineCovered, lineTotal, instrCovered, instrTotal]>
         Map<String, long[]> pkgData = new LinkedHashMap<>();
@@ -1018,7 +1019,10 @@ public class QualityReportEndpoint {
         }
         if (is == null) return Map.of(K_AVAILABLE, false);
 
-        long totalClasses = 0, totalMethods = 0, totalLines = 0, totalComplexity = 0;
+        long totalClasses = 0;
+        long totalMethods = 0;
+        long totalLines = 0;
+        long totalComplexity = 0;
         Map<String, long[]> pkgMetrics = new LinkedHashMap<>(); // [classes, lines, methods, complexity]
         // Class-level complexity for top-10 view
         List<long[]> classComplexity = new ArrayList<>(); // [complexity, classNameIndex]
@@ -1334,7 +1338,10 @@ public class QualityReportEndpoint {
         InputStream is = loadResource(CP_PITEST, DEV_PITEST);
         if (is == null) return Map.of(K_AVAILABLE, false, "note", "Run: mvn test-compile pitest:mutationCoverage");
 
-        int total = 0, killed = 0, survived = 0, noCoverage = 0;
+        int total = 0;
+        int killed = 0;
+        int survived = 0;
+        int noCoverage = 0;
         Map<String, Integer> byMutator  = new LinkedHashMap<>();
         Map<String, Integer> byStatus   = new LinkedHashMap<>();
         List<Map<String, Object>> surviving = new ArrayList<>();

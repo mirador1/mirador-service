@@ -1,7 +1,5 @@
 package com.mirador.integration;
 
-import com.mirador.integration.JsonPlaceholderClient;
-import com.mirador.integration.TodoItem;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
 import org.slf4j.Logger;

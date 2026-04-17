@@ -123,7 +123,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             // BaggageInScope propagates "user.name" as a W3C baggage entry across service boundaries.
             // try-with-resources guarantees the scope is closed after the entire filter chain completes.
             // [OpenTelemetry / Micrometer Tracing — baggage propagation]
-            try (BaggageInScope ignored = tracer.createBaggageInScope("user.name", name)) {
+            try (var unused = tracer.createBaggageInScope("user.name", name)) {
+                // Unused handle held only to close the baggage scope after the chain finishes.
                 filterChain.doFilter(request, response);
             }
             return;

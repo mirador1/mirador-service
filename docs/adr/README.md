@@ -41,6 +41,7 @@ File name pattern: `NNNN-kebab-case-title.md` (NNNN is a zero-padded sequence).
 | 0009  | Accepted    | [Container runtime base image — `eclipse-temurin:25-jre`](0009-container-runtime-base-image.md) |
 | 0010  | Accepted    | [OpenTelemetry OTLP push to a Collector (not Prometheus scrape)](0010-otlp-push-to-collector.md) |
 | 0011  | Accepted    | [Minimal `@Transactional` surface, no `@Transactional(readOnly = true)`](0011-transactional-read-strategy.md) |
+| 0012  | Accepted    | [Stay on LGTM with Loki bloom filters — defer OpenSearch](0012-stay-on-lgtm-with-bloom-filters.md) |
 
 ## When to write an ADR
 
