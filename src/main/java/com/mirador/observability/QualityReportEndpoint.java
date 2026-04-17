@@ -141,6 +141,12 @@ public class QualityReportEndpoint {
     private static final String K_VERSION       = "version";
     private static final String K_DEPENDENCIES  = "dependencies";
     private static final String K_MUTATED_CLASS = "mutatedClass";
+    private static final String K_BRANCHES       = "branches";
+    private static final String K_STATUS         = "status";
+    private static final String K_GROUP_ID       = "groupId";
+    private static final String K_ARTIFACT_ID    = "artifactId";
+    private static final String K_COUNT          = "count";
+    private static final String K_REASON         = "reason";
 
     /**
      * Absolute path to the {@code git} binary, resolved once at class-init
@@ -236,7 +242,7 @@ public class QualityReportEndpoint {
         result.put("metrics", buildMetricsSection());
         result.put("runtime", buildRuntimeSection());
         result.put("pipeline", buildPipelineSection());
-        result.put("branches", buildBranchesSection());
+        result.put(K_BRANCHES, buildBranchesSection());
         return result;
     }
 
@@ -339,7 +345,7 @@ public class QualityReportEndpoint {
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put(K_AVAILABLE, true);
-        result.put("status", allPassed ? "PASSED" : "FAILED");
+        result.put(K_STATUS, allPassed ? "PASSED" : "FAILED");
         result.put(K_TOTAL, totalTests);
         result.put("passed", totalTests - totalFailures - totalErrors - totalSkipped);
         result.put(K_FAILURES, totalFailures);
@@ -474,7 +480,7 @@ public class QualityReportEndpoint {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put(K_AVAILABLE, true);
         result.put("instructions", counterMap(instrCovered, instrTotal));
-        result.put("branches", counterMap(branchCovered, branchTotal));
+        result.put(K_BRANCHES, counterMap(branchCovered, branchTotal));
         result.put("lines", counterMap(lineCovered, lineTotal));
         result.put(K_METHODS, counterMap(methodCovered, methodTotal));
         result.put("packages", packages);
@@ -716,8 +722,8 @@ public class QualityReportEndpoint {
                 Element dep = (Element) depNodes.item(i);
                 // Only direct dependencies (parent is <dependencies>, not <dependencyManagement>)
                 if (!"dependencies".equals(dep.getParentNode().getNodeName())) continue;
-                String groupId    = getTagText(dep, "groupId");
-                String artifactId = getTagText(dep, "artifactId");
+                String groupId    = getTagText(dep, K_GROUP_ID);
+                String artifactId = getTagText(dep, K_ARTIFACT_ID);
                 String rawVersion = getTagText(dep, "version");
                 String scope      = getTagText(dep, "scope");
                 if (scope.isEmpty()) scope = "compile";
@@ -730,8 +736,8 @@ public class QualityReportEndpoint {
                 }
 
                 Map<String,Object> d = new LinkedHashMap<>();
-                d.put("groupId", groupId);
-                d.put("artifactId", artifactId);
+                d.put(K_GROUP_ID, groupId);
+                d.put(K_ARTIFACT_ID, artifactId);
                 d.put(K_VERSION, resolvedVersion.isEmpty() ? "(managed)" : resolvedVersion);
                 d.put("scope", scope);
                 deps.add(d);
@@ -754,8 +760,8 @@ public class QualityReportEndpoint {
             if (version == null || version.startsWith("(") || version.startsWith("${")) continue;
             if (futures.size() >= 25) break; // cap to avoid excessive parallel calls
 
-            String g = (String) dep.get("groupId");
-            String a = (String) dep.get("artifactId");
+            String g = (String) dep.get(K_GROUP_ID);
+            String a = (String) dep.get(K_ARTIFACT_ID);
             String url = "https://search.maven.org/solrsearch/select?rows=1&wt=json&q="
                     + URLEncoder.encode("g:" + g + " AND a:" + a, StandardCharsets.UTF_8);
 
@@ -980,7 +986,7 @@ public class QualityReportEndpoint {
                 .map(e -> {
                     boolean restricted = restrictedKeywords.stream()
                             .anyMatch(kw -> e.getKey().toUpperCase().contains(kw));
-                    return Map.<String,Object>of("license", e.getKey(), "count", e.getValue(), "incompatible", restricted);
+                    return Map.<String,Object>of("license", e.getKey(), K_COUNT, e.getValue(), "incompatible", restricted);
                 })
                 .toList();
 
@@ -1187,7 +1193,7 @@ public class QualityReportEndpoint {
         List<Map<String, Object>> topRules = byRule.entrySet().stream()
             .sorted((a, b) -> b.getValue() - a.getValue())
             .limit(10)
-            .map(e -> { Map<String, Object> m = new LinkedHashMap<>(); m.put("rule", e.getKey()); m.put("count", e.getValue()); return m; })
+            .map(e -> { Map<String, Object> m = new LinkedHashMap<>(); m.put("rule", e.getKey()); m.put(K_COUNT, e.getValue()); return m; })
             .toList();
 
         Map<String, Object> r = new LinkedHashMap<>();
@@ -1263,7 +1269,7 @@ public class QualityReportEndpoint {
         List<Map<String, Object>> topCheckers = byChecker.entrySet().stream()
             .sorted((a, b) -> b.getValue() - a.getValue())
             .limit(10)
-            .map(e -> { Map<String, Object> m = new LinkedHashMap<>(); m.put("checker", e.getKey()); m.put("count", e.getValue()); return m; })
+            .map(e -> { Map<String, Object> m = new LinkedHashMap<>(); m.put("checker", e.getKey()); m.put(K_COUNT, e.getValue()); return m; })
             .toList();
 
         Map<String, Object> r = new LinkedHashMap<>();
@@ -1353,7 +1359,7 @@ public class QualityReportEndpoint {
             NodeList mutations = doc.getElementsByTagName("mutation");
             for (int i = 0; i < mutations.getLength(); i++) {
                 Element m = (Element) mutations.item(i);
-                String status  = m.getAttribute("status");
+                String status  = m.getAttribute(K_STATUS);
                 String mutator = m.getAttribute("mutator");
                 if (mutator.contains(".")) mutator = mutator.substring(mutator.lastIndexOf('.') + 1);
 
@@ -1749,7 +1755,7 @@ public class QualityReportEndpoint {
      */
     private Map<String, Object> buildPipelineSection() {
         if (gitlabProjectId.isBlank()) {
-            return Map.of(K_AVAILABLE, false, "reason", "GITLAB_PROJECT_ID not configured");
+            return Map.of(K_AVAILABLE, false, K_REASON, "GITLAB_PROJECT_ID not configured");
         }
 
         String url = gitlabHostUrl + "/api/v4/projects/" + gitlabProjectId
@@ -1778,7 +1784,7 @@ public class QualityReportEndpoint {
                 Map<String, Object> entry = new LinkedHashMap<>();
                 entry.put("id",        p.path("iid").asInt());
                 entry.put("ref",       p.path("ref").asText("-"));
-                entry.put("status",    p.path("status").asText("-"));
+                entry.put(K_STATUS,    p.path(K_STATUS).asText("-"));
                 entry.put("createdAt", p.path("created_at").asText("-"));
                 // Duration — only available after pipeline completes
                 JsonNode startedAt  = p.path("started_at");
@@ -1834,7 +1840,7 @@ public class QualityReportEndpoint {
             proc.waitFor();
 
             if (output.isBlank()) {
-                return Map.of(K_AVAILABLE, false, "reason", "No remote branches found (git unavailable or no remotes)");
+                return Map.of(K_AVAILABLE, false, K_REASON, "No remote branches found (git unavailable or no remotes)");
             }
 
             List<Map<String, Object>> branches = new ArrayList<>();
@@ -1853,14 +1859,14 @@ public class QualityReportEndpoint {
 
             Map<String, Object> result = new LinkedHashMap<>();
             result.put(K_AVAILABLE, true);
-            result.put("branches", branches);
+            result.put(K_BRANCHES, branches);
             result.put("total", branches.size());
             return result;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return Map.of(K_AVAILABLE, false, "reason", "git call interrupted");
+            return Map.of(K_AVAILABLE, false, K_REASON, "git call interrupted");
         } catch (Exception e) {
-            return Map.of(K_AVAILABLE, false, "reason", "git error: " + e.getMessage());
+            return Map.of(K_AVAILABLE, false, K_REASON, "git error: " + e.getMessage());
         }
     }
 }
