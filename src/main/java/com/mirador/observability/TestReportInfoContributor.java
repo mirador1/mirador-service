@@ -67,38 +67,14 @@ public class TestReportInfoContributor implements InfoContributor {
             DocumentBuilder docBuilder = secureDocumentBuilder();
             for (File xml : xmlFiles) {
                 lastModified = Math.max(lastModified, xml.lastModified());
-                try {
-                    Document doc = docBuilder.parse(xml);
-                    Element suite = doc.getDocumentElement();
-                    int tests = intAttr(suite, KEY_TESTS);
-                    int failures = intAttr(suite, KEY_FAILURES);
-                    int errors = intAttr(suite, KEY_ERRORS);
-                    int skipped = intAttr(suite, KEY_SKIPPED);
-                    double time = doubleAttr(suite, "time");
-
-                    totalTests += tests;
-                    totalFailures += failures;
-                    totalErrors += errors;
-                    totalSkipped += skipped;
-                    totalTime += time;
-
-                    // Short class name for display (strip package prefix)
-                    String fullName = suite.getAttribute("name");
-                    String shortName = fullName.contains(".")
-                            ? fullName.substring(fullName.lastIndexOf('.') + 1)
-                            : fullName;
-
-                    Map<String, Object> suiteMap = new LinkedHashMap<>();
-                    suiteMap.put("name", shortName);
-                    suiteMap.put(KEY_TESTS, tests);
-                    suiteMap.put(KEY_FAILURES, failures);
-                    suiteMap.put(KEY_ERRORS, errors);
-                    suiteMap.put(KEY_SKIPPED, skipped);
-                    suiteMap.put("time", String.format("%.3fs", time));
-                    suites.add(suiteMap);
-                } catch (Exception ignored) {
-                    // skip malformed XML
-                }
+                SuiteSummary s = parseSuiteXml(xml, docBuilder);
+                if (s == null) continue;  // malformed XML silently skipped
+                totalTests    += s.tests();
+                totalFailures += s.failures();
+                totalErrors   += s.errors();
+                totalSkipped  += s.skipped();
+                totalTime     += s.time();
+                suites.add(s.display());
             }
         } catch (Exception e) {
             builder.withDetail(KEY_TESTS, Map.of(KEY_AVAILABLE, false, "error", e.getMessage()));
@@ -128,6 +104,49 @@ public class TestReportInfoContributor implements InfoContributor {
     }
 
     /**
+     * Raw + display form of a parsed Surefire report.
+     * The {@code display} map is what ends up in {@code /actuator/info}; the other
+     * fields carry the raw numbers so the caller can accumulate totals without
+     * having to re-parse the formatted time string.
+     */
+    private record SuiteSummary(Map<String, Object> display, int tests, int failures,
+                                int errors, int skipped, double time) {}
+
+    /**
+     * Parses one {@code TEST-*.xml} file into a {@link SuiteSummary}, or returns
+     * {@code null} if the file is unreadable / malformed.
+     * Extracted from {@link #contribute(Info.Builder)} to flatten the nested
+     * try/catch that Sonar flags as S1141.
+     */
+    private static SuiteSummary parseSuiteXml(File xml, DocumentBuilder docBuilder) {
+        try {
+            Document doc = docBuilder.parse(xml);
+            Element suite = doc.getDocumentElement();
+            int tests    = intAttr(suite, KEY_TESTS);
+            int failures = intAttr(suite, KEY_FAILURES);
+            int errors   = intAttr(suite, KEY_ERRORS);
+            int skipped  = intAttr(suite, KEY_SKIPPED);
+            double time  = doubleAttr(suite, "time");
+
+            String fullName = suite.getAttribute("name");
+            String shortName = fullName.contains(".")
+                    ? fullName.substring(fullName.lastIndexOf('.') + 1)
+                    : fullName;
+
+            Map<String, Object> suiteMap = new LinkedHashMap<>();
+            suiteMap.put("name", shortName);
+            suiteMap.put(KEY_TESTS, tests);
+            suiteMap.put(KEY_FAILURES, failures);
+            suiteMap.put(KEY_ERRORS, errors);
+            suiteMap.put(KEY_SKIPPED, skipped);
+            suiteMap.put("time", String.format("%.3fs", time));
+            return new SuiteSummary(suiteMap, tests, failures, errors, skipped, time);
+        } catch (Exception _) {
+            return null;
+        }
+    }
+
+    /**
      * Returns a DocumentBuilder hardened against XXE attacks (SonarQube java:S2755).
      * Disables DOCTYPE declarations so no external entities can be loaded.
      */
@@ -145,7 +164,7 @@ public class TestReportInfoContributor implements InfoContributor {
     private static int intAttr(Element el, String attr) {
         try {
             return Integer.parseInt(el.getAttribute(attr));
-        } catch (NumberFormatException e) {
+        } catch (NumberFormatException _) {
             return 0;
         }
     }
@@ -153,7 +172,7 @@ public class TestReportInfoContributor implements InfoContributor {
     private static double doubleAttr(Element el, String attr) {
         try {
             return Double.parseDouble(el.getAttribute(attr));
-        } catch (NumberFormatException e) {
+        } catch (NumberFormatException _) {
             return 0.0;
         }
     }

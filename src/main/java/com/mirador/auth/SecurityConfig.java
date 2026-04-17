@@ -73,7 +73,7 @@ public class SecurityConfig {
 
     @Bean
     @SuppressWarnings("java:S4502") // CSRF disabled intentionally — stateless JWT API, no session cookie to hijack (see comment below + Spring Security docs)
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) {
         return http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 // CSRF protection is irrelevant for stateless REST APIs authenticated via Bearer tokens:

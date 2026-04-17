@@ -29,19 +29,19 @@ class IdempotencyFilterTest {
     // --- shouldNotFilter ---
 
     @Test
-    void getRequest_isSkipped() throws Exception {
+    void getRequest_isSkipped() {
         var req = new MockHttpServletRequest("GET", "/customers");
         assertThat(filter.shouldNotFilter(req)).isTrue();
     }
 
     @Test
-    void postToOtherPath_isSkipped() throws Exception {
+    void postToOtherPath_isSkipped() {
         var req = new MockHttpServletRequest("POST", "/orders");
         assertThat(filter.shouldNotFilter(req)).isTrue();
     }
 
     @Test
-    void postToCustomers_isNotSkipped() throws Exception {
+    void postToCustomers_isNotSkipped() {
         var req = new MockHttpServletRequest("POST", "/customers");
         assertThat(filter.shouldNotFilter(req)).isFalse();
     }

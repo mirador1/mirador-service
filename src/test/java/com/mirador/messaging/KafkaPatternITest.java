@@ -27,7 +27,7 @@ class KafkaPatternITest extends AbstractIntegrationTest {
     KafkaListenerEndpointRegistry kafkaListenerEndpointRegistry;
 
     @BeforeEach
-    void waitForConsumerAssignments() throws InterruptedException {
+    void waitForConsumerAssignments() {
         // Wait for all @KafkaListener containers to receive their partition assignments
         // before running tests — avoids race condition on cold-start consumer groups.
         for (var container : kafkaListenerEndpointRegistry.getListenerContainers()) {
