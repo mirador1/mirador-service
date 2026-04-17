@@ -18,7 +18,6 @@ import io.swagger.v3.oas.annotations.headers.Header;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -199,16 +198,14 @@ public class CustomerController {
             description = "Paginated list of customers (id, name, email). Default version — also returned when `X-API-Version` header is absent. "
                     + "Supports optional full-text search on name and email. "
                     + "Adds RFC 8288 `Link` headers (next, prev, first, last) and `Deprecation`/`Sunset` headers.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Page of customers",
-                    headers = {
-                            @Header(name = "Link", description = "RFC 8288 pagination links", schema = @Schema(type = "string")),
-                            @Header(name = "Deprecation", description = "Marks v1 as deprecated", schema = @Schema(type = "string")),
-                            @Header(name = "Sunset", description = "Date after which v1 will be removed", schema = @Schema(type = "string"))
-                    }),
-            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT token", content = @Content),
-            @ApiResponse(responseCode = "429", description = "Rate limit exceeded (100 req/min per IP)", content = @Content)
-    })
+    @ApiResponse(responseCode = "200", description = "Page of customers",
+            headers = {
+                    @Header(name = "Link", description = "RFC 8288 pagination links", schema = @Schema(type = "string")),
+                    @Header(name = "Deprecation", description = "Marks v1 as deprecated", schema = @Schema(type = "string")),
+                    @Header(name = "Sunset", description = "Date after which v1 will be removed", schema = @Schema(type = "string"))
+            })
+    @ApiResponse(responseCode = "401", description = "Missing or invalid JWT token", content = @Content)
+    @ApiResponse(responseCode = "429", description = "Rate limit exceeded (100 req/min per IP)", content = @Content)
     @GetMapping(version = "1.0")
     public ResponseEntity<Page<CustomerDto>> getAll(
             @PageableDefault(size = 20, sort = "id") Pageable pageable,
@@ -243,11 +240,9 @@ public class CustomerController {
             description = "Same as v1 but includes `createdAt` (ISO-8601 UTC timestamp). "
                     + "Requires `X-API-Version: 2.0` header. "
                     + "Uses Spring Framework 7 native versioning — `version = \"2.0+\"` means this handler serves 2.0 and any future version until a higher one is declared.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Page of customers including createdAt"),
-            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT token", content = @Content),
-            @ApiResponse(responseCode = "429", description = "Rate limit exceeded", content = @Content)
-    })
+    @ApiResponse(responseCode = "200", description = "Page of customers including createdAt")
+    @ApiResponse(responseCode = "401", description = "Missing or invalid JWT token", content = @Content)
+    @ApiResponse(responseCode = "429", description = "Rate limit exceeded", content = @Content)
     @GetMapping(version = "2.0+")
     public ResponseEntity<Page<CustomerDtoV2>> getAllV2(
             @PageableDefault(size = 20, sort = "id") Pageable pageable,
@@ -278,14 +273,12 @@ public class CustomerController {
             description = "Creates a new customer, fires a Kafka `CustomerCreatedEvent` (fire-and-forget), "
                     + "adds the customer to the in-memory recent buffer, and increments the `customer.created.count` Micrometer counter. "
                     + "Requires `ROLE_ADMIN`. Supports idempotency via the `Idempotency-Key` header — repeating the same request returns the cached response.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Customer created"),
-            @ApiResponse(responseCode = "400", description = "Validation failed (blank name, invalid email, etc.)", content = @Content),
-            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT token", content = @Content),
-            @ApiResponse(responseCode = "403", description = "Authenticated but lacks ROLE_USER or ROLE_ADMIN", content = @Content),
-            @ApiResponse(responseCode = "409", description = "Email already in use", content = @Content),
-            @ApiResponse(responseCode = "429", description = "Rate limit exceeded", content = @Content)
-    })
+    @ApiResponse(responseCode = "200", description = "Customer created")
+    @ApiResponse(responseCode = "400", description = "Validation failed (blank name, invalid email, etc.)", content = @Content)
+    @ApiResponse(responseCode = "401", description = "Missing or invalid JWT token", content = @Content)
+    @ApiResponse(responseCode = "403", description = "Authenticated but lacks ROLE_USER or ROLE_ADMIN", content = @Content)
+    @ApiResponse(responseCode = "409", description = "Email already in use", content = @Content)
+    @ApiResponse(responseCode = "429", description = "Rate limit exceeded", content = @Content)
     @PreAuthorize("hasAnyRole('ADMIN', 'USER')")   // ROLE_ADMIN or ROLE_USER — ROLE_READER is denied
     @PostMapping
     public CustomerDto create(@Valid @RequestBody CreateCustomerRequest request) {
@@ -304,11 +297,9 @@ public class CustomerController {
      * <p>Returns HTTP 404 if the customer does not exist.
      */
     @Operation(summary = "Get a customer by ID")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Customer found"),
-            @ApiResponse(responseCode = "404", description = "No customer with this ID", content = @Content),
-            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT token", content = @Content)
-    })
+    @ApiResponse(responseCode = "200", description = "Customer found")
+    @ApiResponse(responseCode = "404", description = "No customer with this ID", content = @Content)
+    @ApiResponse(responseCode = "401", description = "Missing or invalid JWT token", content = @Content)
     @GetMapping("/{id}")
     public CustomerDto getById(
             @Parameter(description = "Customer ID", example = "42")
@@ -323,13 +314,11 @@ public class CustomerController {
      * <p>Returns HTTP 404 if the customer does not exist.
      */
     @Operation(summary = "Update a customer", description = "Replaces the name and email of an existing customer. Requires ROLE_USER or ROLE_ADMIN.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Customer updated"),
-            @ApiResponse(responseCode = "400", description = "Validation failed", content = @Content),
-            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT token", content = @Content),
-            @ApiResponse(responseCode = "403", description = "Lacks ROLE_USER or ROLE_ADMIN", content = @Content),
-            @ApiResponse(responseCode = "404", description = "Customer not found", content = @Content)
-    })
+    @ApiResponse(responseCode = "200", description = "Customer updated")
+    @ApiResponse(responseCode = "400", description = "Validation failed", content = @Content)
+    @ApiResponse(responseCode = "401", description = "Missing or invalid JWT token", content = @Content)
+    @ApiResponse(responseCode = "403", description = "Lacks ROLE_USER or ROLE_ADMIN", content = @Content)
+    @ApiResponse(responseCode = "404", description = "Customer not found", content = @Content)
     @PreAuthorize("hasAnyRole('ADMIN', 'USER')")   // ROLE_ADMIN or ROLE_USER — ROLE_READER is denied
     @PutMapping("/{id}")
     public CustomerDto update(
@@ -346,13 +335,11 @@ public class CustomerController {
      */
     @Operation(summary = "Partially update a customer",
             description = "Applies only the provided fields. Omit fields you do not want to change. Requires ROLE_USER or ROLE_ADMIN.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Customer updated"),
-            @ApiResponse(responseCode = "400", description = "Validation failed", content = @Content),
-            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT token", content = @Content),
-            @ApiResponse(responseCode = "403", description = "Lacks ROLE_USER or ROLE_ADMIN", content = @Content),
-            @ApiResponse(responseCode = "404", description = "Customer not found", content = @Content)
-    })
+    @ApiResponse(responseCode = "200", description = "Customer updated")
+    @ApiResponse(responseCode = "400", description = "Validation failed", content = @Content)
+    @ApiResponse(responseCode = "401", description = "Missing or invalid JWT token", content = @Content)
+    @ApiResponse(responseCode = "403", description = "Lacks ROLE_USER or ROLE_ADMIN", content = @Content)
+    @ApiResponse(responseCode = "404", description = "Customer not found", content = @Content)
     @PreAuthorize("hasAnyRole('ADMIN', 'USER')")   // same roles as PUT — ROLE_READER is denied
     @org.springframework.web.bind.annotation.PatchMapping("/{id}")
     public CustomerDto patch(
@@ -367,12 +354,10 @@ public class CustomerController {
      * <p>Returns HTTP 204 (No Content) on success, HTTP 404 if the customer does not exist.
      */
     @Operation(summary = "Delete a customer", description = "Permanently deletes the customer. Requires ROLE_ADMIN.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "204", description = "Deleted successfully", content = @Content),
-            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT token", content = @Content),
-            @ApiResponse(responseCode = "403", description = "Lacks ROLE_ADMIN", content = @Content),
-            @ApiResponse(responseCode = "404", description = "Customer not found", content = @Content)
-    })
+    @ApiResponse(responseCode = "204", description = "Deleted successfully", content = @Content)
+    @ApiResponse(responseCode = "401", description = "Missing or invalid JWT token", content = @Content)
+    @ApiResponse(responseCode = "403", description = "Lacks ROLE_ADMIN", content = @Content)
+    @ApiResponse(responseCode = "404", description = "Customer not found", content = @Content)
     @PreAuthorize("hasRole('ADMIN')")
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
@@ -462,11 +447,9 @@ public class CustomerController {
             description = "Calls the local Ollama LLM (llama3.2) via Spring AI to generate a professional bio for the customer. "
                     + "Protected by a Resilience4j **circuit breaker** + **retry** — returns 503 when the circuit is open. "
                     + "Response time: 1–10 s depending on model and hardware.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Bio generated — `{\"bio\": \"...\"}` "),
-            @ApiResponse(responseCode = "404", description = "Customer not found", content = @Content),
-            @ApiResponse(responseCode = "503", description = "Ollama unavailable or circuit breaker open", content = @Content)
-    })
+    @ApiResponse(responseCode = "200", description = "Bio generated — `{\"bio\": \"...\"}` ")
+    @ApiResponse(responseCode = "404", description = "Customer not found", content = @Content)
+    @ApiResponse(responseCode = "503", description = "Ollama unavailable or circuit breaker open", content = @Content)
     @GetMapping("/{id}/bio")
     public java.util.Map<String, String> generateBio(
             @Parameter(description = "Customer ID", example = "3") @PathVariable Long id) {
@@ -491,10 +474,8 @@ public class CustomerController {
             description = "Fetches todos for the customer from the external JSONPlaceholder API (https://jsonplaceholder.typicode.com). "
                     + "Decorated with Resilience4j **circuit breaker** + **retry** + fallback (empty list). "
                     + "Demonstrates graceful degradation — never returns 5xx even if the external API is down.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "List of todos (may be empty if circuit is open or API is down)"),
-            @ApiResponse(responseCode = "404", description = "Customer not found", content = @Content)
-    })
+    @ApiResponse(responseCode = "200", description = "List of todos (may be empty if circuit is open or API is down)")
+    @ApiResponse(responseCode = "404", description = "Customer not found", content = @Content)
     @GetMapping("/{id}/todos")
     public List<TodoItem> getTodos(
             @Parameter(description = "Customer ID", example = "3") @PathVariable Long id) {
@@ -527,11 +508,9 @@ public class CustomerController {
                     + "replies on `customer.reply` with a computed `displayName`. "
                     + "Demonstrates synchronous Kafka request-reply (not just fire-and-forget). "
                     + "Returns `504 Gateway Timeout` if no reply arrives within the configured timeout.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Enriched customer with displayName"),
-            @ApiResponse(responseCode = "404", description = "Customer not found", content = @Content),
-            @ApiResponse(responseCode = "504", description = "Kafka consumer did not reply within the timeout", content = @Content)
-    })
+    @ApiResponse(responseCode = "200", description = "Enriched customer with displayName")
+    @ApiResponse(responseCode = "404", description = "Customer not found", content = @Content)
+    @ApiResponse(responseCode = "504", description = "Kafka consumer did not reply within the timeout", content = @Content)
     @GetMapping("/{id}/enrich")
     public EnrichedCustomerDto enrich(
             @Parameter(description = "Customer ID", example = "3") @PathVariable Long id) {
@@ -626,11 +605,9 @@ public class CustomerController {
     @Operation(summary = "Batch import customers",
             description = "Creates multiple customers in one request. Each entry is validated individually — a failure on one row does not abort the batch. "
                     + "Returns a summary with `created`, `failed`, and `errors` lists. Requires ROLE_USER or ROLE_ADMIN.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Batch result with per-row status"),
-            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT token", content = @Content),
-            @ApiResponse(responseCode = "403", description = "Lacks ROLE_USER or ROLE_ADMIN", content = @Content)
-    })
+    @ApiResponse(responseCode = "200", description = "Batch result with per-row status")
+    @ApiResponse(responseCode = "401", description = "Missing or invalid JWT token", content = @Content)
+    @ApiResponse(responseCode = "403", description = "Lacks ROLE_USER or ROLE_ADMIN", content = @Content)
     @PreAuthorize("hasAnyRole('ADMIN', 'USER')")   // ROLE_ADMIN or ROLE_USER — ROLE_READER is denied
     @PostMapping("/batch")
     public BatchImportResult batchCreate(@Valid @RequestBody List<CreateCustomerRequest> requests) {

@@ -100,7 +100,7 @@ public class RecentCustomerBuffer {
         try {
             Long s = redisTemplate.opsForList().size(KEY);
             return s != null ? s : 0L;
-        } catch (Exception e) {
+        } catch (Exception _) {
             return 0L;
         }
     }

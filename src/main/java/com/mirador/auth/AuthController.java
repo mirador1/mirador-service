@@ -4,7 +4,6 @@ import com.mirador.observability.AuditService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -100,11 +99,9 @@ public class AuthController {
                     + "`viewer/viewer` (ROLE_READER — read-only). "
                     + "Brute-force protection: after 5 failed attempts the IP is locked out for 15 minutes. "
                     + "Copy the `accessToken` and use it in the **Authorize** button above.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Login successful — `{accessToken, refreshToken}`"),
-            @ApiResponse(responseCode = "401", description = "Invalid credentials — includes `remainingAttempts`", content = @Content),
-            @ApiResponse(responseCode = "429", description = "IP locked out after too many failures", content = @Content)
-    })
+    @ApiResponse(responseCode = "200", description = "Login successful — `{accessToken, refreshToken}`")
+    @ApiResponse(responseCode = "401", description = "Invalid credentials — includes `remainingAttempts`", content = @Content)
+    @ApiResponse(responseCode = "429", description = "IP locked out after too many failures", content = @Content)
     @PostMapping("/login")
     public ResponseEntity<Object> login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpRequest) {
         String ip = extractIp(httpRequest);
@@ -165,10 +162,8 @@ public class AuthController {
     @Operation(summary = "Refresh tokens",
             description = "Rotates the refresh token and returns a new access + refresh pair. "
                     + "The old refresh token is consumed (single-use) to prevent replay attacks.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "New `{accessToken, refreshToken}`"),
-            @ApiResponse(responseCode = "401", description = "Refresh token expired or invalid", content = @Content)
-    })
+    @ApiResponse(responseCode = "200", description = "New `{accessToken, refreshToken}`")
+    @ApiResponse(responseCode = "401", description = "Refresh token expired or invalid", content = @Content)
     @PostMapping("/refresh")
     public ResponseEntity<Object> refresh(@Valid @RequestBody RefreshRequest request) {
         try {

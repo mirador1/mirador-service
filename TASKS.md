@@ -73,6 +73,9 @@
 
 ## Recently Completed
 
+- [x] SonarCloud cleanup — S1874 (JSpecify migration), S1130 (unused throws),
+      S1192 (literal constants), S5838 (AssertJ idioms), S1141 (nested try),
+      S1710 (@ApiResponses flatten). 6 commits merged via MR 56.
 - [x] ADR-0009 (container runtime: `eclipse-temurin:25-jre`), ADR-0010
       (OTLP push to Collector, not Prometheus scrape), and ADR-0011
       (minimal `@Transactional` surface, no `readOnly = true`) — three
