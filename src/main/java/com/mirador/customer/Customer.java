@@ -56,8 +56,9 @@ public class Customer {
      * Exposed in the v2 API via {@link CustomerDtoV2}.
      * [Spring Boot 4 / API versioning demo]
      */
-    // insertable = false: let the DB DEFAULT NOW() set the value on INSERT;
-    // JPA never writes this column, PostgreSQL always fills it automatically.
+    // The DB DEFAULT NOW() sets the value on INSERT (that's why the JPA column is
+    // declared with `insertable = false`). JPA never writes this column; PostgreSQL
+    // always fills it automatically.
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false,
             columnDefinition = "TIMESTAMPTZ DEFAULT NOW()")
     private Instant createdAt;

@@ -1068,7 +1068,10 @@ public class QualityReportEndpoint {
                     if (methodCovered == 0 && methods > 0) {
                         untestedClasses.add(simpleClass);
                     }
-                } catch (NumberFormatException _) {}
+                } catch (NumberFormatException _) {
+                    // Skip malformed rows silently — JaCoCo CSV occasionally leaks
+                    // non-numeric totals on synthetic classes; they shouldn't break the report.
+                }
             }
         } catch (IOException e) {
             return Map.of(K_AVAILABLE, false, K_ERROR, e.getMessage());

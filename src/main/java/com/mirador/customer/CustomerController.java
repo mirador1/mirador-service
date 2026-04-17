@@ -521,13 +521,13 @@ public class CustomerController {
                             .orElseThrow(() -> new NoSuchElementException(ERR_NOT_FOUND + id));
 
                     // Build the Kafka record with the customer ID as the message key (partitioning)
-                    var record = new ProducerRecord<>(customerRequestTopic,
+                    var producerRecord = new ProducerRecord<>(customerRequestTopic,
                             String.valueOf(id),
                             new CustomerEnrichRequest(customer.id(), customer.name(), customer.email()));
 
                     try {
                         CustomerEnrichReply reply = replyingKafkaTemplate
-                                .sendAndReceive(record, java.time.Duration.ofSeconds(enrichTimeoutSeconds))
+                                .sendAndReceive(producerRecord, java.time.Duration.ofSeconds(enrichTimeoutSeconds))
                                 .get()  // blocks the current thread until reply or timeout
                                 .value();
                         log.info("kafka_enrich_reply id={} displayName={}", id, reply.displayName());

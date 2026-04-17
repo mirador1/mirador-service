@@ -144,9 +144,12 @@ public class JwtTokenProvider {
      * Convenience overload that derives the role from the username for backwards compatibility.
      * Prefer {@link #generateToken(String, String)} when the role is already known (e.g. from DB).
      *
-     * @deprecated Use {@link #generateToken(String, String)} — role should come from the database.
+     * @deprecated since 1.5.0 — Use {@link #generateToken(String, String)}; the role
+     *     must come from the database, not from the username shape. Slated for removal
+     *     in 2.0 once all in-tree callers have migrated (see JwtTokenProviderTest).
      */
-    @Deprecated
+    @Deprecated(since = "1.5.0", forRemoval = true)
+    @SuppressWarnings("java:S1133") // scheduled removal is tracked; see @Deprecated#forRemoval=true
     public String generateToken(String username) {
         // Legacy mapping: derive role from well-known username strings
         String role = switch (username) {

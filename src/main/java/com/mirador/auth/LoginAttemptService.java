@@ -34,12 +34,12 @@ public class LoginAttemptService {
      * @param ip the client IP address from the request (X-Forwarded-For or RemoteAddr)
      */
     public boolean isBlocked(String ip) {
-        AttemptRecord record = attempts.get(ip);
-        if (record == null) return false;
-        if (record.lockedUntil != null && Instant.now().isBefore(record.lockedUntil)) {
+        AttemptRecord attempt = attempts.get(ip);
+        if (attempt == null) return false;
+        if (attempt.lockedUntil != null && Instant.now().isBefore(attempt.lockedUntil)) {
             return true;
         }
-        if (record.lockedUntil != null && Instant.now().isAfter(record.lockedUntil)) {
+        if (attempt.lockedUntil != null && Instant.now().isAfter(attempt.lockedUntil)) {
             // Auto-expire: remove the record when the lockout window has passed
             attempts.remove(ip);
             return false;
@@ -88,9 +88,9 @@ public class LoginAttemptService {
      * "2 attempts remaining" warnings to legitimate users.
      */
     public int getRemainingAttempts(String ip) {
-        AttemptRecord record = attempts.get(ip);
-        if (record == null) return MAX_ATTEMPTS;
-        return Math.max(0, MAX_ATTEMPTS - record.count);
+        AttemptRecord attempt = attempts.get(ip);
+        if (attempt == null) return MAX_ATTEMPTS;
+        return Math.max(0, MAX_ATTEMPTS - attempt.count);
     }
 
     private record AttemptRecord(int count, Instant firstAttempt, Instant lockedUntil) {}

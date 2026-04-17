@@ -42,9 +42,10 @@ class RequestIdFilterTest {
         filter.doFilter(req, res, chain);
 
         String id = res.getHeader(RequestIdFilter.HEADER_NAME);
-        assertThat(id).isNotBlank();
-        // UUID v4 pattern
-        assertThat(id).matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}");
+        // UUID v4 pattern — the regex subsumes the blank check (a blank string wouldn't match)
+        assertThat(id)
+                .isNotBlank()
+                .matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}");
     }
 
     @Test
