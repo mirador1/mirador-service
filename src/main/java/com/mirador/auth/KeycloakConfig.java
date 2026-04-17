@@ -76,9 +76,9 @@ public class KeycloakConfig {
         // even tokens meant for a different API hosted in the same Auth0 organization.
         if (!isKeycloak && !auth0Audience.isBlank()) {
             OAuth2TokenValidator<Jwt> audienceValidator =
-                    new JwtClaimValidator<Collection<String>>(
+                    new JwtClaimValidator<>(
                             JwtClaimNames.AUD,
-                            aud -> aud != null && aud.contains(auth0Audience)
+                            (Collection<String> aud) -> aud != null && aud.contains(auth0Audience)
                     );
             validator = new DelegatingOAuth2TokenValidator<>(validator, audienceValidator);
         }

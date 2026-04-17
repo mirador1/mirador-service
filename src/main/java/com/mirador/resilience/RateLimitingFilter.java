@@ -103,7 +103,7 @@ public class RateLimitingFilter extends OncePerRequestFilter {
 
     // IPv4 or IPv6 (simplified) — rejects garbage strings from spoofed headers.
     private static final java.util.regex.Pattern IP_PATTERN = java.util.regex.Pattern.compile(
-            "^[0-9]{1,3}(\\.[0-9]{1,3}){3}$|^[0-9a-fA-F:]{2,45}$");
+            "^\\d{1,3}(\\.\\d{1,3}){3}$|^[0-9a-fA-F:]{2,45}$");
 
     /**
      * Resolves the real client IP, honoring the X-Forwarded-For header when

@@ -325,6 +325,10 @@ public class QualityReportEndpoint {
         return result;
     }
 
+    // S3776: reads surefire reports from two locations (packaged classpath + dev fallback)
+    // with their own try/catch to keep the dev-loop fast — extracting would fragment the
+    // "prefer packaged, then local" fallback intent.
+    @SuppressWarnings("java:S3776")
     private List<InputStream> loadSurefireStreams() {
         List<InputStream> streams = new ArrayList<>();
         // Try classpath (packaged JAR)
@@ -669,10 +673,12 @@ public class QualityReportEndpoint {
      *          Partial results are returned if some futures time out; those entries will lack
      *          {@code latestVersion} and {@code outdated} fields.
      */
-    // Complexity is inherent to the pom XML walk + parallel HTTP freshness lookups;
-    // the multiple `continue` statements are used to skip non-dependency nodes
-    // (parent references, dependencyManagement imports, excluded scopes).
-    @SuppressWarnings({"java:S3776", "java:S135"})
+    // S3776+S135+S6541: cognitive complexity + "brain method" flag are inherent
+    // to the pom XML walk plus parallel HTTP freshness lookups; several
+    // early-loop-skips handle parent references, dependencyManagement imports and
+    // excluded scopes. Decomposing further would spread the data-accumulation
+    // across several helpers without improving readability.
+    @SuppressWarnings({"java:S3776", "java:S135", "java:S6541"})
     private Map<String, Object> buildDependenciesSection() {
         InputStream is = loadResource(CP_POM, "pom.xml");
         if (is == null) return Map.of(K_AVAILABLE, false);
@@ -921,7 +927,10 @@ public class QualityReportEndpoint {
      *
      * <p>Incompatible licenses for commercial projects: GPL, AGPL, LGPL, CDDL, EPL.
      */
-    @SuppressWarnings("java:S3776") // cognitive complexity — linear parsing, not reducible
+    // S3776+S135: cognitive complexity is inherent to THIRD-PARTY.txt parsing;
+    // multiple `continue` statements skip rows that are not actual dependency
+    // entries (comments, section headers, malformed coordinates).
+    @SuppressWarnings({"java:S3776", "java:S135"})
     private Map<String,Object> buildLicensesSection() {
         InputStream is = loadResource(CP_THIRD_PARTY, "target/THIRD-PARTY.txt");
         if (is == null) return Map.of(K_AVAILABLE, false);
@@ -1003,9 +1012,9 @@ public class QualityReportEndpoint {
      * BRANCH_MISSED(5), BRANCH_COVERED(6), LINE_MISSED(7), LINE_COVERED(8),
      * COMPLEXITY_MISSED(9), COMPLEXITY_COVERED(10), METHOD_MISSED(11), METHOD_COVERED(12)
      */
-    // S1141 + S135: intentional skip-malformed-row pattern — same rationale as
+    // S1141 + S135 + S3776: intentional skip-malformed-row pattern — same rationale as
     // buildCoverageSection above. Restructuring obscures the validation intent.
-    @SuppressWarnings({"java:S1141", "java:S135"})
+    @SuppressWarnings({"java:S1141", "java:S135", "java:S3776"})
     private Map<String, Object> buildMetricsSection() {
         // Same merged-first / unit-fallback strategy as buildCoverageSection.
         InputStream is = loadResource(CP_JACOCO, DEV_JACOCO);
@@ -1287,7 +1296,7 @@ public class QualityReportEndpoint {
 
         try (is) {
             JsonNode root = MAPPER.readTree(is);
-            JsonNode dependencies = root.path("dependencies");
+            JsonNode dependencies = root.path(K_DEPENDENCIES);
             for (JsonNode dep : dependencies) {
                 JsonNode vulnerabilities = dep.path(K_VULNERABILITIES);
                 if (vulnerabilities.isEmpty()) continue;
@@ -1644,7 +1653,10 @@ public class QualityReportEndpoint {
      * (e.g. DOMPurify PoC descriptions). We extract only the first
      * meaningful plain-text sentence/paragraph.
      */
-    @SuppressWarnings("java:S3776") // multi-step text cleaning with several branches — extracting further would obscure intent
+    // S3776+S135: multi-step text cleaning with interleaved break/continue
+    // to skip headers, code fences and empty lines while preserving the first
+    // real paragraph — extracting further would obscure the flow.
+    @SuppressWarnings({"java:S3776", "java:S135"})
     static String cleanCveDescription(String raw) {
         if (raw == null || raw.isBlank()) return "";
         // Strip markdown section headers (lines starting with #)
