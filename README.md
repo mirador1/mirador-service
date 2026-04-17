@@ -347,6 +347,7 @@ Non-obvious choices are justified in Michael-Nygard–style ADRs under
 - [0009 — Container runtime base image — `eclipse-temurin:25-jre`](docs/adr/0009-container-runtime-base-image.md)
 - [0010 — OpenTelemetry OTLP push to a Collector (not Prometheus scrape)](docs/adr/0010-otlp-push-to-collector.md)
 - [0011 — Minimal `@Transactional` surface, no `@Transactional(readOnly = true)`](docs/adr/0011-transactional-read-strategy.md)
+- [0012 — Stay on LGTM with Loki bloom filters — defer OpenSearch](docs/adr/0012-stay-on-lgtm-with-bloom-filters.md)
 
 ### Folder-level orientation (`README.md` in each directory)
 

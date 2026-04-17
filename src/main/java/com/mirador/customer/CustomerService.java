@@ -1,11 +1,7 @@
 package com.mirador.customer;
 
-import com.mirador.customer.CreateCustomerRequest;
-import com.mirador.customer.CustomerDto;
 import com.mirador.messaging.CustomerCreatedEvent;
 import com.mirador.messaging.CustomerEventPublisher;
-import com.mirador.customer.Customer;
-import com.mirador.customer.CustomerRepository;
 import com.mirador.observability.AuditService;
 import io.micrometer.observation.annotation.Observed;
 import org.springframework.beans.factory.annotation.Value;

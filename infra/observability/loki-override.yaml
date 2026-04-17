@@ -1,0 +1,95 @@
+# =============================================================================
+# Loki override — replaces the baseline config shipped by grafana/otel-lgtm.
+# Mounted read-only at /otel-lgtm/loki-config.yaml in docker-compose.observability.yml.
+#
+# What this file changes vs the otel-lgtm baseline:
+#   - adds bloom_build + bloom_gateway (Loki 3.0+ full-text accelerator)
+#   - enables bloom filtering via limits_config
+#
+# Baseline behaviour kept as-is:
+#   - single-binary -target=all, in-memory ring, filesystem storage
+#   - schema v13 TSDB (required for blooms)
+#   - path_prefix /data/loki
+#
+# Trade-off: in single-binary dev mode blooms only amortise after enough log
+# volume to fill multiple chunks. On production-scale storage (S3 + many
+# days of data) they cut needle-in-haystack searches from "scan N chunks"
+# to "check N bloom filters, open a handful". See ADR-0012.
+# =============================================================================
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /data/loki
+  storage:
+    filesystem:
+      chunks_directory: /data/loki/chunks
+      rules_directory: /data/loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+ruler:
+  alertmanager_url: http://127.0.0.1:9093
+
+pattern_ingester:
+  lifecycler:
+    min_ready_duration: 1s
+
+ingester:
+  lifecycler:
+    min_ready_duration: 1s
+
+frontend:
+  scheduler_dns_lookup_period: 1s
+  address: 127.0.0.1
+
+query_scheduler:
+  use_scheduler_ring: false
+
+# ── Bloom filters (Loki 3.0+, matured in 3.7) ───────────────────────────────
+# Build-time: a bloom planner plans shard tasks; a builder reads TSDB index
+# + chunks and writes one bloom per series per chunk. Query-time: the
+# bloom gateway tests each chunk's bloom against the query tokens and
+# only returns the chunks that *might* match — the executor then reads
+# just those chunks.
+#
+# In single-binary mode (otel-lgtm `-target=all`) both components run in
+# the same process; no separate services to deploy.
+bloom_build:
+  enabled: true
+  planner:
+    planning_interval: 10m
+    min_table_offset: 1     # start building once a table is 1 h old
+    max_table_offset: 2     # keep re-planning for 2 days — amortises dev restarts
+  builder:
+    planner_address: 127.0.0.1:9095
+
+bloom_gateway:
+  enabled: true
+  client:
+    # Blooms live on the local filesystem in single-binary mode; the
+    # in-process addresses pattern is enough.
+    addresses: 127.0.0.1:9095
+
+# NOTE: per-tenant `bloom-build.enable` / `bloom-gateway.enable-filtering`
+# CLI flags exist but the corresponding YAML keys under `limits_config`
+# are renamed frequently between 3.x minor releases; verify with
+# `loki -verify-config` after bumping the otel-lgtm tag and add them
+# back if wanted. With the global flags above, blooms are built at
+# flush time even without per-tenant filtering on read.

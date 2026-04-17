@@ -1,6 +1,5 @@
 package com.mirador.customer;
 
-import com.mirador.customer.CustomerRepository;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
