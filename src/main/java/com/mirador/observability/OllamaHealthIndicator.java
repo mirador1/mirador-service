@@ -6,8 +6,6 @@ import org.springframework.boot.health.contributor.HealthIndicator;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
-import java.time.Duration;
-
 /**
  * Health indicator for the Ollama LLM runtime.
  *
@@ -34,11 +32,14 @@ public class OllamaHealthIndicator implements HealthIndicator {
     @Override
     public Health health() {
         try {
-            String response = RestClient.create(baseUrl)
+            // Call /api/tags just for the side-effect of proving the server is
+            // reachable; the response body is discarded (this is a probe, not
+            // a metrics fetch).
+            RestClient.create(baseUrl)
                     .get()
                     .uri("/api/tags")
                     .retrieve()
-                    .body(String.class);
+                    .toBodilessEntity();
             return Health.up()
                     .withDetail(DETAIL_ENDPOINT, baseUrl)
                     .build();
