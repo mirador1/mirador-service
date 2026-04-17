@@ -136,6 +136,11 @@ public class CustomerController {
      * {@code publishPercentileHistogram()} enables server-side histogram buckets so that
      * Prometheus can compute accurate percentiles without client-side approximation.
      */
+    // S107: 12 constructor params — this is the composition-root of the customer
+    // feature slice (service, buffer, Kafka reply template, resilience-wrapped
+    // downstream clients, Micrometer). Grouping them into a "dependencies"
+    // DTO would just move the same parameters behind an extra indirection.
+    @SuppressWarnings("java:S107")
     public CustomerController(CustomerService service,
                               RecentCustomerBuffer recentCustomerBuffer,
                               AggregationService aggregationService,
@@ -616,15 +621,6 @@ public class CustomerController {
                 .observe(() -> service.batchCreate(requests));
     }
 
-    // ─── CSV export ─────────────────────────────────────────────────────────
-
-    /**
-     * Streams all customers as a CSV file.
-     *
-     * <p>Uses {@link StreamingResponseBody} so the response is written directly to the
-     * output stream without buffering the entire result set in memory. This is observable
-     * in Tempo as a single long-running span whose duration grows with the dataset size.
-     */
     // ─── Slow query simulation ────────────────────────────────────────────
 
     /**

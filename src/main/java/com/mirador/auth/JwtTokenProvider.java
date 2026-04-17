@@ -61,16 +61,18 @@ public class JwtTokenProvider {
     private final RefreshTokenRepository refreshTokenRepository;
 
     /**
-     * Optional: null in unit tests where no Redis context is available.
-     * {@link @Autowired} (field injection) used to avoid a circular dependency with SecurityConfig.
+     * Optional: {@code null} in unit tests where no Redis context is available.
+     * Injected via the all-args constructor with {@code required = false} instead of
+     * field injection (Sonar S6813) so the field can remain {@code final}.
      */
-    @Autowired(required = false)
-    StringRedisTemplate redisTemplate;
+    private final StringRedisTemplate redisTemplate;
 
     public JwtTokenProvider(@Value("${jwt.secret:dev-secret-key-min-32-chars-long}") String secret,
-                            RefreshTokenRepository refreshTokenRepository) {
+                            RefreshTokenRepository refreshTokenRepository,
+                            @Autowired(required = false) StringRedisTemplate redisTemplate) {
         this.secretKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.refreshTokenRepository = refreshTokenRepository;
+        this.redisTemplate = redisTemplate;
     }
 
     /**
