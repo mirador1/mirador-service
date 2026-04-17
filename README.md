@@ -2,10 +2,38 @@
 
 ![Java 25](https://img.shields.io/badge/Java-25-ED8B00?logo=openjdk&logoColor=white) ![Spring Boot 4](https://img.shields.io/badge/Spring_Boot-4-6DB33F?logo=springio&logoColor=white) ![PostgreSQL 17](https://img.shields.io/badge/PostgreSQL-17-4169E1?logo=postgresql&logoColor=white) ![Apache Kafka](https://img.shields.io/badge/Apache_Kafka-black?logo=apachekafka&logoColor=white) ![Redis](https://img.shields.io/badge/Redis-DC382D?logo=redis&logoColor=white) ![Angular 21](https://img.shields.io/badge/Angular-21-DD0031?logo=angular&logoColor=white) ![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white) ![GitLab CI](https://img.shields.io/badge/GitLab_CI-FC6D26?logo=gitlab&logoColor=white) ![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-7F52FF?logo=opentelemetry&logoColor=white)
 
-# Mirador — Observable Customer API
+# Mirador — the watchtower for a real running system
 
-This project has one goal: demonstrate what it takes to diagnose an incident on a backend service.
-The stack is built around that scenario — not around the technologies themselves.
+**Mirador** — Spanish for *watchtower* — is a vantage point. The project
+picks a concrete Customer API backend and stands watch over it from every
+angle at once: **the code, the runtime metrics, the CI/CD pipelines, and
+the industry-standard tooling wired around it**. Everything you see in the
+paired UI ([`mirador-ui`](https://gitlab.com/mirador1/mirador-ui)) and in
+Grafana is the same live system observed from two windows.
+
+This repository is the **Spring Boot 4 / Java 25 backend**. It is the one
+being watched.
+
+What the project actually exercises:
+
+- **Reference-grade industrial tooling**: GitLab CI with local runner, Kustomize-over-Helm
+  K8s manifests, OpenTelemetry (traces + logs + metrics) to Grafana Cloud, Sonar,
+  Semgrep, Trivy / Grype / Syft / cosign / Dockle, OWASP Dependency-Check, PIT mutation
+  testing, resilience4j circuit-breakers + bucket4j rate limiting, Flyway, Testcontainers,
+  Workload Identity Federation, release-please. Each is justified in an ADR under
+  [`docs/adr/`](docs/adr/) or in the glossary at [`docs/reference/technologies.md`](docs/reference/technologies.md).
+- **Live observability of a running system**: every layer (JVM, HTTP, DB pool, Kafka,
+  Redis, Tomcat, business counters) emits metrics and traces so the accompanying UI
+  (and Grafana) can show what the code and the runtime are actually doing.
+- **AI-assisted integration work**: the selection, wiring, and documentation of most
+  of this tooling — the ADRs, the technology glossary, the CI hardening, the K8s
+  baseline, the observability setup — were produced in close collaboration with an
+  LLM, and the same technique keeps the docs, tests, and configuration in sync as
+  the system grows.
+
+The original demo scenario ("what does it take to diagnose an incident?") is still
+the organising principle — the stack is built around that use case rather than
+around the technologies themselves.
 
 ## Table of contents
 
