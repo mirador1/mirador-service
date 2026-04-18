@@ -37,12 +37,13 @@
 # ──────────────────────────────────────────────────────────────────────────────
 
 workflow:
-  # IMPORTANT: `changes:` matches if at LEAST one listed file changed, so the
-  # "skip if only docs changed" intent is expressed as an ALLOWLIST of code paths:
-  # run the pipeline ONLY when at least one code/build/infra file changed.
-  # Pure .md/docs/.gitignore commits → no rule matches → pipeline skipped entirely.
+  # IMPORTANT: `changes:` matches if at LEAST one listed file changed. The
+  # allowlist triggers a pipeline when real code/build/infra or docs changed.
+  # Docs-only changes produce a mostly-skipped pipeline that still satisfies
+  # the "main requires passing pipeline" branch protection rule — so MRs
+  # touching only docs/ can auto-merge without a bypass push.
   rules:
-    # MR events — run when code, build, infra, or CI config changes.
+    # MR events — run when code, build, infra, CI or docs changes.
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         - "src/**/*"
@@ -56,6 +57,9 @@ workflow:
         - ".gitlab-ci.yml"
         - "deploy/**/*"
         - "scripts/**/*"
+        - "docs/**/*"
+        - "README.md"
+        - "TASKS.md"
     # Main branch pushes — same allowlist, compared against HEAD~1 (last commit).
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE != "schedule"
       changes:
@@ -66,6 +70,9 @@ workflow:
         - ".mvn/**/*"
         - "Dockerfile*"
         - ".dockerignore"
+        - "docs/**/*"
+        - "README.md"
+        - "TASKS.md"
         - "docker-compose*.yml"
         - ".gitlab-ci.yml"
         - "deploy/**/*"
