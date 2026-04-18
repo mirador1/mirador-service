@@ -1,6 +1,6 @@
 # ADR-0003: Cloud SQL over in-cluster Postgres on GKE
 
-- **Status**: Accepted
+- **Status**: Superseded by [ADR-0013](0013-in-cluster-postgres-on-gke-for-the-demo.md)
 - **Date**: 2026-04-16
 
 ## Context

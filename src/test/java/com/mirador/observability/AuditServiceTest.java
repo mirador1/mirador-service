@@ -2,9 +2,12 @@ package com.mirador.observability;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 
+import java.sql.ResultSet;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
 
@@ -110,5 +113,60 @@ class AuditServiceTest {
 
         assertThat(result).isEmpty();
         verify(jdbc).query(anyString(), any(RowMapper.class), eq("id=42 %"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void rowMapper_mapsAllSixColumnsCorrectly() throws Exception {
+        // Capture the RowMapper lambda that findByCustomerId passes to JdbcTemplate
+        // and execute it against a mocked ResultSet — this is the only way to hit the
+        // mapRow(ResultSet) private helper without spinning up a real Postgres.
+        ArgumentCaptor<RowMapper<AuditEventDto>> captor = ArgumentCaptor.forClass(RowMapper.class);
+        when(jdbc.query(anyString(), captor.capture(), anyString())).thenReturn(List.of());
+
+        service.findByCustomerId(7L);
+
+        ResultSet rs = mock(ResultSet.class);
+        when(rs.getLong("id")).thenReturn(101L);
+        when(rs.getString("user_name")).thenReturn("alice");
+        when(rs.getString("action")).thenReturn("CUSTOMER_CREATED");
+        when(rs.getString("detail")).thenReturn("id=7 name=Charlie");
+        when(rs.getString("ip_address")).thenReturn("1.2.3.4");
+        Timestamp created = Timestamp.from(Instant.parse("2026-04-18T10:00:00Z"));
+        when(rs.getTimestamp("created_at")).thenReturn(created);
+
+        AuditEventDto dto = captor.getValue().mapRow(rs, 0);
+
+        assertThat(dto).isNotNull();
+        assertThat(dto.id()).isEqualTo(101L);
+        assertThat(dto.userName()).isEqualTo("alice");
+        assertThat(dto.action()).isEqualTo("CUSTOMER_CREATED");
+        assertThat(dto.detail()).isEqualTo("id=7 name=Charlie");
+        assertThat(dto.ipAddress()).isEqualTo("1.2.3.4");
+        assertThat(dto.createdAt()).isEqualTo(created.toInstant());
+    }
+
+    @Test
+    void findAll_totalPages_isZero_whenSizeIsZero() {
+        // Division-by-zero guard: size=0 must not throw, totalPages stays at 0.
+        when(jdbc.queryForObject(anyString(), eq(Long.class), any(Object[].class))).thenReturn(5L);
+        when(jdbc.query(anyString(), any(RowMapper.class), any(Object[].class))).thenReturn(List.of());
+
+        AuditPage page = service.findAll(0, 0, null, null, null, null);
+
+        assertThat(page.totalPages()).isZero();
+        assertThat(page.totalElements()).isEqualTo(5L);
+    }
+
+    @Test
+    void findAll_handlesNullCountReturn_asZero() {
+        // queryForObject on COUNT(*) can theoretically return null for an empty result
+        // in some JDBC drivers — the service must coerce to 0L instead of NPE-ing.
+        when(jdbc.queryForObject(anyString(), eq(Long.class), any(Object[].class))).thenReturn(null);
+        when(jdbc.query(anyString(), any(RowMapper.class), any(Object[].class))).thenReturn(List.of());
+
+        AuditPage page = service.findAll(0, 10, null, null, null, null);
+
+        assertThat(page.totalElements()).isZero();
     }
 }

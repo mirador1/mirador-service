@@ -1,32 +1,30 @@
 # =============================================================================
-# gke/ overlay — GKE Autopilot + Cloud SQL + cert-manager TLS
+# gke/ overlay — GKE Autopilot + in-cluster Postgres + cert-manager TLS
 #
-# Target: `mirador` GKE Autopilot cluster, DB on Cloud SQL (not in-cluster).
+# Target: `mirador` GKE Autopilot cluster, Postgres as a StatefulSet
+# (Cloud SQL is available as a future upgrade — files archived under
+# docs/archive/gke-cloud-sql/).
 #
 # What this overlay does:
 #   • Inherits base (namespace, ingress, backend, frontend, kafka, redis,
-#     keycloak). Note base does NOT include postgres — Cloud SQL replaces it.
+#     keycloak, postgres).
 #   • Adds cert-manager-gke-fix.yaml — RBAC fix for Autopilot so cert-manager
 #     can take leader-election leases outside kube-system.
-#   • Adds cloud-sql-proxy.yaml — ServiceAccount (Workload Identity) + GKE
-#     ConfigMap override (DB_HOST=127.0.0.1).
-#   • Patches the backend Deployment to add the cloud-sql-proxy sidecar
-#     and the mirador-backend ServiceAccount.
 #   • Patches the Ingress to add cert-manager + TLS block (Let's Encrypt).
 #
 # Apply:
 #   kubectl apply -k deploy/kubernetes/overlays/gke
 #
-# CI (.gitlab-ci.yml → deploy:gke) substitutes ${K8S_HOST} and
-# ${GCP_PROJECT} via envsubst before feeding into kustomize.
+# CI (.gitlab-ci.yml → deploy:gke) substitutes ${K8S_HOST} via envsubst
+# before feeding into kustomize.
 # =============================================================================
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
   - ../../base
+  - ../../base/postgres
   - cert-manager-gke-fix.yaml
-  - cloud-sql-proxy.yaml
 
 # Strategic merge patches — overlay fragments that merge with the base
 # resources by matching kind+name. The patched field is replaced; the
@@ -36,7 +34,3 @@ patches:
     target:
       kind: Ingress
       name: mirador-ingress
-  - path: backend-cloudsql-sidecar-patch.yaml
-    target:
-      kind: Deployment
-      name: mirador
