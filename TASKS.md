@@ -17,10 +17,9 @@
      tokens directly. unleash-proxy's UNLEASH_API_TOKEN references the
      same secret. Still to validate live on a fresh cluster. -->
 
-- [ ] **Validate unleash-proxy end-to-end** on a fresh cluster boot. The
-      INIT_*_API_TOKENS fix needs a clean Unleash DB (they only run on
-      first boot). On an existing cluster with Unleash already migrated,
-      tokens must be created manually via the admin UI.
+<!-- unleash-proxy end-to-end validated live on 2026-04-18 (fresh cluster):
+     curl /proxy?appName=mirador-ui with Authorization returns {"toggles":[]}.
+     INIT_CLIENT_API_TOKENS + INIT_FRONTEND_API_TOKENS works as expected. -->
 
 <!-- The mirador-ui docker image stays built + pushed. Even with ADR-0025
      (no prod deployment) the image is useful for: local prod-like run
@@ -46,9 +45,10 @@
      Validated on cluster 2026-04-18: kubectl get externalsecrets -A shows
      mirador-secrets + keycloak-secrets with STATUS: SecretSynced, READY: True. -->
 
-- [ ] **Argo Rollouts / Flagger** — progressive traffic split for canary
-      deploys. Requires Istio or Linkerd; deferred (ADR-0015 notes it
-      as a future upgrade path).
+<!-- Service-mesh-based traffic-split canary withdrawn in ADR-0027.
+     The replica-count canary via Argo Rollouts stays as the "progressive
+     delivery" showcase. Istio/Linkerd sidecar overhead (~+70 % on GKE
+     Autopilot billing) breaks ADR-0022's €2/month budget. -->
 
 <!-- distroless-java25 blocker is documented in the Dockerfile header
      (external, undated). Remove from tasks to avoid a rotting entry. -->
