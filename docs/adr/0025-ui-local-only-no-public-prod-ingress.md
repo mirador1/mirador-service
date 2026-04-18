@@ -182,8 +182,7 @@ optional buttons on `@if (env.<tool>Url())`.
 
 - A recruiter explicitly asks "do you have a URL?" often enough to
   outweigh the security concern. Re-introduce Cloudflare Tunnel for
-  the UI only, with a read-only `mirador.ui.ops-mode=false` Unleash
-  flag hiding every ops panel.
+  the UI only, behind a strict read-only auth gate.
 - The project attracts more than one simultaneous dev. `kubectl
   port-forward` does not scale to shared prod access — move to a
   bastion or IAP at that point.

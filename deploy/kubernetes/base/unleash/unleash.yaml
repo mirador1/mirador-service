@@ -1,14 +1,16 @@
 # =============================================================================
 # Unleash — open-source feature-flag service for the demo.
 #
-# Why feature flags at all in a portfolio? Three reasons:
-#   1. Decouple deploy from release — push code to prod dark, flip the flag
-#      when ready. Pairs naturally with the Argo Rollouts canary.
-#   2. Kill-switch for buggy code — flip the flag off in seconds instead of
-#      redeploying (which takes 3-5 min even with canary).
-#   3. "Operator vs customer" UI split (see below) — one Unleash flag
-#      `mirador.ui.ops-mode` gates all the operator pages (Chaos, Database,
-#      Pipelines). Off by default → customer view. Flip on → full dashboard.
+# Why feature flags at all in a portfolio? Two reasons kept after the
+# initial scoping exercise (2026-04-18):
+#   1. Decouple deploy from release — push code to prod dark, flip the
+#      flag when ready. Pairs naturally with the Argo Rollouts canary.
+#   2. Kill-switch for flaky downstream deps — e.g. `mirador.bio.enabled`
+#      hides the Bio tab when Ollama is unhealthy. Flip off in seconds
+#      instead of redeploying.
+# The earlier "ops-mode persona split" idea was dropped — the project
+# has a single user (the developer / recruiter), always operator,
+# so the feature would have no real effect.
 #
 # Architecture:
 #   mirador-ui → Unleash Proxy SDK (browser) → Unleash backend → Postgres
@@ -17,8 +19,9 @@
 # front-end SDK which authenticates with a client-token (read-only). Admins
 # use the web UI at unleash.mirador1.duckdns.org/.
 #
-# Seed data (default admin user + the ops-mode flag) lives in
-# `seed.sql` (separate ConfigMap), executed on first Postgres boot.
+# Seed data for the historical SQL-based bootstrap lives in `seed.yaml`
+# — kept in git as reference but no longer wired (Unleash 7.x uses the
+# INIT_*_API_TOKENS env-var pattern instead of SQL seeding).
 # =============================================================================
 apiVersion: v1
 kind: Service
@@ -169,10 +172,9 @@ spec:
               value: "false"
             # IMPORT_FILE was removed in Unleash 7.x in favour of a JSON
             # state export format that requires live flag state first.
-            # For the demo we boot clean and let the Admin UI create the
-            # two flags on first login (mirador.ui.ops-mode / bio.enabled).
-            # The seed.yaml ConfigMap kept in git for reference when moving
-            # to an OSS admin-migrator script later.
+            # Flags are created via the Admin UI on first login. Today the
+            # project only uses one: `mirador.bio.enabled` (kill-switch for
+            # the Ollama-backed /bio endpoint).
             - name: AUTH_TYPE
               value: demo
             # Bootstrap tokens — created on first boot. Format:
