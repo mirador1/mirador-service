@@ -1,0 +1,35 @@
+# =============================================================================
+# ConfigMap patch — GKE overlay values
+#
+# The base configmap uses `${PLACEHOLDER}` tokens that were historically
+# substituted by `envsubst` in the `deploy:gke` CI job. Now that Argo CD
+# is the deploy path (ADR-0015), those tokens are never substituted —
+# Kustomize doesn't do envsubst. This patch hard-codes the 3 affected
+# values for the current GKE cluster.
+#
+# To change them: edit this file, commit, let Argo CD reconcile.
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mirador-config
+  namespace: app
+data:
+  # OTLP export disabled — no in-cluster Grafana/Tempo collector, no
+  # Grafana Cloud credentials. Re-enable by setting this to the
+  # actual endpoint + adding OTEL_EXPORTER_OTLP_AUTH to the secret.
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://127.0.0.1:4318"
+  MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED: "false"
+  MANAGEMENT_OTLP_TRACING_EXPORT_ENABLED: "false"
+
+  # Auth0 issuer — empty so the fallback `${KEYCLOAK_URL:}/realms/...`
+  # branch in application.yml is taken. The in-cluster Keycloak at
+  # keycloak.infra.svc.cluster.local provides the OIDC path.
+  AUTH0_ISSUER_URI: ""
+  KEYCLOAK_URL: "http://keycloak.infra.svc.cluster.local:8080"
+
+  # CORS allowlist for the public demo hostname + local dev.
+  # The Ingress routes /api/* and / from the same origin, so browsers
+  # never cross origins in production — this is a safety net for
+  # Swagger UI + Postman direct calls.
+  CORS_ALLOWED_ORIGINS: "https://mirador1.duckdns.org,http://localhost:4200"

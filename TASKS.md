@@ -9,25 +9,21 @@
 
 ## Pending — Cluster bring-up
 
-- [~] **deploy:gke first run** — pipeline on `main` builds image + deploys
-      to GKE Autopilot. Once Cloud SQL is provisioned (below), cert-manager
-      emits a Let's Encrypt cert and HTTPS goes live at
-      `https://mirador1.duckdns.org`.
-
-- [ ] **Cloud SQL instance** — provision via `gcloud` (faster iteration
-      than fixing the current terraform-plan "bucket doesn't exist" error).
-      Commands are documented in
-      `deploy/kubernetes/overlays/gke/cloud-sql-proxy.yaml` (setup section).
-      Then:
-      1. `gcloud sql instances describe mirador-db --format='value(connectionName)'`
-      2. Set GitLab CI var `CLOUD_SQL_INSTANCE=$GCP_PROJECT:$GKE_REGION:mirador-db`
-      3. Re-trigger deploy:gke — the GKE Kustomize overlay embeds the
-         sidecar patch + ConfigMap override automatically.
-      4. After verification, **pause the instance** to minimise cost.
-
-- [ ] **Terraform apply** — after Cloud SQL is manual-provisioned and the
-      terraform-plan bucket issue is resolved, run the full terraform-apply
-      to bring VPC + GKE Autopilot + Memorystore Redis + IAM SAs into code.
+- [ ] **Terraform .tf cleanup** — running `terraform plan` (2026-04-18)
+      reveals 14 resources to create, but several already exist
+      out-of-Terraform (GKE cluster `mirador-prod`, VPC) and others are
+      no longer desired per ADR-0013 (Cloud SQL) / ADR-0014 (single
+      replica, no HA). A session dedicated to rewriting the .tf files
+      to match current reality is needed:
+      - Drop `google_sql_database_instance`, `google_sql_*`,
+        `google_service_networking_connection` (Cloud SQL stack).
+      - Drop `google_redis_instance` if in-cluster Redis stays (ADR
+        pending — currently redis is in `infra` StatefulSet).
+      - Import existing `google_container_cluster.autopilot`,
+        `google_compute_network.vpc`, `google_compute_subnetwork.subnet`,
+        `google_compute_router.*` into state via `terraform import`.
+      - Keep VPC + NAT + Workload Identity SA + IAM bindings.
+      After cleanup, `terraform apply` is safe and becomes a no-op.
 
 - [ ] **Managed Kafka on GCP** (~$35/day) — deferred. Requires
       uncommenting ~70 lines in `deploy/terraform/gcp/kafka.tf` + SASL
@@ -42,33 +38,38 @@
 
 ## Pending — Industry-standard upgrades
 
-- [~] **Argo CD GitOps** — scaffolding at
-      [`deploy/argocd/application.yaml`](deploy/argocd/application.yaml)
-      ready to apply once Argo CD is installed on the cluster. Cutover
-      procedure documented in [`deploy/argocd/README.md`](deploy/argocd/README.md).
-      Remaining: install Argo CD in GKE, apply the Application, remove
-      the `deploy:gke` CI job.
-
-- [~] **External Secrets Operator + Google Secret Manager** — scaffolding
-      at [`deploy/external-secrets/`](deploy/external-secrets/)
-      (SecretStore + ExternalSecret using Workload Identity, kept
-      outside `deploy/kubernetes/base/` until the CRDs are installed
-      so the CI k8s-dry-run hook doesn't fail on unknown kinds).
-      Cutover procedure documented in the same folder's README.
-      Remaining: `helm install external-secrets`, create GCP secrets,
-      grant IAM, move the files under `base/external-secrets/`, wire
-      them into `base/kustomization.yaml`, and drop the
-      `kubectl create secret generic mirador-secrets` step in CI.
+- [~] **External Secrets Operator → Google Secret Manager cutover** —
+      operator is installed (2026-04-18), CRDs available. Remaining
+      user steps documented in ADR-0016: create the GSM entries,
+      grant the WIF-backed SA `roles/secretmanager.secretAccessor`,
+      move `deploy/external-secrets/*` into `base/external-secrets/`,
+      delete the hand-created `mirador-secrets` + `keycloak-secrets`
+      from the cluster.
 
 - [ ] **distroless java25 image** — switch once Google publishes it (track
       https://github.com/GoogleContainerTools/distroless). Drops ~90 CVEs
       vs `eclipse-temurin:25-jre`.
 
 - [ ] **Argo Rollouts / Flagger** — progressive traffic split for canary
-      deploys. Requires Istio or Linkerd; deferred until Argo CD lands.
+      deploys. Requires Istio or Linkerd; deferred (ADR-0015 notes it
+      as a future upgrade path).
+
+- [ ] **Retire `deploy:gke` CI job** — now that Argo CD reconciles the
+      GKE overlay from main, the job is redundant. Keeping it until
+      the ConfigMap placeholder migration is confirmed stable.
 
 ## Recently Completed
 
+- [x] **GKE cluster bring-up — Argo CD GitOps + in-cluster everything**
+      (2026-04-18). Argo CD installed (core subset, 4 pods), External
+      Secrets Operator installed (3 pods), both fit on the existing
+      2-node Autopilot without a quota bump thanks to
+      ADR-0014's resource-tight policy. cert-manager + otel-operator
+      resource requests shrunk to match. 7 legacy `customer-service/ui`
+      deployments cleaned. Argo CD `Application/mirador` deployed,
+      ingress UI at `argocd.mirador1.duckdns.org` (TLS via Let's
+      Encrypt, same chain as the app). ADR-0013/0014/0015/0016/0017/
+      0018/0019/0020 added to record the day's decisions.
 - [x] **Spring AI 1.0.0-M6 → 1.1.4 GA**. Artifact rename
       (`spring-ai-ollama-spring-boot-starter` →
       `spring-ai-starter-model-ollama`); the two SB4-compat shims
