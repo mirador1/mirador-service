@@ -97,12 +97,27 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /data
-            # Grafana dashboards provisioned as code. The ConfigMap
-            # (base/observability/grafana-dashboards.yaml) contains both
-            # the provider YAML and the dashboard JSONs; Grafana scans this
-            # path every 30 s and hot-reloads changes without a restart.
+            # Grafana dashboards as code. Two-mount pattern because:
+            #   • The provider YAML must sit directly in
+            #     <provisioning>/dashboards/ (Grafana only scans that dir
+            #     for *.yaml provider files, not subdirs).
+            #   • The dashboard JSONs must sit in the path the provider YAML
+            #     points at (options.path), NOT alongside it — Grafana
+            #     otherwise tries to load the provider YAML as a dashboard.
+            # subPath mounts let us inject each file individually into the
+            # otel-lgtm image's own config dir without wiping its sample.yaml.
             - name: grafana-dashboards
-              mountPath: /etc/grafana/provisioning/dashboards
+              mountPath: /otel-lgtm/grafana/conf/provisioning/dashboards/mirador.yaml
+              subPath: mirador.yaml
+              readOnly: true
+            - name: grafana-dashboards
+              mountPath: /var/lib/grafana/dashboards/mirador/golden-signals.json
+              subPath: golden-signals.json
+              readOnly: true
+            - name: grafana-dashboards
+              mountPath: /var/lib/grafana/dashboards/mirador/canary.json
+              subPath: canary.json
+              readOnly: true
       volumes:
         - name: data
           emptyDir: {}

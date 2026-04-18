@@ -155,6 +155,7 @@ spec:
               until pg_isready -h unleash-db -U unleash; do
                 echo "waiting for unleash-db…"; sleep 2
               done
+      # No seed volume — IMPORT_FILE removed (see note in the env block).
       containers:
         - name: unleash
           image: unleashorg/unleash-server:7.6.3
@@ -166,17 +167,14 @@ spec:
               value: postgres://unleash:unleash@unleash-db:5432/unleash
             - name: DATABASE_SSL
               value: "false"
-            # Seed the default admin user on first boot. Unleash reads the
-            # SQL file mounted at /seed/init.sql if IMPORT_FILE is set.
-            - name: IMPORT_FILE
-              value: /seed/init.sql
-            # Disable the public sign-up page — admin-created users only.
+            # IMPORT_FILE was removed in Unleash 7.x in favour of a JSON
+            # state export format that requires live flag state first.
+            # For the demo we boot clean and let the Admin UI create the
+            # two flags on first login (mirador.ui.ops-mode / bio.enabled).
+            # The seed.yaml ConfigMap kept in git for reference when moving
+            # to an OSS admin-migrator script later.
             - name: AUTH_TYPE
               value: demo
-          volumeMounts:
-            - name: seed
-              mountPath: /seed
-              readOnly: true
           resources:
             requests:
               cpu: 100m
@@ -196,7 +194,3 @@ spec:
               port: 4242
             initialDelaySeconds: 60
             periodSeconds: 30
-      volumes:
-        - name: seed
-          configMap:
-            name: unleash-seed
