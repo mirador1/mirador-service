@@ -34,3 +34,7 @@ patches:
     target:
       kind: Ingress
       name: mirador-ingress
+  - path: configmap-gke-patch.yaml
+    target:
+      kind: ConfigMap
+      name: mirador-config
