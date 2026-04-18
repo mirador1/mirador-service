@@ -1,0 +1,102 @@
+# =============================================================================
+# LGTM stack — Grafana + Loki + Tempo + Mimir all in one pod.
+#
+# Uses the official `grafana/otel-lgtm` image that bundles all four products
+# plus an OTel Collector preconfigured to route:
+#   - traces → Tempo (port 3200)
+#   - logs   → Loki  (port 3100)
+#   - metrics → Mimir (port 9009)
+#   - OTLP ingest on 4317 (gRPC) and 4318 (HTTP)
+#
+# Grafana is wired to all three datasources on boot — open http://.../ and
+# they are already populated with "OTLP" as the default flow.
+#
+# Resource requests tuned for a single-pod demo (ADR-0014). Data is kept in
+# an emptyDir; lost on restart — acceptable for ephemeral cluster (ADR-0022).
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: lgtm
+  namespace: infra
+  labels:
+    app.kubernetes.io/name: lgtm
+spec:
+  selector:
+    app.kubernetes.io/name: lgtm
+  ports:
+    - name: grafana
+      port: 3000
+      targetPort: 3000
+    - name: otlp-grpc
+      port: 4317
+      targetPort: 4317
+    - name: otlp-http
+      port: 4318
+      targetPort: 4318
+    - name: loki
+      port: 3100
+      targetPort: 3100
+    - name: tempo
+      port: 3200
+      targetPort: 3200
+    - name: mimir
+      port: 9009
+      targetPort: 9009
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lgtm
+  namespace: infra
+  labels:
+    app.kubernetes.io/name: lgtm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: lgtm
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: lgtm
+    spec:
+      containers:
+        - name: lgtm
+          image: grafana/otel-lgtm:0.25.0
+          ports:
+            - name: grafana
+              containerPort: 3000
+            - name: otlp-grpc
+              containerPort: 4317
+            - name: otlp-http
+              containerPort: 4318
+          env:
+            - name: GF_AUTH_ANONYMOUS_ENABLED
+              value: "true"
+            - name: GF_AUTH_ANONYMOUS_ORG_ROLE
+              value: "Admin"
+            - name: GF_AUTH_DISABLE_LOGIN_FORM
+              value: "true"
+            # Default dashboard landing page.
+            - name: GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH
+              value: /otel-lgtm/grafana/conf/provisioning/dashboards/home.json
+          resources:
+            requests:
+              cpu: 250m
+              memory: 1Gi
+            limits:
+              cpu: 1
+              memory: 2Gi
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          emptyDir: {}

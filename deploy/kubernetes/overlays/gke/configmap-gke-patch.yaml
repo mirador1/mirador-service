@@ -15,12 +15,11 @@ metadata:
   name: mirador-config
   namespace: app
 data:
-  # OTLP export disabled — no in-cluster Grafana/Tempo collector, no
-  # Grafana Cloud credentials. Re-enable by setting this to the
-  # actual endpoint + adding OTEL_EXPORTER_OTLP_AUTH to the secret.
-  OTEL_EXPORTER_OTLP_ENDPOINT: "http://127.0.0.1:4318"
-  MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED: "false"
-  MANAGEMENT_OTLP_TRACING_EXPORT_ENABLED: "false"
+  # OTLP export goes to the in-cluster LGTM stack (grafana/otel-lgtm,
+  # deployed from base/observability). Grafana UI at lgtm.infra:3000.
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://lgtm.infra.svc.cluster.local:4318"
+  MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED: "true"
+  MANAGEMENT_OTLP_TRACING_EXPORT_ENABLED: "true"
 
   # Auth0 issuer — empty so the fallback `${KEYCLOAK_URL:}/realms/...`
   # branch in application.yml is taken. The in-cluster Keycloak at

@@ -100,6 +100,43 @@ gcloud iam service-accounts add-iam-policy-binding "$SA_EMAIL" \
 kubectl annotate serviceaccount external-secrets -n external-secrets \
   "iam.gke.io/gcp-service-account=$SA_EMAIL" --overwrite
 
+# 4b. Install the industrial nice-to-have operators that the app-layer
+#     manifests assume present (ADR-0023 matrix). Each is a single helm
+#     install — cheap, idempotent, under a minute combined.
+helm repo add kyverno https://kyverno.github.io/kyverno/ >/dev/null 2>&1 || true
+helm repo add argo https://argoproj.github.io/argo-helm >/dev/null 2>&1 || true
+helm repo add chaos-mesh https://charts.chaos-mesh.org >/dev/null 2>&1 || true
+helm repo update >/dev/null
+
+# Kyverno — admission-time policy engine (ADR-0022 nice-to-have #6).
+helm upgrade --install kyverno kyverno/kyverno \
+  -n kyverno --create-namespace \
+  --set admissionController.replicas=1 \
+  --set backgroundController.replicas=1 \
+  --set cleanupController.replicas=1 \
+  --set reportsController.replicas=1 \
+  --set 'admissionController.resources.requests.cpu=50m' \
+  --set 'admissionController.resources.requests.memory=128Mi' \
+  --wait --timeout 5m
+
+# Argo Rollouts — progressive delivery controller + Rollout CRD.
+helm upgrade --install argo-rollouts argo/argo-rollouts \
+  -n argo-rollouts --create-namespace \
+  --set controller.replicas=1 \
+  --set 'controller.resources.requests.cpu=50m' \
+  --set 'controller.resources.requests.memory=128Mi' \
+  --wait --timeout 5m
+
+# Chaos Mesh — chaos engineering CRDs (NetworkChaos, PodChaos, etc.).
+# The "PodChaos: kill" + "NetworkChaos: delay" experiments are wired into
+# the frontend's Chaos page.
+helm upgrade --install chaos-mesh chaos-mesh/chaos-mesh \
+  -n chaos-mesh --create-namespace \
+  --set chaosDaemon.runtime=containerd \
+  --set chaosDaemon.socketPath=/run/containerd/containerd.sock \
+  --set dashboard.securityMode=true \
+  --wait --timeout 5m || echo "⚠️  chaos-mesh install had issues; non-blocking"
+
 # 5. Apply the Argo CD Application — reconciles the app from main.
 kubectl apply -f "$REPO_ROOT/deploy/argocd/application.yaml"
 kubectl apply -f "$REPO_ROOT/deploy/argocd/ingress.yaml"

@@ -125,6 +125,11 @@
              spring-data-rest-webmvc. 3.1.0 has CVE GHSA-2m67-wjpj-xhg9 (HIGH);
              3.1.1 is the fix. Pin here until the BOM catches up. -->
         <jackson3.version>3.1.2</jackson3.version>
+
+        <!-- Sentry — error tracking (ADR-0022 nice-to-have). The SDK is a no-op
+             when SENTRY_DSN is empty, so this dep is safe even without a Sentry
+             project configured. -->
+        <sentry.version>8.20.0</sentry.version>
         <!--
           opentelemetry-logback-appender-1.0 tracks OTel API tightly.
           2.26.1-alpha calls LogRecordBuilder.setException(Throwable) which
@@ -378,6 +383,20 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-websocket</artifactId>
+        </dependency>
+
+        <!--
+          Sentry — error tracking SaaS. The starter auto-wires an
+          @ExceptionHandler-aware Spring integration + a Logback appender so
+          every ERROR log becomes a Sentry event.
+          DSN comes from the SENTRY_DSN env var (empty = SDK disabled, fine
+          in local dev / when the free tier is not configured).
+          Free tier: 5k events/month — covers the ephemeral demo (ADR-0022).
+        -->
+        <dependency>
+            <groupId>io.sentry</groupId>
+            <artifactId>sentry-spring-boot-starter-jakarta</artifactId>
+            <version>${sentry.version}</version>
         </dependency>
 
         <!-- API docs — SpringDoc generates OpenAPI 3 spec + Swagger UI at /swagger-ui.html -->
