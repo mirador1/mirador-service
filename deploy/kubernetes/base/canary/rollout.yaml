@@ -117,8 +117,9 @@ spec:
               app.kubernetes.io/component: backend
       containers:
         - name: mirador
-          # Image pinned by overlays/gke/image-tags-patch.yaml (ADR-0015).
-          image: "registry.gitlab.com/mirador1/mirador-service/backend:1538631a2fe883d409804d380138a035a617b61c"
+          # Pinned to :main (CI pushes this tag on every main merge since
+          # commit 7049b3e). Matches the Deployment image in overlays/gke/.
+          image: "registry.gitlab.com/mirador1/mirador-service/backend:main"
           imagePullPolicy: Always
           securityContext:
             allowPrivilegeEscalation: false

@@ -28,12 +28,6 @@
       Since the image is no longer a deploy artefact, mark it clearly
       as a validation artefact. Tag `:main-<sha>` only, no `:latest`.
 
-- [ ] **CI push `:main` + `:latest` tags on every merge to main** —
-      registry only has `:<sha>` tags; `image-tags-patch.yaml` still
-      hard-codes a SHA. Once CI publishes `:main`, flip the patch to
-      `newTag: main` so Argo CD auto-pulls. ~15 min in `docker-build`
-      job of `.gitlab-ci.yml`.
-
 - [ ] **UI repo — desktop deep-link buttons**. Wire the URI templates
       from `docs/getting-started/dev-tooling.md` into the Angular UI
       (Architecture + Database + Quality pages already have slots):
