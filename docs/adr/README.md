@@ -32,7 +32,7 @@ File name pattern: `NNNN-kebab-case-title.md` (NNNN is a zero-padded sequence).
 | ----- | ----------- | ------------------------------------------------------------------- |
 | 0001  | Accepted    | [Record architecture decisions](0001-record-architecture-decisions.md) |
 | 0002  | Accepted    | [Kustomize over Helm for K8s manifests](0002-kustomize-over-helm.md)    |
-| 0003  | Accepted    | [Cloud SQL over in-cluster Postgres on GKE](0003-cloud-sql-over-in-cluster-postgres.md) |
+| 0003  | Superseded  | [Cloud SQL over in-cluster Postgres on GKE](0003-cloud-sql-over-in-cluster-postgres.md) — see ADR-0013 |
 | 0004  | Accepted    | [Local CI runner, no paid SaaS quota](0004-local-ci-runner.md)          |
 | 0005  | Accepted    | [In-cluster Kafka (not Managed) for cost reasons](0005-in-cluster-kafka.md) |
 | 0006  | Accepted    | [Hoist every Maven version into `<properties>`](0006-maven-version-hoisting.md) |
@@ -42,6 +42,14 @@ File name pattern: `NNNN-kebab-case-title.md` (NNNN is a zero-padded sequence).
 | 0010  | Accepted    | [OpenTelemetry OTLP push to a Collector (not Prometheus scrape)](0010-otlp-push-to-collector.md) |
 | 0011  | Accepted    | [Minimal `@Transactional` surface, no `@Transactional(readOnly = true)`](0011-transactional-read-strategy.md) |
 | 0012  | Accepted    | [Stay on LGTM with Loki bloom filters — defer OpenSearch](0012-stay-on-lgtm-with-bloom-filters.md) |
+| 0013  | Accepted    | [In-cluster Postgres on GKE (supersedes ADR-0003)](0013-in-cluster-postgres-on-gke-for-the-demo.md) |
+| 0014  | Accepted    | [Single-replica deployments for the demo cluster](0014-single-replica-for-demo.md) |
+| 0015  | Accepted    | [Argo CD for GitOps deployment on GKE](0015-argocd-for-gitops-deployment.md) |
+| 0016  | Accepted    | [External Secrets Operator + Google Secret Manager](0016-external-secrets-operator.md) |
+| 0017  | Accepted    | [Java 25 + Spring Boot 4 (bleeding-edge stack)](0017-jvm-25-spring-boot-4-strategy.md) |
+| 0018  | Accepted    | [JWT strategy — HMAC + single-use refresh + Redis blacklist](0018-jwt-strategy-hmac-refresh-rotation.md) |
+| 0019  | Accepted    | [Resilience4J (CB+Retry) + Bucket4J rate limit + idempotency filter](0019-resilience4j-circuitbreaker-retry-bucket4j.md) |
+| 0020  | Accepted    | [API versioning via `X-API-Version` header (Spring 7)](0020-api-versioning-via-header.md) |
 
 ## When to write an ADR
 
