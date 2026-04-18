@@ -812,15 +812,10 @@ Sibling catalogue for the Angular UI: <https://gitlab.com/mirador1/mirador-ui/-/
 - **Usage here**: `docker-compose.yml` (infra: db, kafka, redis, ollama, keycloak, app, admin UIs, SonarQube, nginx report servers) + `docker-compose.observability.yml` (LGTM stack) + `docker-compose.runner.yml` (optional GitLab runner container).
 - **Why it's pertinent**: One command stands up the full dev stack. Keeps `docker compose up -d` as the entry point for every new developer.
 
-### 🐘 [pgAdmin](https://www.pgadmin.org/)
-- **What it is**: Postgres web admin UI.
-- **Usage here**: `dpage/pgadmin4:9.4` in Compose, port 5050. Pre-configured via `infra/pgadmin/servers.json` + `pgpassfile`.
-- **Why it's pertinent**: Graphical query and schema browsing for devs without `psql` muscle memory.
-
-### 🐘 [pgweb](https://sosedoff.github.io/pgweb/)
-- **What it is**: Lightweight Postgres client with JSON REST API.
-- **Usage here**: `sosedoff/pgweb:0.16.2` in Compose, port 8081, read-only. CORS wired for `localhost:4200` so the Angular app can query directly.
-- **Why it's pertinent**: Simple and fast; JSON endpoint is the easy path for ad-hoc frontend queries in dev.
+### 🐘 [CloudBeaver](https://dbeaver.com/docs/cloudbeaver/)
+- **What it is**: Web edition of DBeaver — same Eclipse-based ERD + SQL editor served as a self-hosted web app.
+- **Usage here**: `dbeaver/cloudbeaver:26.0.2` in Compose, port 8978. Admin password set on first visit, Postgres connection registered manually (host `db`, db `customer-service`, user `demo`). Volume `cloudbeaver_data` persists the config.
+- **Why it's pertinent**: Replaced pgAdmin + pgweb. One tool instead of two, familiar DBeaver UI without forcing the desktop app on every dev. Redis/Kafka are still served by their own UIs (RedisInsight, Kafka UI) since CloudBeaver Community is SQL-only.
 
 ### 🔧 **`.env` / `.env.example`**
 - **What it is**: Convention for per-developer environment variables.

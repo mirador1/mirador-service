@@ -17,7 +17,6 @@ so the mount paths are obvious at a glance.
 | [`keycloak/`](keycloak/)  | `keycloak`                                    | Realm exports (`realm-dev.json`, `realm-prod.json`) auto-imported on container start. |
 | [`nginx/`](nginx/)        | `compodoc`, `maven-site`                      | Static-file reverse proxies serving Angular Compodoc and Maven site.    |
 | [`observability/`](observability/) | `grafana`, `otel-collector`, `cors-proxy`, `prometheus` | LGTM stack: Grafana dashboards, OTel collector override, CORS reverse-proxies for browser access to Loki/Docker, Prometheus scrape config. |
-| [`pgadmin/`](pgadmin/)    | `pgadmin`                                     | Pre-registered Postgres server + password file → zero-click local DB UI. |
 | [`postgres/`](postgres/)  | `db`                                          | One-shot SQL init scripts (SonarQube database creation).                |
 
 ## Why a dedicated `infra/` folder?

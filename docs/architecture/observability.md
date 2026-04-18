@@ -43,7 +43,7 @@ Pyroscope) as a Grafana data source — no separate UIs to remember.
 | **Mimir query API** | <http://localhost:9091> | Prometheus-compatible API (replaces the standalone Prometheus container). |
 | **Tempo HTTP API** | <http://localhost:3200> | Direct trace lookup by ID — useful for scripting. |
 | **Loki direct** | <http://localhost:3100> | Raw log query (browser → use the CORS proxy on `:3102` instead). |
-| **pgAdmin** | <http://localhost:5050> | PostgreSQL admin (pre-configured, no login). |
+| **CloudBeaver** | <http://localhost:8978> | DBeaver web edition. Set admin password on first visit, then register the `db` connection (host `db`, db `customer-service`, user `demo`). |
 | **Kafka UI** | <http://localhost:9080> | Topics, consumer groups, lag, messages. |
 | **RedisInsight** | <http://localhost:5540> | Key browser, memory analysis, CLI. |
 | **Keycloak** | <http://localhost:8081> | OIDC provider admin (`admin`/`admin`). |
