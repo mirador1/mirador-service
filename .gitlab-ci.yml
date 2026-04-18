@@ -84,6 +84,7 @@ workflow:
     - when: never
 
 stages:
+  - pages         # GitLab Pages static site — published from public/ (ADR-0022 landing page)
   - lint          # Static file checks — instant feedback before any compilation
   - test          # Unit tests + security scans — fast, no Docker
   - integration   # Testcontainers ITests + SpotBugs + coverage gate — needs Docker
@@ -119,6 +120,26 @@ cache:
   key: "$CI_COMMIT_REF_SLUG"    # e.g. "main", "dev", "feature-xyz"
   paths:
     - .m2/repository    # Maven local repository — shared across all jobs in the same branch pipeline
+
+# ── stage: pages ──────────────────────────────────────────────────────────────
+
+# Static landing page — deployed at https://mirador1.gitlab.io/mirador-service/
+# The page explains that the live demo cluster is ephemeral (ADR-0022) and
+# provides a "request a walkthrough" CTA. Content lives in public/.
+pages:
+  stage: pages
+  image: alpine:3.20
+  interruptible: false
+  script:
+    - echo "Publishing public/ to GitLab Pages"
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - "public/**/*"
+        - ".gitlab-ci.yml"
 
 # ── stage: lint ───────────────────────────────────────────────────────────────
 

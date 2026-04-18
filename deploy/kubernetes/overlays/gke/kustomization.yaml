@@ -25,6 +25,7 @@ resources:
   - ../../base
   - ../../base/postgres
   - cert-manager-gke-fix.yaml
+  - lgtm-ingress.yaml
 
 # Strategic merge patches — overlay fragments that merge with the base
 # resources by matching kind+name. The patched field is replaced; the

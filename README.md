@@ -37,6 +37,10 @@ around the technologies themselves.
 
 ## Table of contents
 
+- [Why this, not that — the arbitrages](#why-this-not-that--the-arbitrages)
+- [What I would simplify first](#what-i-would-simplify-first)
+- [Where AI helped and where it didn't](#where-ai-helped-and-where-it-didnt)
+- [The things that are not perfect](#the-things-that-are-not-perfect)
 - [Architecture — dev (Docker Compose)](#architecture)
 - [Architecture — production (Kubernetes)](#architecture--production-kubernetes)
 - [Quick start](#quick-start)
@@ -46,6 +50,173 @@ around the technologies themselves.
 - [CI/CD](#cicd)
 - [Screenshots](#screenshots)
 - [Detailed documentation](#detailed-documentation)
+
+---
+
+## Why this, not that — the arbitrages
+
+Every industrial pattern in this repo answers a concrete problem; the
+list below is what I **rejected** and why. The full set of decisions
+with context + alternatives + consequences lives under
+[`docs/adr/`](docs/adr/) — 23 ADRs at the time of writing.
+
+| Decision | What I picked | What I considered & why it lost |
+|---|---|---|
+| **Message bus** | Apache Kafka (KRaft, in-cluster) | **RabbitMQ** — simpler but doesn't demo log-structured retention for event replay. **Managed Kafka on GCP** — €1k/month, disproportionate for a demo (see [ADR-0005](docs/adr/0005-in-cluster-kafka.md)). |
+| **K8s packaging** | Kustomize overlays (`local`/`gke`/`eks`/`aks`) | **Helm** — great for distributed charts but the demo has a single chart; Kustomize wins on "no templating-language debugging" (see [ADR-0002](docs/adr/0002-kustomize-over-helm.md)). |
+| **Database (GKE overlay)** | In-cluster Postgres StatefulSet | **Cloud SQL** — started there, reverted after realising PITR / backups / Query Insights aren't in the demo scope (see [ADR-0003 superseded → ADR-0013](docs/adr/0013-in-cluster-postgres-on-gke-for-the-demo.md)). |
+| **Secret management** | External Secrets Operator + Google Secret Manager | **HashiCorp Vault** — more powerful but too much platform for 5 secrets. **Sealed Secrets** — still puts secrets in git. **CI-created K8s Secret** (the original) — no rotation story, CI gets write access to cluster (see [ADR-0016](docs/adr/0016-external-secrets-operator.md)). |
+| **GitOps** | Argo CD (core subset: server + app-controller + repo-server + redis) | **Flux v2** — lighter but no UI. **ApplicationSet + Dex + Notifications** — dropped because the demo has one app (see [ADR-0015](docs/adr/0015-argocd-for-gitops-deployment.md)). |
+| **JWT strategy** | HS256 + opaque refresh tokens in Postgres + Redis blacklist | **RS256 + JWKS** — needed for the Keycloak path, not for the built-in one. **Stateless refresh JWTs** — would still need a revocation list, so opaque + single-use is simpler (see [ADR-0018](docs/adr/0018-jwt-strategy-hmac-refresh-rotation.md)). |
+| **Observability ingestion** | OTLP push to a collector (LGTM in-cluster) | **Prometheus scrape** — pull-based needs node access to every pod, fiddly on Autopilot. **Direct Grafana Cloud** — fine but costs money once out of the free tier (see [ADR-0010](docs/adr/0010-otlp-push-to-collector.md)). |
+| **CI runner** | Local MacBook Autopilot (m1) | **SaaS minutes** — runs out of the 400-free-minutes tier in two days. **Self-hosted on GKE** — chicken-and-egg if the CI builds the cluster (see [ADR-0004](docs/adr/0004-local-ci-runner.md)). |
+| **Cluster cost** | Ephemeral Autopilot (up only during demos) | **GKE Standard 1 × e2-small always-on** — €30/month vs €2/month for a cluster that doesn't serve traffic 99 % of the time (see [ADR-0022](docs/adr/0022-ephemeral-demo-cluster.md)). |
+
+**What this list is designed to show**: arbitrages, not recitation.
+If I can't articulate why a technology was *rejected*, that technology
+doesn't deserve to be in the repo.
+
+---
+
+## What I would simplify first
+
+If a manager said "this is too complex, rip something out", here's the
+order I would cut things, in descending priority:
+
+1. **Keycloak.** The built-in JWT auth covers the demo scenario. Keycloak
+   exists only to exercise the OIDC-via-JWKS path — valuable to show the
+   *capability*, but the first thing to go if the stack must shrink to
+   "stuff that serves traffic". The JwtAuthenticationFilter already
+   gracefully degrades when Keycloak is absent.
+2. **Kafka.** Customer creation, update, and delete all work without a
+   message bus. Kafka is there to exercise two patterns (fire-and-forget
+   + request-reply), which are nice-to-have, not core. The whole
+   `com.mirador.messaging` package could be deleted and the app would
+   still pass 80 % of the tests.
+3. **Ollama + Spring AI.** The `/customers/{id}/bio` endpoint is a
+   showcase for circuit-breaker + retry + fallback behaviour — those
+   same patterns are exercised on the JSONPlaceholder HTTP integration,
+   which is simpler. Ollama is the most expensive dependency to run
+   (1–8 GB RAM, 1 CPU, or GPU).
+4. **The second API version (v2).** `@RequestMapping(version = "2.0+")`
+   is a Spring 7 feature I wanted to demonstrate — it adds duplicate
+   controller methods and tests. Removing v2 halves the controller code
+   with no loss of business value.
+5. **Three of the four Kubernetes overlays.** `local`, `gke`, `eks`,
+   `aks` are mostly the same manifest with a different TLS + storage
+   class patch. For a real single-cloud deployment I would keep one.
+
+What I would **not** cut, even under pressure:
+- Observability (OTel, structured logs) — without it, production
+  incidents become detective work.
+- The CI supply-chain tooling (SBOM, Grype, cosign) — it runs in ~30 s
+  and catches real CVEs; removing it removes an invariant.
+- The ADR set — 23 commits of "why we did this" is cheap insurance
+  against the same decision being reopened in two years.
+
+---
+
+## Where AI helped and where it didn't
+
+This project was built in close collaboration with a reasoning LLM.
+The split matters more than pretending it didn't happen — a manager
+reading this repo needs to know where my fingerprints are and where
+the assistant's are.
+
+**How I use AI in this project, in one sentence**:
+
+> The assistant proposes best practices; I choose which ones apply,
+> and the ADRs are the audit trail of those choices.
+
+That sentence is the honest positioning. The technology proposals come
+from a system that has read thousands of platform-engineering
+post-mortems and can enumerate options faster than any human. The
+**arbitrage** — what fits *this* context, what to reject, where the
+trade-off lands — is where my judgement shows up, and where the ADRs
+under [`docs/adr/`](docs/adr/) prove it was a decision rather than
+a reflex.
+
+**Where AI accelerated the work (high leverage, easy to verify)**:
+- Writing ADRs from a bullet-point briefing — the assistant produces a
+  consistent structure (context / decision / alternatives / consequences /
+  references) that would have taken me hours to write in the same voice.
+- Generating boilerplate YAML (NetworkPolicies, Ingresses, SecretStore
+  CRs) from a one-line description of the intent. I still review every
+  line.
+- Refactoring a class to match a new pattern (JSpecify annotations,
+  underscore pattern for unused catches, pattern matching for switch).
+  Mechanical work the assistant does well.
+- Drafting commit messages and MR descriptions — freeing attention for
+  the actual diff.
+
+**Where AI was wrong and I had to overrule it**:
+- **The cost estimates in ADR-0021.** The first version said "€0–3/mo"
+  for the cluster. I had to measure the actual Autopilot pod-hour
+  billing to discover it was ~€190/mo, which then triggered ADR-0022
+  (ephemeral cluster).
+- **The Spring AI shim deletion.** The assistant was confident that
+  1.1 GA no longer needed the SB3-package compatibility classes. CI
+  disagreed — those shims are still load-bearing.
+- **The NetworkPolicy for DNS.** The assistant authored an allow-dns
+  rule pointing at the `kube-system` namespace; it works everywhere
+  except GKE Autopilot, which routes through NodeLocal DNS Cache at
+  `169.254.20.10`. Debugging that required looking at a pod's
+  `/etc/resolv.conf`.
+
+**What I own alone (the assistant contributes but I decide)**:
+- The scope. Every "we should add X" prompt goes through a ranking of
+  "does this solve a problem the demo exercises?" (see ADR-0021 +
+  ADR-0022's editorial rule).
+- The arbitrages in the table above. The assistant can list
+  alternatives; picking the winner and writing why the losers lost is
+  a judgement call.
+- The things left out — the nice-to-have items in ADR-0022's
+  deferred section are where I draw the line, not the assistant.
+
+If you want to test this: ask me to defend any of the ADRs without the
+repo in front of me. The answer won't sound like a prompt response.
+
+---
+
+## The things that are not perfect
+
+Every "demo" claim in this repo comes with a caveat the live session
+will surface anyway. Listing them here is cheaper than being caught by
+them.
+
+- **Cold start is slow** — a fresh `bin/demo-up.sh` takes ~8 min
+  (cluster provisioning 5 min + operator installs 2 min + app sync
+  1 min). The cert-manager cert also needs ~5 min of Let's Encrypt
+  propagation before the HTTPS URL responds with a valid cert. I warm
+  the cluster up 10 min before any live walkthrough.
+- **`/actuator/health` shows DOWN when an upstream is down** — and the
+  demo often runs without Ollama (it's optional; the CircuitBreaker
+  handles the absence). This is intended but surprises viewers: the
+  readiness probe rejects traffic even though the core API works.
+- **The public-tag semantics of `:stable` are weak** — Argo CD tracks
+  `main` HEAD, which is what a fresh demo uses, but there is no
+  guarantee the HEAD image has been k6-smoke-tested. A proper setup
+  would pin to a signed release tag.
+- **Single replicas everywhere** — if the JVM pod OOMs mid-demo
+  there's a 30-60 s outage while Spring Boot warms up. See
+  [ADR-0014](docs/adr/0014-single-replica-for-demo.md) for the
+  scale-up playbook.
+- **No chaos engineering run in CI** — Chaos Mesh is installed and the
+  UI has a "chaos" page, but the experiments are run interactively,
+  not as part of a pipeline. A real production setup would schedule
+  weekly chaos experiments with SLO gates.
+- **Pipeline times are not tiny** — the full `mvn verify` takes ~4 min;
+  the docker-build stage adds 2-3 min (Kaniko, arm64 → amd64 buildx).
+  Fast enough to be tolerable, slow enough that I try to keep PRs
+  small so the feedback loop doesn't drag.
+- **The technology glossary drifts** — `docs/reference/technologies.md`
+  is 1100+ lines and some entries describe the intent rather than the
+  current implementation. A doc-diff job in CI would catch this; I
+  haven't written it yet.
+
+If a manager asks "where are the compromises?" this section is the
+honest answer. None of them are blockers for the demo, all of them are
+known.
 
 ---
 
