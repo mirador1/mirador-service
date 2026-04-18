@@ -137,6 +137,22 @@ helm upgrade --install chaos-mesh chaos-mesh/chaos-mesh \
   --set dashboard.securityMode=true \
   --wait --timeout 5m || echo "⚠️  chaos-mesh install had issues; non-blocking"
 
+# cert-manager — Let's Encrypt certificate issuer + the cert-manager
+# namespace that overlays/gke/cert-manager-gke-fix.yaml expects to patch.
+# Without this step, Argo CD sync fails on the RBAC RoleBindings in
+# that namespace with "namespace not found" and the whole app stays
+# OutOfSync. Installing from the upstream manifest (not helm) to match
+# the versions the GKE-fix RoleBindings target.
+helm repo add jetstack https://charts.jetstack.io >/dev/null 2>&1 || true
+helm repo update jetstack >/dev/null
+helm upgrade --install cert-manager jetstack/cert-manager \
+  -n cert-manager --create-namespace \
+  --set crds.enabled=true \
+  --set replicaCount=1 \
+  --set webhook.replicaCount=1 \
+  --set cainjector.replicaCount=1 \
+  --wait --timeout 5m
+
 # 5. Apply the Argo CD Application — reconciles the app from main.
 kubectl apply -f "$REPO_ROOT/deploy/argocd/application.yaml"
 kubectl apply -f "$REPO_ROOT/deploy/argocd/ingress.yaml"

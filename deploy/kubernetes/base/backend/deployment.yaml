@@ -118,19 +118,13 @@ spec:
                 secretKeyRef:
                   name: mirador-secrets
                   key: API_KEY
-            - name: OTEL_EXPORTER_OTLP_AUTH
-              valueFrom:
-                secretKeyRef:
-                  name: mirador-secrets
-                  key: OTEL_EXPORTER_OTLP_AUTH
-            # Spring Boot relaxed-binding: maps this env var to
-            # management.tracing.export.otlp.headers.Authorization
-            # Uses K8s $(VAR) interpolation to prepend "Basic " to the base64 token.
-            # Only injected in K8s — no Authorization header is sent in local dev.
-            - name: MANAGEMENT_TRACING_EXPORT_OTLP_HEADERS_AUTHORIZATION
-              value: "Basic $(OTEL_EXPORTER_OTLP_AUTH)"
-            - name: MANAGEMENT_LOGGING_EXPORT_OTLP_HEADERS_AUTHORIZATION
-              value: "Basic $(OTEL_EXPORTER_OTLP_AUTH)"
+            # OTEL_EXPORTER_OTLP_AUTH was used to authenticate against a
+            # Grafana Cloud OTLP endpoint. With the current in-cluster LGTM
+            # pod (ADR-0014, base/observability/lgtm.yaml) the collector is
+            # unauthenticated on the cluster network, so we drop the
+            # Authorization header. When moving back to Grafana Cloud, add
+            # the key in GSM + ExternalSecret and restore the two MANAGEMENT_*
+            # env vars below.
             # GitLab API token (read_api scope) for /actuator/quality pipeline history section.
             - name: GITLAB_API_TOKEN
               valueFrom:
