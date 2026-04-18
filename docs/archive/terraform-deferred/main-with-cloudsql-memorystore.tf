@@ -1,34 +1,28 @@
 # =============================================================================
-# Terraform — GCP infrastructure for mirador (2026-04-18 scope reset)
+# Terraform — GCP infrastructure for mirador
 #
-# IaC posture after ADR-0013 (in-cluster Postgres) + ADR-0021 (cost-deferred
-# industrial patterns):
+# Resources provisioned:
+#   - VPC + subnet (private cluster network)
+#   - GKE Autopilot cluster (no node management, automatic scaling + upgrades)
+#   - Cloud SQL for PostgreSQL 17 (managed DB — no StatefulSet needed in K8s)
+#   - Memorystore Redis (managed cache — no Redis Deployment needed in K8s)
+#   - IAM service accounts for Cloud SQL Auth Proxy (Workload Identity)
 #
-#   MANAGED BY TERRAFORM NOW (this file):
-#     - VPC + subnet + NAT + Cloud Router (private cluster network)
-#     - GKE Autopilot cluster
-#     - Workload Identity provider + SAs (present-tense, used by ESO etc.)
+# Cloud SQL vs in-cluster PostgreSQL:
+#   Using Cloud SQL means no StatefulSet to manage, no PVC re-attachment on node
+#   failure, automated backups, and point-in-time recovery. The compute cost is
+#   ~$7/month for db-f1-micro — far cheaper than the GKE Autopilot node cost.
+#   When not in use, the instance can be stopped (gcloud sql instances patch
+#   --activation-policy=NEVER) — only storage (~$0.17/GB/month) is billed.
 #
-#   DELIBERATELY DROPPED (see ADR-0013 / ADR-0021):
-#     - Cloud SQL instance + database + user + proxy SA — replaced by
-#       in-cluster Postgres StatefulSet.
-#     - Memorystore Redis — replaced by in-cluster Redis Deployment.
-#     Full previous blocks archived in
-#     docs/archive/terraform-deferred/main-with-cloudsql-memorystore.tf.
+# Memorystore Redis vs in-cluster Redis:
+#   Managed Redis removes the risk of data loss on pod eviction. Cost is ~$16/month
+#   for a 1 GB BASIC instance. It connects via Private Service Access (same VPC).
 #
-#   OUT OF TERRAFORM (intentional — created manually on 2026-04-15):
-#     - The live `mirador-prod` cluster (this file's resource still describes
-#       the target shape; a `terraform import` would be needed before any
-#       `terraform apply` on the live cluster). Until then, treat this as
-#       "the IaC we would apply to a fresh project".
-#
-# Prerequisites (when applying to a fresh project):
+# Prerequisites:
 #   gcloud auth application-default login
-#   gcloud services enable container.googleapis.com \
-#     servicenetworking.googleapis.com --project=${var.project_id}
-#
-# Skipped services (not needed with the scope reset):
-#   sqladmin.googleapis.com, redis.googleapis.com
+#   gcloud services enable container.googleapis.com sqladmin.googleapis.com \
+#     redis.googleapis.com servicenetworking.googleapis.com --project=${var.project_id}
 # =============================================================================
 
 terraform {
@@ -173,9 +167,106 @@ resource "google_container_cluster" "autopilot" {
 }
 
 # =============================================================================
-# Cloud SQL, Memorystore Redis, sql_proxy Service Account + IAM:
-# dropped by ADR-0013 + ADR-0021 (Postgres and Redis run in-cluster).
-# Previous blocks preserved in
-#   docs/archive/terraform-deferred/main-with-cloudsql-memorystore.tf
-# with a reactivation runbook in docs/archive/gke-cloud-sql/README.md.
+# Cloud SQL — managed PostgreSQL 17
 # =============================================================================
+
+resource "google_sql_database_instance" "postgres" {
+  name             = "mirador-db"
+  database_version = "POSTGRES_17"
+  region           = var.region
+
+  settings {
+    tier = var.db_tier
+
+    # Private IP only — the instance is NOT reachable from the public internet.
+    # Connection is via the VPC peering established above.
+    ip_configuration {
+      ipv4_enabled    = false # disable public IP — private IP only
+      private_network = google_compute_network.vpc.id
+    }
+
+    backup_configuration {
+      enabled                        = true
+      start_time                     = "03:00" # 03:00 UTC — off-peak
+      point_in_time_recovery_enabled = true    # enables WAL-based PITR
+      transaction_log_retention_days = 7
+      backup_retention_settings {
+        retained_backups = 7 # keep 7 daily backups
+      }
+    }
+
+    maintenance_window {
+      day          = 7 # Sunday
+      hour         = 4 # 04:00 UTC
+      update_track = "stable"
+    }
+
+    # Database flags
+    database_flags {
+      name  = "log_min_duration_statement"
+      value = "1000" # log queries slower than 1 second (slow query log)
+    }
+  }
+
+  # Disabled in dev so `terraform destroy` can tear down cleanly between tests.
+  # Flip to true before any production-grade deployment to protect data.
+  deletion_protection = false
+
+  depends_on = [google_service_networking_connection.private_vpc_connection]
+}
+
+resource "google_sql_database" "mirador" {
+  name     = var.db_name
+  instance = google_sql_database_instance.postgres.name
+}
+
+resource "google_sql_user" "app_user" {
+  name     = var.db_user
+  instance = google_sql_database_instance.postgres.name
+  password = var.db_password
+}
+
+# =============================================================================
+# IAM — Cloud SQL Auth Proxy via Workload Identity
+# =============================================================================
+
+# GCP service account used by the Cloud SQL Auth Proxy sidecar
+resource "google_service_account" "sql_proxy" {
+  account_id   = "mirador-sql-proxy"
+  display_name = "Mirador Cloud SQL Auth Proxy"
+}
+
+resource "google_project_iam_member" "sql_proxy_role" {
+  project = var.project_id
+  role    = "roles/cloudsql.client"
+  member  = "serviceAccount:${google_service_account.sql_proxy.email}"
+}
+
+# Bind the Kubernetes service account (app/mirador-backend) to the GCP SA
+# so pods using that KSA automatically get Cloud SQL Client permissions.
+resource "google_service_account_iam_member" "workload_identity_binding" {
+  service_account_id = google_service_account.sql_proxy.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[app/mirador-backend]"
+
+  depends_on = [google_container_cluster.autopilot]
+}
+
+# =============================================================================
+# Memorystore — managed Redis 7
+# =============================================================================
+
+resource "google_redis_instance" "cache" {
+  name           = "mirador-redis"
+  tier           = var.redis_tier
+  memory_size_gb = var.redis_memory_size_gb
+  region         = var.region
+  redis_version  = "REDIS_7_2"
+  display_name   = "Mirador Redis Cache"
+
+  # Connect via private services access so pods reach Redis via VPC private IP
+  authorized_network = google_compute_network.vpc.id
+  connect_mode       = "PRIVATE_SERVICE_ACCESS"
+
+  depends_on = [google_service_networking_connection.private_vpc_connection]
+}

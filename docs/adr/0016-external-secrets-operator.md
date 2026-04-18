@@ -116,8 +116,22 @@ Concrete steps applied:
 7. Verified via
    `kubectl get secret mirador-secrets -n app -o jsonpath='{.data.DB_PASSWORD}' | base64 -d`.
 
-Cost: ~€0.10/month (2 secrets over the 6-free tier × $0.06, with the
-access operations well under the 10k free quota).
+Cost: **€0** — consolidated to 5 GSM entries (under the 6-free-tier
+quota). Redundancies dropped:
+
+- `mirador-otel-auth` — not used (OTLP disabled in the demo).
+- `mirador-keycloak-admin` — username "admin" is not a secret; kept as
+  a hard-coded env on the Keycloak Deployment.
+- `mirador-keycloak-kc-db-password` — same value as
+  `mirador-db-password`; the Keycloak ExternalSecret now references
+  the shared GSM entry directly.
+
+Remaining 5 GSM entries: `mirador-db-password`, `mirador-jwt-secret`,
+`mirador-api-key`, `mirador-gitlab-api-token`,
+`mirador-keycloak-admin-password`.
+
+Access operations: ~3600/month (5 secrets × 24 refreshes/day × 30),
+well under the 10k free quota.
 
 ## Reactivation path (for future you)
 

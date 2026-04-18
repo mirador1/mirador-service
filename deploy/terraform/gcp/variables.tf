@@ -31,47 +31,9 @@ variable "cluster_name" {
   # needing a separate TF_VAR_cluster_name override.
 }
 
-variable "db_name" {
-  description = "Cloud SQL database name"
-  type        = string
-  default     = "mirador"
-}
-
-variable "db_user" {
-  description = "Cloud SQL application user"
-  type        = string
-  default     = "demo"
-}
-
-variable "db_password" {
-  description = "Cloud SQL application user password"
-  type        = string
-  sensitive   = true
-  # Set via TF_VAR_db_password env var or terraform.tfvars (never commit)
-}
-
-variable "db_tier" {
-  description = "Cloud SQL machine tier. db-f1-micro (~$7/month) is fine for dev; db-g1-small for staging."
-  type        = string
-  default     = "db-f1-micro"
-  # db-f1-micro  → ~$7/month  (shared vCPU, 0.6 GB RAM) — dev/demo
-  # db-g1-small  → ~$25/month (shared vCPU, 1.7 GB RAM) — staging
-  # db-n1-standard-1 → ~$50/month (1 dedicated vCPU) — production
-}
-
-variable "redis_tier" {
-  description = "Memorystore Redis tier: BASIC (no replica) or STANDARD_HA (with replica)"
-  type        = string
-  default     = "BASIC"
-  # BASIC      → ~$16/month (1 GB, no replica) — dev/staging
-  # STANDARD_HA → ~$40/month (1 GB, 1 replica) — production
-}
-
-variable "redis_memory_size_gb" {
-  description = "Memorystore Redis instance size in GB"
-  type        = number
-  default     = 1
-}
+# db_*, redis_* variables removed with the Cloud SQL / Memorystore blocks
+# (ADR-0013 + ADR-0021). Reactivation path in
+# docs/archive/terraform-deferred/ keeps the previous declarations.
 
 variable "app_host" {
   description = "Public hostname for the application (used in Ingress and CORS). E.g. mirador.example.com"
