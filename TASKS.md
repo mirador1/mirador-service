@@ -11,14 +11,16 @@
 
 <!-- EnvService selector (Local / Kind / Prod) landed in mirador-ui MR 28. -->
 
-- [ ] **unleash-proxy token bootstrap** — under `AUTH_TYPE=demo` Unleash 7.x
-      rejects the static placeholder token with HTTP 401 on
-      `/api/client/features`. Solution: a one-off `Job` or `initContainer`
-      that calls Unleash admin API after boot, creates a real client API
-      token, writes it to a `Secret`, which `unleash-proxy` consumes as
-      `UNLEASH_API_TOKEN`. Without this, the browser's feature-flag SDK
-      cannot fetch flags in the cluster (compose pgweb-local is unaffected).
-      Everything else on the ADR-0026 wiring is green (validated 2026-04-18).
+<!-- unleash-proxy token bootstrap fixed via INIT_CLIENT_API_TOKENS +
+     INIT_FRONTEND_API_TOKENS env vars on the unleash server. No separate
+     Job needed — Unleash 7.x reads these on first boot and creates the
+     tokens directly. unleash-proxy's UNLEASH_API_TOKEN references the
+     same secret. Still to validate live on a fresh cluster. -->
+
+- [ ] **Validate unleash-proxy end-to-end** on a fresh cluster boot. The
+      INIT_*_API_TOKENS fix needs a clean Unleash DB (they only run on
+      first boot). On an existing cluster with Unleash already migrated,
+      tokens must be created manually via the admin UI.
 
 <!-- The mirador-ui docker image stays built + pushed. Even with ADR-0025
      (no prod deployment) the image is useful for: local prod-like run

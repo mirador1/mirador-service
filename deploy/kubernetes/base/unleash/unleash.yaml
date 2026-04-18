@@ -175,6 +175,21 @@ spec:
             # to an OSS admin-migrator script later.
             - name: AUTH_TYPE
               value: demo
+            # Bootstrap tokens — created on first boot. Format:
+            # <project>:<environment>.<secret>. "default" is the built-in
+            # project, "development" the built-in environment.
+            #   * CLIENT token: what unleash-proxy presents to Unleash's
+            #     /api/client/features endpoint.
+            #   * FRONTEND token: what the browser (via unleash-proxy) uses.
+            #     Not strictly needed here (the proxy handles the frontend
+            #     side) but Unleash refuses to boot without it in 7.x if
+            #     INIT_CLIENT_API_TOKENS is set. Harmless.
+            # These placeholder tokens are fine for a demo cluster; in a
+            # real deployment they'd come from ESO → GSM with a real secret.
+            - name: INIT_CLIENT_API_TOKENS
+              value: "default:development.mirador-unleash-client-token"
+            - name: INIT_FRONTEND_API_TOKENS
+              value: "default:development.mirador-unleash-frontend-token"
           resources:
             requests:
               cpu: 100m
@@ -262,11 +277,11 @@ spec:
           env:
             - name: UNLEASH_URL
               value: http://unleash:4242/api/
-            # Server-side API token used by the proxy to poll Unleash. In
-            # AUTH_TYPE=demo mode, the default token starts with
-            # `default:development:` — the proxy validates this pattern.
+            # Server-side API token used by the proxy to poll Unleash. The
+            # secret matches INIT_CLIENT_API_TOKENS on the unleash server
+            # (same file). Token format: <project>:<environment>.<secret>.
             - name: UNLEASH_API_TOKEN
-              value: "default:development:unleash-insecure-api-token"
+              value: "default:development.mirador-unleash-client-token"
             # Front-end tokens — what the browser sends in X-API-Token.
             # Multiple allowed, comma-separated. One is enough for this demo.
             - name: UNLEASH_PROXY_SECRETS
