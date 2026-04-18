@@ -186,9 +186,10 @@ them.
 
 - **Cold start is slow** — a fresh `bin/demo-up.sh` takes ~8 min
   (cluster provisioning 5 min + operator installs 2 min + app sync
-  1 min). The cert-manager cert also needs ~5 min of Let's Encrypt
-  propagation before the HTTPS URL responds with a valid cert. I warm
-  the cluster up 10 min before any live walkthrough.
+  1 min). Access needs one more step: `bin/pf-prod.sh` to open local
+  tunnels to every service (ADR-0025). I warm the cluster up 10 min
+  before any live walkthrough and leave `pf-prod.sh --daemon` running
+  in the background.
 - **`/actuator/health` shows DOWN when an upstream is down** — and the
   demo often runs without Ollama (it's optional; the CircuitBreaker
   handles the absence). This is intended but surprises viewers: the
@@ -253,26 +254,35 @@ flowchart LR
 
 ## Architecture — production (Kubernetes)
 
-When deployed to a Kubernetes cluster the two Docker images are served behind a single
-Nginx Ingress on one hostname — eliminating CORS entirely.
+When deployed to a Kubernetes cluster the backend is reachable **only via
+`kubectl port-forward`** — no public Ingress, no TLS, no DNS (ADR-0025).
+The Angular UI is never deployed in the cluster; it runs on the developer
+laptop against the tunnelled cluster endpoints.
 
 ```
-Internet (HTTPS — TLS via cert-manager)
-    │
-    ▼
-Nginx Ingress (ingress-nginx)
-  /api/** → mirador-service:8080   (Spring Boot 4, 2 replicas, HPA 1–5)
-  /**     → mirador-ui:80          (Angular 21 + Nginx, 2 replicas)
-    │
-    ▼
-namespace: infra
-  PostgreSQL 17  — StatefulSet, 10 Gi PVC, Flyway migrations
-  Redis 7        — Deployment, 128 MB, JWT blacklist + ring buffer
-  Kafka (KRaft)  — Deployment, topics: created / request / reply
+Developer laptop                         GKE Autopilot (no public surface)
+                                         ─────────────────────────────────
+  Angular UI (localhost:4200)            namespace: app
+        │                                  mirador-service:8080   (Spring Boot 4)
+   EnvService selects "prod-tunnel"        HPA 1–5, PDB 1-min-available
+        │
+        ▼                                namespace: infra
+  kubectl port-forward  ══════════════►    PostgreSQL 17 (StatefulSet)
+  (bin/pf-prod.sh)                         Redis 7 / Kafka / Keycloak / Unleash
+        │                                  LGTM all-in-one (Grafana + Loki + Tempo + Mimir)
+        ▼
+  localhost:18080 → mirador
+  localhost:13000 → grafana
+  localhost:14242 → unleash
+  localhost:18081 → argo-cd
+  localhost:15432 → postgres (CloudBeaver)
+  … (see bin/pf-prod.sh for full port map)
 ```
 
-> **Same-origin design**: the browser always calls `https://app.example.com/api/…`.
-> Nginx strips `/api` and proxies to the backend. No CORS headers needed.
+> **Why no public URL**: ADR-0025 trades recruiter click-through for
+> zero-attack-surface. CloudBeaver on localhost talks to the tunnelled
+> Postgres; Grafana iframe talks to the tunnelled LGTM. Same UI code
+> against dev (compose) or prod (tunnels) — only the port numbers differ.
 
 **CI deployment targets** (deploy stage in `.gitlab-ci.yml`):
 
@@ -416,15 +426,18 @@ Pre-push hook (via lefthook) runs unit tests automatically before every `git pus
 
 ### Port reference
 
-> **⚠️ Two runtime modes — two different API ports**
+> **Three runtime modes. The UI always runs on `:4200` (`ng serve`).
+> Only the backend port changes.**
 >
-> | Mode | Frontend | API |
-> |------|----------|-----|
-> | **Docker Compose** (`./run.sh all`) | http://localhost:4200 (`ng serve`) | http://localhost:**8080** |
-> | **kind cluster** (`deploy-local.sh`) | http://localhost:**8090** (nginx-ingress) | http://localhost:**8090**/api |
+> | Mode | Launcher | Backend API |
+> |------|----------|-------------|
+> | **Docker Compose (dev)** | `./run.sh all` | `http://localhost:8080` |
+> | **kind cluster** | `scripts/deploy-local.sh` + `bin/pf-prod.sh` | `http://localhost:18080` |
+> | **GKE (prod)** | `bin/demo-up.sh` + `bin/pf-prod.sh` | `http://localhost:18080` |
 >
-> `ng serve` always targets port **8080** (local Spring Boot process).  
-> The kind cluster bundles everything behind **8090** — use the kind URL if the app is only running in Kubernetes.
+> Cluster modes go through `kubectl port-forward` (ADR-0025) — the UI's
+> EnvService switches between `8080` (dev) and `18080` (cluster tunnel).
+> Full port map in `bin/pf-prod.sh`.
 
 #### Application
 

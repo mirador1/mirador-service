@@ -136,7 +136,7 @@ case "$1" in
     ensure_docker
     echo "Starting everything..."
     # Start infra services only (not the app container — we run locally via Maven)
-    docker compose up -d db kafka redis ollama keycloak pgadmin kafka-ui redisinsight
+    docker compose up -d db kafka redis ollama keycloak cloudbeaver kafka-ui redisinsight
     # Start observability stack
     docker compose -f docker-compose.observability.yml up -d
     # Wait for DB to be healthy before starting the app
@@ -164,7 +164,7 @@ case "$1" in
     docker compose -f docker-compose.observability.yml down
     docker compose down
     # Start infra (not the app container — we run locally via Maven)
-    docker compose up -d db kafka redis ollama keycloak pgadmin kafka-ui redisinsight
+    docker compose up -d db kafka redis ollama keycloak cloudbeaver kafka-ui redisinsight
     # Start observability stack
     docker compose -f docker-compose.observability.yml up -d
     # Wait for DB to be healthy before starting the app
@@ -644,7 +644,7 @@ ISSUER
 
     echo ""
     echo "  ── Admin tools ─────────────────────────────────────────────"
-    for svc in pgadmin kafka-ui redisinsight maven-site sonarqube compodoc; do
+    for svc in cloudbeaver kafka-ui redisinsight maven-site sonarqube compodoc; do
       STATUS=$(docker inspect -f '{{.State.Status}}' "$svc" 2>/dev/null || echo "missing")
       if [ "$STATUS" = "running" ]; then
         LABEL="✅ $STATUS"
