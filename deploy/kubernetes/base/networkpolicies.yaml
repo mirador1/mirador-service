@@ -65,9 +65,15 @@ spec:
     - Egress
   egress:
     - to:
+        # Standard kube-dns in the kube-system namespace (kind/EKS/AKS/on-prem).
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kube-system
+        # NodeLocal DNS Cache on GKE — runs hostNetwork at 169.254.20.10 on
+        # every node, NOT in kube-system. Pods' resolv.conf points here.
+        # Without this, DNS times out on GKE Autopilot under default-deny.
+        - ipBlock:
+            cidr: 169.254.20.10/32
       ports:
         - protocol: UDP
           port: 53
@@ -85,9 +91,15 @@ spec:
     - Egress
   egress:
     - to:
+        # Standard kube-dns in the kube-system namespace (kind/EKS/AKS/on-prem).
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kube-system
+        # NodeLocal DNS Cache on GKE — runs hostNetwork at 169.254.20.10 on
+        # every node, NOT in kube-system. Pods' resolv.conf points here.
+        # Without this, DNS times out on GKE Autopilot under default-deny.
+        - ipBlock:
+            cidr: 169.254.20.10/32
       ports:
         - protocol: UDP
           port: 53
