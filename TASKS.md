@@ -7,36 +7,33 @@
   When all tasks are done, delete this file and commit the deletion.
 -->
 
-## Pending — Close the app-layer loop
+## Pending — Post-ADR-0025 follow-up
 
-- [ ] **CI push `:main` + `:latest` tags on every merge to main** — the
-      registry only has `:<sha>` tags today, which is why
-      `deploy/kubernetes/overlays/gke/image-tags-patch.yaml` hard-codes a
-      SHA. Once CI publishes `:main`, flip the patch to `newTag: main` so
-      Argo CD auto-pulls the latest merged image. ~15 min of `.gitlab-ci.yml`
-      work in the `docker-build` job.
+- [ ] **UI repo — EnvService selector** (blocks the real use of
+      `bin/pf-prod.sh`). In `mirador-ui`: add a dropdown in the topbar
+      with two entries — `dev` (compose defaults: backend 8080, grafana
+      3000, keycloak 9090, …) and `prod-tunnel` (port-forward map:
+      backend 18080, grafana 13000, unleash 14242, argocd 18081, etc.).
+      Persist selection in `localStorage`. Replace every hardcoded
+      `http://localhost:<port>` URL with a computed one reading from
+      the selected env. Port map is in
+      `docs/adr/0025-ui-local-only-no-public-prod-ingress.md`.
 
-- [ ] **Dashboards as code via grizzly/jsonnet** — LGTM is deployed,
-      Grafana is reachable, but no dashboards are pre-provisioned. Add
-      `deploy/grafana/dashboards/` with 3-4 JSON (golden signals, JVM,
-      DB, Kafka) and a CronJob or init container that applies them on
-      LGTM boot. ~2h.
+- [ ] **Drop the mirador-ui docker image build + push** in the UI repo's
+      `.gitlab-ci.yml`. The image is no longer deployed anywhere
+      (ADR-0025). Keeping the job is ~3 min of CI waste per MR.
 
-- [ ] **Unleash feature flags** — install the Unleash Deployment +
-      Postgres init container seeded from `deploy/kubernetes/base/unleash/seed.sql`
-      (flags: `recent-customers-buffer`, `bio-feature-enabled`, etc.).
-      ADR-0022 trade-off already documented.
+- [ ] **Make `deploy:gke` CI job manual** (or delete it). It runs on
+      every main push and fails when the ephemeral cluster is down
+      (99 % of the time). Argo CD reconciles from main now anyway so
+      the job is redundant; matches the pattern used for `deploy:eks`,
+      `deploy:aks`, `deploy:cloud-run` which are all `manual`.
 
-- [ ] **Chaos Mesh experiments in git** — CRDs are in-cluster (helm
-      install in demo-up.sh) but no NetworkChaos / PodChaos resources
-      are applied. Add `deploy/kubernetes/base/chaos/experiments.yaml`
-      with 2-3 experiments the frontend Chaos page can trigger.
-
-- [ ] **Mirador Argo Rollout canary** — convert the `mirador` Deployment
-      into a `Rollout` CR with a 2-step canary (10 % → 50 % → 100 %) +
-      AnalysisTemplate gating on the Prometheus `http_server_requests`
-      error rate. Demonstrates ADR-0015's progressive delivery bullet
-      for real.
+- [ ] **CI push `:main` + `:latest` tags on every merge to main** —
+      registry only has `:<sha>` tags; `image-tags-patch.yaml` still
+      hard-codes a SHA. Once CI publishes `:main`, flip the patch to
+      `newTag: main` so Argo CD auto-pulls. ~15 min in `docker-build`
+      job of `.gitlab-ci.yml`.
 
 ## Pending — Version upgrades (deferred majors, separate MRs each)
 

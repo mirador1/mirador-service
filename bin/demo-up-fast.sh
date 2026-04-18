@@ -2,8 +2,7 @@
 # =============================================================================
 # demo-up-fast.sh — minimal cluster bring-up for "verify that a change works".
 #
-# Skips the user-facing operators (cert-manager, Kyverno, Argo Rollouts,
-# Chaos Mesh) and the LGTM/Grafana ingress. Useful for:
+# Skips Kyverno, Argo Rollouts and Chaos Mesh operators. Useful for:
 #   - CI pre-merge smoke tests that just need mirador + Postgres + ESO
 #   - checking a pom.xml bump didn't break the Spring Boot boot path
 #   - iterating on a K8s manifest under Argo CD
@@ -15,15 +14,13 @@
 #   - Argo CD Application → pulls the app from main         ~2 min
 #
 # What it SKIPS compared to demo-up.sh:
-#   - cert-manager + Let's Encrypt cert       saves ~5 min (HTTPS ingress won't work)
 #   - Kyverno + Argo Rollouts + Chaos Mesh    saves ~3 min (operators not exercised)
-#   - Grafana ingress (port-forward instead)  saves ~30 s
 #
-# Total cold start: ~10 min vs ~15-18 min for the full demo-up.sh.
+# Total cold start: ~10 min vs ~13-15 min for the full demo-up.sh.
 #
-# Access pattern:
-#   kubectl port-forward -n app svc/mirador 8080:8080
-#   curl http://localhost:8080/actuator/health
+# Access pattern (ADR-0025 — no public surface):
+#   bin/pf-prod.sh                # starts all tunnels
+#   curl http://localhost:18080/actuator/health
 # =============================================================================
 set -euo pipefail
 
@@ -105,9 +102,9 @@ kubectl set resources statefulset argocd-application-controller -n argocd \
   --requests=cpu=100m,memory=256Mi --limits=cpu=500m,memory=512Mi
 
 # 4. Argo CD Application — reconciles the app from main.
-#    Note: the lgtm-ingress.yaml references cert-manager.io/cluster-issuer,
-#    which will fail in fast mode. Argo CD will show Degraded for that
-#    single Ingress resource; the rest of the app still reconciles.
+#    Per ADR-0025 the tree no longer ships any Ingress or cert-manager
+#    resources, so the reconcile is uneventful — no Degraded hints
+#    about missing ClusterIssuer like earlier iterations.
 kubectl apply -f "$REPO_ROOT/deploy/argocd/application.yaml"
 
 echo "⏳  waiting for mirador-app pods..."
@@ -125,11 +122,11 @@ cat <<EOF
 
 ⚡ demo-up-fast complete
 ---
-No ingress / no TLS — access via port-forward:
-  kubectl port-forward -n app svc/mirador 8080:8080  # → http://localhost:8080
-  kubectl port-forward -n argocd svc/argocd-server 8443:443  # → https://localhost:8443 (self-signed)
-  admin / $ARGOCD_PWD
+Access (ADR-0025 — cluster has no public surface):
+  bin/pf-prod.sh --daemon           # starts all tunnels in background
+  curl http://localhost:18080/actuator/health
+  open http://localhost:18081       # Argo CD (admin / $ARGOCD_PWD)
 
-Skipped (vs demo-up.sh): cert-manager, Kyverno, Argo Rollouts, Chaos Mesh, lgtm-ingress.
-Shut down with: bin/demo-down.sh
+Skipped (vs demo-up.sh): Kyverno, Argo Rollouts, Chaos Mesh.
+Shut down with: bin/pf-stop.sh && bin/demo-down.sh
 EOF
