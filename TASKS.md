@@ -54,9 +54,8 @@
       deploys. Requires Istio or Linkerd; deferred (ADR-0015 notes it
       as a future upgrade path).
 
-- [ ] **Retire `deploy:gke` CI job** — now that Argo CD reconciles the
-      GKE overlay from main, the job is redundant. Keeping it until
-      the ConfigMap placeholder migration is confirmed stable.
+<!-- deploy:gke retired. Argo CD + :main image tag close the loop. -->
+
 
 ## Recently Completed
 

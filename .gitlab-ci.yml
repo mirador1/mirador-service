@@ -1572,35 +1572,31 @@ terraform-apply:
     # Autopilot (image pull + JVM warmup + Flyway); matches startupProbe budget.
     - kubectl rollout status deployment/mirador -n app --timeout=360s
 
-# ── GKE Autopilot — DEFAULT production (runs automatically on main) ───────────
+# ── smoke-test — k6 smoke test ────────────────────────────────────────────────
+# Manual-trigger job. Pre-ADR-0025 this ran automatically against
+# mirador1.duckdns.org after deploy:gke. Now that the cluster has no public
+# surface, the smoke test only makes sense when a developer has:
+#   1. Booted the cluster   (bin/demo-up.sh, 13 min)
+#   2. Started the tunnels  (bin/pf-prod.sh --daemon)
+# … and targets localhost:18080 instead of a public host.
 #
-# Uses Workload Identity Federation (WIF) — no service account key file needed.
-# GitLab CI generates a short-lived OIDC token; GCP STS exchanges it for a
-# Google access token bound to the gitlab-ci-deployer service account.
-# Required group variables: GCP_WIF_PROVIDER, GCP_SERVICE_ACCOUNT,
-#                            GCP_PROJECT, GKE_CLUSTER, GKE_REGION, K8S_HOST
-# ── smoke-test — k6 post-deploy smoke test ────────────────────────────────────
-# Runs against the public GKE endpoint AFTER deploy:gke. 30 s of light
-# read-only traffic at ~3 RPS, pass/fail on p95 < 500 ms and < 1 % errors.
-# See scripts/load-test/README.md for thresholds + how to run locally.
+# 30 s of light read-only traffic at ~3 RPS, pass/fail on p95 < 500 ms and
+# < 1 % errors. See scripts/load-test/README.md for thresholds.
 smoke-test:
   stage: deploy
   image: grafana/k6:1.4.0
   tags:
     - macbook-local
-  needs:
-    - job: deploy:gke
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-  environment:
-    name: production/gke
-    action: verify
+      when: manual
+      allow_failure: true
   variables:
-    # K8S_HOST is a protected CI var pointing at e.g. mirador1.duckdns.org.
-    # The smoke.js script reads __ENV.K8S_HOST.
-    K8S_HOST: "$K8S_HOST"
+    # Defaults to port-forwarded backend. Override in CI variables if a
+    # public endpoint is re-introduced (not expected under ADR-0025).
+    K8S_HOST: "${K8S_HOST:-localhost:18080}"
   script:
     - k6 run scripts/load-test/smoke.js
   artifacts:
@@ -1608,94 +1604,15 @@ smoke-test:
     paths:
       - smoke-summary.json
     expire_in: 30 days
-  allow_failure: true   # initially informational — flip to false once stable
 
-deploy:gke:
-  stage: deploy
-  interruptible: false # Active K8s apply + Cloud SQL Proxy patch — avoid mid-deploy interruption.
-  tags:
-    - macbook-local
-  # Base alpine image + install gcloud via the official tarball. The official
-  # google/cloud-sdk image is amd64-only; running it under QEMU on the arm64
-  # macbook-local runner segfaults with Go runtime panics (`fatal error:
-  # lfstack.push`). Installing native arm64 gcloud avoids emulation entirely.
-  image: alpine:3.20
-  variables:
-    # Make gcloud + kubectl available in every script: step (GitLab forks
-    # a fresh shell per line, so PATH exports in before_script don't propagate).
-    PATH: "/google-cloud-sdk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-  id_tokens:
-    # GitLab generates a JWT token for this job; audience must match the WIF provider.
-    GCP_OIDC_TOKEN:
-      aud: "https://iam.googleapis.com/$GCP_WIF_PROVIDER"
-  needs:
-    - job: docker-build
-      artifacts: false
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-      when: never
-    # ADR-0022 (ephemeral cluster) + ADR-0025 (Argo CD reconciles from main):
-    # a scheduled deploy on every main push fails 99 % of the time because
-    # the cluster is destroyed by bin/demo-down.sh after each validation.
-    # Kept as a manual trigger for the one-off "apply to a running cluster
-    # without waiting for Argo CD" case. Same pattern as deploy:eks / :aks /
-    # :cloud-run / :fly / :k3s.
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      when: manual
-      allow_failure: true
-  environment:
-    name: production/gke
-    url: "https://$K8S_HOST"
-  before_script:
-    # Alpine base + install each tool natively for the host architecture.
-    #   bash/curl/python3/gettext: runtime deps for gcloud + envsubst + OIDC script
-    #   gcompat:                   glibc shim for kubectl static binary on musl Alpine
-    #   Google Cloud CLI:          official tarball (arm/x86_64 detected)
-    #   kubectl:                   install by direct download, NOT via
-    #                              `gcloud components install` — components don't
-    #                              expose the binary on PATH in the tarball install
-    #                              and caused `kubectl: not found` in a previous run.
-    #   gke-gcloud-auth-plugin:    via gcloud components — used by kubectl to auth
-    - apk add --no-cache bash curl python3 gettext gcompat
-    - |
-      ARCH=$(uname -m)
-      case "$ARCH" in
-        aarch64) GCLOUD_ARCH="arm";    KUBECTL_ARCH="arm64" ;;
-        x86_64)  GCLOUD_ARCH="x86_64"; KUBECTL_ARCH="amd64" ;;
-        *) echo "Unsupported arch: $ARCH"; exit 1 ;;
-      esac
-      # Install gcloud (includes gke-gcloud-auth-plugin component).
-      curl -sSL "https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-${GCLOUD_ARCH}.tar.gz" | tar -xz -C /
-      /google-cloud-sdk/install.sh --quiet --path-update false --usage-reporting false
-      gcloud components install gke-gcloud-auth-plugin --quiet
-      # Install kubectl directly — stable release, matches current Kubernetes.
-      KUBECTL_VERSION=$(curl -sL https://dl.k8s.io/release/stable.txt)
-      curl -sSL -o /usr/local/bin/kubectl \
-        "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${KUBECTL_ARCH}/kubectl"
-      chmod +x /usr/local/bin/kubectl
-      kubectl version --client --output=yaml | head -5
-  script:
-    # Write OIDC token to file; gcloud reads it via credentials config (WIF, no key file)
-    - echo "$GCP_OIDC_TOKEN" > /tmp/gcp_oidc_token.txt
-    - |
-      cat > /tmp/gcp_credentials.json <<EOF
-      {
-        "type": "external_account",
-        "audience": "//iam.googleapis.com/${GCP_WIF_PROVIDER}",
-        "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
-        "token_url": "https://sts.googleapis.com/v1/token",
-        "credential_source": {"file": "/tmp/gcp_oidc_token.txt", "format": {"type": "text"}},
-        "service_account_impersonation_url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${GCP_SERVICE_ACCOUNT}:generateAccessToken"
-      }
-      EOF
-    - gcloud auth login --cred-file=/tmp/gcp_credentials.json --quiet
-    - gcloud container clusters get-credentials "$GKE_CLUSTER"
-        --region "$GKE_REGION" --project "$GCP_PROJECT"
-    # The GKE overlay already includes the Cloud SQL Auth Proxy sidecar patch
-    # and the TLS/cert-manager ingress patch — no ad-hoc `kubectl patch` needed.
-    # CLOUD_SQL_INSTANCE must be set as a CI variable for the sidecar to resolve.
-    - export K8S_OVERLAY="gke"
-    - !reference [.kubectl-apply, script]
+# deploy:gke was retired with ADR-0025 — Argo CD (ADR-0015) reconciles the
+# GKE overlay from main on every commit, and overlays/gke/image-tags-patch.yaml
+# pins to :main (pushed by docker-build on every main merge) so a new image
+# propagates without a manifest edit. The ~90-line CI job is redundant plumbing.
+#
+# If you ever need a one-off apply outside Argo CD (e.g. debug a bad sync),
+# use bin/connect-prod.sh + bin/demo-up.sh or kubectl apply -k from your
+# laptop — same code path, no WIF credentials in CI.
 
 # ── AWS EKS — manual ──────────────────────────────────────────────────────────
 #
