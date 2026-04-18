@@ -30,9 +30,12 @@ spec:
     labelSelectors:
       "app.kubernetes.io/name": mirador
       "app.kubernetes.io/component": backend
-  # Re-run every 2 minutes while this CR exists.
-  scheduler:
-    cron: "@every 2m"
+  # Chaos Mesh v2.7+ dropped the in-CR `scheduler.cron` field and moved
+  # scheduling to a separate `Schedule` CR. A one-shot experiment is
+  # enough for the demo button (fire from the UI Chaos page; the backend
+  # re-creates this CR each click). For repeating schedules, wrap this
+  # manifest inside a Schedule CR — see
+  # https://chaos-mesh.org/docs/define-scheduling-rules/.
 
 ---
 # 2. Network delay — inject 200ms latency on egress from mirador pods

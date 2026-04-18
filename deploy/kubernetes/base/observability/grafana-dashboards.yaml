@@ -35,9 +35,10 @@ data:
         updateIntervalSeconds: 30
         allowUiUpdates: false
         options:
-          # Same mount path as the provider YAML — dashboards and their
-          # registration file live side-by-side in the ConfigMap.
-          path: /etc/grafana/provisioning/dashboards
+          # Where the dashboard JSONs live — see the volumeMount subPath
+          # entries in lgtm.yaml. Separate from the provider YAML's dir
+          # so Grafana does not try to parse the YAML as a dashboard.
+          path: /var/lib/grafana/dashboards/mirador
 
   # ── Dashboard #1 — Golden signals (RED method) ───────────────────────
   # Request rate + error rate + p95 latency + JVM heap — the minimum set
