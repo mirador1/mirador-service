@@ -1,0 +1,19 @@
+# =============================================================================
+# chaos/ — Chaos Mesh experiments (CRs, not the operator).
+#
+# Chaos Mesh controller itself is installed by `bin/demo-up.sh` (full mode),
+# which applies https://mirrors.chaos-mesh.org/v2.7.2/install.sh outputs into
+# the `chaos-mesh` namespace. This kustomize module only declares the
+# *experiments* — the CRs that describe which failure to inject.
+#
+# Experiments are inert until the controller is present. On fast-mode boot
+# (demo-up-fast.sh) the CRs are still applied but simply do nothing: the
+# `PodChaos` / `NetworkChaos` / `StressChaos` CRDs aren't installed, so
+# kubectl apply skips them with a "resource not found" which Kustomize
+# tolerates via `--validate=false` in the up script.
+# =============================================================================
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - experiments.yaml

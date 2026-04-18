@@ -1,0 +1,61 @@
+# =============================================================================
+# Unleash seed — default admin user + the ops-mode feature flag.
+#
+# Unleash reads this SQL file on first boot (via IMPORT_FILE env var) and
+# applies it after its internal migrations. The file is idempotent — on
+# second boot Unleash sees the rows exist and skips.
+#
+# What this seeds:
+#   1. Admin user (admin / unleash4all) — for the demo only, change in prod.
+#   2. Feature flag `mirador.ui.ops-mode` default OFF — toggles the UI's
+#      operator panels (Chaos, Database, Pipelines, Observability admin).
+#      When OFF the UI shows only the customer-facing views.
+#   3. Feature flag `mirador.bio.enabled` default ON — kill-switch for the
+#      Ollama-backed /bio endpoint in case the LLM pod has issues.
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: unleash-seed
+  namespace: infra
+  labels:
+    app.kubernetes.io/name: unleash
+    app.kubernetes.io/component: seed
+data:
+  init.sql: |
+    -- Idempotent: ON CONFLICT DO NOTHING means re-running the seed is safe.
+
+    -- Default admin (bcrypt hash of "unleash4all" — for demo only).
+    INSERT INTO users (username, email, name, password_hash, created_at)
+    VALUES (
+      'admin',
+      'admin@mirador.local',
+      'Mirador Admin',
+      '$2a$10$Eyky9IIMkRzR2j30IAFPre5rfgyhBl7bD3.VjdMdJf6K0PtY7mSXa',
+      now()
+    )
+    ON CONFLICT (username) DO NOTHING;
+
+    -- Feature flag: ops-mode — hides operator panels in the customer UI.
+    INSERT INTO features (name, description, type, enabled, project, created_at)
+    VALUES (
+      'mirador.ui.ops-mode',
+      'Show operator panels in the UI (Chaos, Database, Pipelines). Off = customer view only.',
+      'release',
+      false,
+      'default',
+      now()
+    )
+    ON CONFLICT (name) DO NOTHING;
+
+    -- Feature flag: bio-endpoint — kill-switch for the LLM-backed /bio call.
+    INSERT INTO features (name, description, type, enabled, project, created_at)
+    VALUES (
+      'mirador.bio.enabled',
+      'Enable the Ollama-backed customer bio generation. Disable if the LLM pod is flaky.',
+      'kill-switch',
+      true,
+      'default',
+      now()
+    )
+    ON CONFLICT (name) DO NOTHING;

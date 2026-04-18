@@ -1,0 +1,202 @@
+# =============================================================================
+# Unleash — open-source feature-flag service for the demo.
+#
+# Why feature flags at all in a portfolio? Three reasons:
+#   1. Decouple deploy from release — push code to prod dark, flip the flag
+#      when ready. Pairs naturally with the Argo Rollouts canary.
+#   2. Kill-switch for buggy code — flip the flag off in seconds instead of
+#      redeploying (which takes 3-5 min even with canary).
+#   3. "Operator vs customer" UI split (see below) — one Unleash flag
+#      `mirador.ui.ops-mode` gates all the operator pages (Chaos, Database,
+#      Pipelines). Off by default → customer view. Flip on → full dashboard.
+#
+# Architecture:
+#   mirador-ui → Unleash Proxy SDK (browser) → Unleash backend → Postgres
+#
+# The browser *never* talks to the Unleash admin API directly — it uses the
+# front-end SDK which authenticates with a client-token (read-only). Admins
+# use the web UI at unleash.mirador1.duckdns.org/.
+#
+# Seed data (default admin user + the ops-mode flag) lives in
+# `seed.sql` (separate ConfigMap), executed on first Postgres boot.
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: unleash
+  namespace: infra
+  labels:
+    app.kubernetes.io/name: unleash
+spec:
+  selector:
+    app.kubernetes.io/name: unleash
+    app.kubernetes.io/component: api
+  ports:
+    - name: http
+      port: 4242
+      targetPort: 4242
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: unleash-db
+  namespace: infra
+  labels:
+    app.kubernetes.io/name: unleash
+    app.kubernetes.io/component: db
+spec:
+  selector:
+    app.kubernetes.io/name: unleash
+    app.kubernetes.io/component: db
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+# ── Postgres backing Unleash (separate from the app Postgres) ───────────
+# Using a dedicated DB keeps Unleash's schema isolated from the mirador
+# app — easier to nuke-and-restore independently, avoids version-lock
+# between Unleash's Flyway migrations and our own.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: unleash-db
+  namespace: infra
+  labels:
+    app.kubernetes.io/name: unleash
+    app.kubernetes.io/component: db
+spec:
+  serviceName: unleash-db
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: unleash
+      app.kubernetes.io/component: db
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: unleash
+        app.kubernetes.io/component: db
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16.6-alpine
+          env:
+            - name: POSTGRES_DB
+              value: unleash
+            - name: POSTGRES_USER
+              value: unleash
+            - name: POSTGRES_PASSWORD
+              # Not a secret worth rotating — it's a local-only DB for a
+              # demo tool. If you care, move to ESO / GSM like mirador-db.
+              value: unleash
+            - name: PGDATA
+              # Same gotcha as the app Postgres (ADR-0022 note): GKE PVCs
+              # include lost+found; Postgres refuses to init into a non-empty
+              # root. Using a subdir sidesteps it.
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - containerPort: 5432
+              name: postgres
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "unleash"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
+---
+# ── Unleash API + UI ────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: unleash
+  namespace: infra
+  labels:
+    app.kubernetes.io/name: unleash
+    app.kubernetes.io/component: api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: unleash
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: unleash
+        app.kubernetes.io/component: api
+    spec:
+      # Wait for Postgres ready — Unleash's migrations crash on boot
+      # otherwise. initContainer pattern instead of a loop-sleep script.
+      initContainers:
+        - name: wait-for-db
+          image: postgres:16.6-alpine
+          command:
+            - sh
+            - -c
+            - |
+              until pg_isready -h unleash-db -U unleash; do
+                echo "waiting for unleash-db…"; sleep 2
+              done
+      containers:
+        - name: unleash
+          image: unleashorg/unleash-server:6.11.0
+          ports:
+            - name: http
+              containerPort: 4242
+          env:
+            - name: DATABASE_URL
+              value: postgres://unleash:unleash@unleash-db:5432/unleash
+            - name: DATABASE_SSL
+              value: "false"
+            # Seed the default admin user on first boot. Unleash reads the
+            # SQL file mounted at /seed/init.sql if IMPORT_FILE is set.
+            - name: IMPORT_FILE
+              value: /seed/init.sql
+            # Disable the public sign-up page — admin-created users only.
+            - name: AUTH_TYPE
+              value: demo
+          volumeMounts:
+            - name: seed
+              mountPath: /seed
+              readOnly: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 4242
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 4242
+            initialDelaySeconds: 60
+            periodSeconds: 30
+      volumes:
+        - name: seed
+          configMap:
+            name: unleash-seed

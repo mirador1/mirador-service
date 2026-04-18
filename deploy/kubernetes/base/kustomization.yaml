@@ -34,6 +34,14 @@ resources:
   # Provides the OTLP backend for the app's OpenTelemetry export, plus
   # live traces / logs / metrics visualisation at http://<service>:3000.
   - observability
+  # Chaos Mesh experiments (CRs only — the operator is installed by
+  # demo-up.sh full mode). Experiments replay on cron while their CR
+  # exists; delete the CR to stop.
+  - chaos
+  # Unleash feature-flag service — Postgres + API + seed SQL. Gates the
+  # ops-mode UI split and holds the /bio kill-switch. ADR referenced in
+  # the unleash/unleash.yaml header.
+  - unleash
 
 # NOTE: Postgres is NOT in the base. It lives in `base/postgres/` as a
 # standalone mini-base and is pulled in only by overlays that need an

@@ -1,0 +1,188 @@
+# =============================================================================
+# Grafana dashboards as code — provisioned into the LGTM pod via ConfigMap.
+#
+# Grafana's file-based provisioning reads two things:
+#   1. A provider YAML at /etc/grafana/provisioning/dashboards/*.yaml that
+#      declares where dashboard JSON lives and how often to scan for changes.
+#   2. The dashboard JSON files themselves at the path declared in (1).
+#
+# We deliver both via a single ConfigMap mounted at
+# /etc/grafana/provisioning/dashboards/ inside the otel-lgtm image. The image
+# only overwrites its own home.json — custom dashboards added here sit
+# alongside, visible in the sidebar as "Mirador / …".
+#
+# To edit a dashboard: tweak the JSON here, redeploy (Argo CD sync). Grafana
+# scans every 30 s and picks up the change without a restart.
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: infra
+  labels:
+    app.kubernetes.io/name: lgtm
+    app.kubernetes.io/component: grafana-dashboards
+data:
+  # ── Provider config — tells Grafana where to look ─────────────────────
+  mirador.yaml: |
+    apiVersion: 1
+    providers:
+      - name: mirador
+        orgId: 1
+        folder: Mirador
+        type: file
+        disableDeletion: false
+        updateIntervalSeconds: 30
+        allowUiUpdates: false
+        options:
+          # Same mount path as the provider YAML — dashboards and their
+          # registration file live side-by-side in the ConfigMap.
+          path: /etc/grafana/provisioning/dashboards
+
+  # ── Dashboard #1 — Golden signals (RED method) ───────────────────────
+  # Request rate + error rate + p95 latency + JVM heap — the minimum set
+  # that tells you "is the service healthy right now?" at a glance.
+  golden-signals.json: |
+    {
+      "title": "Mirador — Golden Signals",
+      "uid": "mirador-golden",
+      "tags": ["mirador", "red-method"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "10s",
+      "time": { "from": "now-15m", "to": "now" },
+      "panels": [
+        {
+          "type": "timeseries",
+          "title": "Request rate (req/s)",
+          "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (uri) (rate(http_server_requests_seconds_count{namespace=\"app\",service=~\"mirador.*\"}[1m]))",
+              "legendFormat": "{{uri}}"
+            }
+          ],
+          "fieldConfig": { "defaults": { "unit": "reqps" } }
+        },
+        {
+          "type": "timeseries",
+          "title": "Error rate (% of 5xx)",
+          "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate(http_server_requests_seconds_count{namespace=\"app\",service=~\"mirador.*\",status=~\"5..\"}[1m])) / sum(rate(http_server_requests_seconds_count{namespace=\"app\",service=~\"mirador.*\"}[1m]))",
+              "legendFormat": "5xx rate"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "orange", "value": 0.02 },
+                  { "color": "red", "value": 0.05 }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Latency p95 (ms)",
+          "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "histogram_quantile(0.95, sum by (le, uri) (rate(http_server_requests_seconds_bucket{namespace=\"app\",service=~\"mirador.*\"}[1m]))) * 1000",
+              "legendFormat": "{{uri}}"
+            }
+          ],
+          "fieldConfig": { "defaults": { "unit": "ms" } }
+        },
+        {
+          "type": "timeseries",
+          "title": "JVM heap usage (%)",
+          "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "jvm_memory_used_bytes{namespace=\"app\",service=~\"mirador.*\",area=\"heap\"} / jvm_memory_max_bytes{namespace=\"app\",service=~\"mirador.*\",area=\"heap\"}",
+              "legendFormat": "{{pod}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "max": 1,
+              "min": 0
+            }
+          }
+        }
+      ]
+    }
+
+  # ── Dashboard #2 — Canary rollout progress ───────────────────────────
+  # Shows stable vs canary request rate + error rate side-by-side while a
+  # Rollout step is paused. Matches the AnalysisTemplate's gating query so
+  # you can see what Argo Rollouts sees.
+  canary.json: |
+    {
+      "title": "Mirador — Canary rollout",
+      "uid": "mirador-canary",
+      "tags": ["mirador", "argo-rollouts"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "10s",
+      "time": { "from": "now-30m", "to": "now" },
+      "panels": [
+        {
+          "type": "timeseries",
+          "title": "Request rate — stable vs canary (req/s)",
+          "gridPos": { "x": 0, "y": 0, "w": 24, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (rollout_role) (rate(http_server_requests_seconds_count{namespace=\"app\",service=~\"mirador.*\"}[1m]))",
+              "legendFormat": "{{rollout_role}}"
+            }
+          ],
+          "fieldConfig": { "defaults": { "unit": "reqps" } }
+        },
+        {
+          "type": "timeseries",
+          "title": "Error rate — stable vs canary",
+          "gridPos": { "x": 0, "y": 8, "w": 24, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (rollout_role) (rate(http_server_requests_seconds_count{namespace=\"app\",service=~\"mirador.*\",status=~\"5..\"}[1m])) / sum by (rollout_role) (rate(http_server_requests_seconds_count{namespace=\"app\",service=~\"mirador.*\"}[1m]))",
+              "legendFormat": "{{rollout_role}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "red", "value": 0.05 }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    }

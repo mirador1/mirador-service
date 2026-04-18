@@ -4,3 +4,7 @@ kind: Kustomization
 resources:
   - lgtm.yaml
   - pyroscope.yaml
+  # Grafana dashboards provisioned as code — RED-method golden signals +
+  # canary rollout view. Mounted into the LGTM pod at the provisioning path
+  # via the volumeMount patch below (see lgtm.yaml).
+  - grafana-dashboards.yaml

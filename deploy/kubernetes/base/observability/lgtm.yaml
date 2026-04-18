@@ -97,6 +97,15 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /data
+            # Grafana dashboards provisioned as code. The ConfigMap
+            # (base/observability/grafana-dashboards.yaml) contains both
+            # the provider YAML and the dashboard JSONs; Grafana scans this
+            # path every 30 s and hot-reloads changes without a restart.
+            - name: grafana-dashboards
+              mountPath: /etc/grafana/provisioning/dashboards
       volumes:
         - name: data
           emptyDir: {}
+        - name: grafana-dashboards
+          configMap:
+            name: grafana-dashboards

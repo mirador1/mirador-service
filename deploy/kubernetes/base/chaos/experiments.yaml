@@ -1,0 +1,94 @@
+# =============================================================================
+# Chaos Mesh experiments — 3 canonical failure modes for the demo.
+#
+# All three are declared with `action` (not `mode: once`) so they are
+# reproducible: delete the CR to stop, re-apply to replay. They target the
+# `mirador` backend pods in the `app` namespace.
+#
+# Trigger from the frontend Chaos page (Angular) which POSTs to the
+# Chaos Mesh dashboard API (port-forward to chaos-mesh-dashboard:2333).
+# =============================================================================
+
+---
+# 1. Pod kill — random mirador pod gets SIGKILL every 2 minutes.
+# Shows Spring Boot's restart time (readiness probe → traffic cut → new pod up)
+# on the Grafana golden-signals dashboard.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: mirador-pod-kill
+  namespace: app
+  labels:
+    app.mirador.demo/chaos: pod-kill
+spec:
+  action: pod-kill
+  mode: one  # exactly one random pod at a time (not all)
+  duration: "30s"
+  selector:
+    namespaces:
+      - app
+    labelSelectors:
+      "app.kubernetes.io/name": mirador
+      "app.kubernetes.io/component": backend
+  # Re-run every 2 minutes while this CR exists.
+  scheduler:
+    cron: "@every 2m"
+
+---
+# 2. Network delay — inject 200ms latency on egress from mirador pods
+# toward postgres for 1 minute. Shows up as a p99 spike on the DB
+# latency panel + downstream effect on HTTP response times.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: mirador-to-postgres-delay
+  namespace: app
+  labels:
+    app.mirador.demo/chaos: network-delay
+spec:
+  action: delay
+  mode: all  # apply to all mirador pods
+  duration: "1m"
+  selector:
+    namespaces:
+      - app
+    labelSelectors:
+      "app.kubernetes.io/name": mirador
+      "app.kubernetes.io/component": backend
+  delay:
+    latency: "200ms"
+    correlation: "50"   # 50 % of packets affected
+    jitter: "50ms"
+  direction: to
+  target:
+    mode: all
+    selector:
+      namespaces:
+        - infra
+      labelSelectors:
+        "app.kubernetes.io/name": postgresql
+
+---
+# 3. CPU stress — saturate 70 % of one CPU on a random mirador pod.
+# Circuit-breaker thresholds in Resilience4j should trip on the /bio
+# endpoint (which does the heaviest work).
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: mirador-cpu-pressure
+  namespace: app
+  labels:
+    app.mirador.demo/chaos: cpu-stress
+spec:
+  mode: one
+  duration: "2m"
+  selector:
+    namespaces:
+      - app
+    labelSelectors:
+      "app.kubernetes.io/name": mirador
+      "app.kubernetes.io/component": backend
+  stressors:
+    cpu:
+      workers: 1
+      load: 70  # percent of one vCPU

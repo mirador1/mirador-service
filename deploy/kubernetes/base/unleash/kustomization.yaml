@@ -1,0 +1,13 @@
+# =============================================================================
+# unleash/ — feature-flag service (API + Postgres + seed data).
+#
+# Wired into `base/kustomization.yaml` so both fast and full demo modes
+# get it. The seed SQL bootstraps the default admin + two flags
+# (mirador.ui.ops-mode, mirador.bio.enabled) on first boot.
+# =============================================================================
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - unleash.yaml
+  - seed.yaml
