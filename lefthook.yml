@@ -86,13 +86,17 @@ pre-commit:
             other_files="$other_files $f"
           fi
         done
-        # Dedupe kustomize dirs, render + dry-run each.
+        # --validate=false keeps the check strictly client-side (YAML + kind
+        # parsing) and skips the OpenAPI schema fetch from the current
+        # context. Without this, kubectl tries to reach the server configured
+        # in ~/.kube/config and hangs when the cluster is torn down (ADR-0022
+        # ephemeral pattern means our KUBECONFIG often points at a dead IP).
+        # Structural typo safety stays intact via the kubectl-internal parser.
         for d in $(printf '%s\n' $kustomize_dirs | sort -u); do
-          kubectl kustomize "$d" | kubectl apply --dry-run=client -f - >/dev/null
+          kubectl kustomize "$d" | kubectl apply --dry-run=client --validate=false -f - >/dev/null
         done
-        # Plain resource files still go through the classic dry-run.
         for f in $other_files; do
-          [ -f "$f" ] && kubectl apply --dry-run=client -f "$f" >/dev/null
+          [ -f "$f" ] && kubectl apply --dry-run=client --validate=false -f "$f" >/dev/null
         done
       fail_text: "K8s manifest(s) invalid. Run 'kubectl kustomize <dir>' or 'kubectl apply --dry-run=client -f <file>' for details."
 
