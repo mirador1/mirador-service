@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mirador — a watchtower demo for modern platform practices</title>
+    <meta name="description" content="Mirador is a Spring Boot 4 / Java 25 demo that showcases 30+ industrial platform patterns (GitOps, observability, security, resilience) on a GKE Autopilot cluster spun up on demand." />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ctext y='56' font-size='56'%3E🗼%3C/text%3E%3C/svg%3E" />
+    <style>
+      :root { --bg:#0b1320; --fg:#e6edf3; --muted:#8b949e; --accent:#58a6ff; --card:#111827; }
+      * { box-sizing: border-box; }
+      body { margin:0; font-family: system-ui, -apple-system, sans-serif; background:var(--bg); color:var(--fg); line-height:1.55; }
+      header { padding: 3rem 1rem 1rem; text-align:center; }
+      h1 { font-size: 3rem; margin:0 0 .5rem; letter-spacing:-.02em; }
+      h1 .emoji { margin-right:.5rem; }
+      .tagline { color: var(--muted); font-size:1.15rem; max-width:42rem; margin:0 auto; }
+      main { max-width:64rem; margin: 0 auto; padding: 1rem; }
+      .status { background: var(--card); border-left:4px solid var(--accent); padding:1rem 1.25rem; border-radius:6px; margin:2rem 0; }
+      .status h2 { margin:0 0 .5rem; font-size:1.2rem; }
+      .status code { background: rgba(255,255,255,.1); padding: .1rem .4rem; border-radius:3px; font-size:.9em; }
+      section { margin:2rem 0; }
+      h2 { font-size:1.5rem; margin-bottom:.75rem; }
+      .grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); gap:1rem; margin-top:1rem; }
+      .card { background:var(--card); padding:1rem; border-radius:6px; border:1px solid rgba(255,255,255,.05); }
+      .card h3 { margin:0 0 .5rem; font-size:1rem; color: var(--accent); }
+      .card p { margin:0; color:var(--muted); font-size:.95rem; }
+      ul.bullets { padding-left:1.2rem; }
+      ul.bullets li { margin:.35rem 0; }
+      footer { padding:2rem 1rem; text-align:center; color:var(--muted); font-size:.9rem; border-top:1px solid rgba(255,255,255,.08); margin-top:3rem; }
+      a { color:var(--accent); }
+      a:hover { text-decoration: underline; }
+      .cta { display:inline-block; background:var(--accent); color:#0b1320; padding:.6rem 1.25rem; border-radius:6px; text-decoration:none; font-weight:600; margin:.5rem .5rem .5rem 0; }
+      .cta.secondary { background:transparent; color:var(--accent); border:1px solid var(--accent); }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1><span class="emoji">🗼</span>Mirador</h1>
+      <p class="tagline">
+        A watchtower over industrial platform practices. Spring Boot 4 / Java 25
+        backend + Angular 21 frontend, demonstrating 30+ patterns you'd expect
+        to see in a well-run production stack — on a GKE cluster that spins up
+        on demand.
+      </p>
+    </header>
+
+    <main>
+      <div class="status">
+        <h2>💤 Live demo is sleeping</h2>
+        <p>
+          This project runs on an <strong>ephemeral GKE Autopilot cluster</strong>.
+          To keep the monthly bill at <code>~€2</code> (vs €190 for a 24/7 cluster),
+          the environment is default-<em>down</em> and spun up on demand — typically
+          in response to a recruiter request or for a specific walkthrough session.
+          See <a href="https://gitlab.com/mirador1/mirador-service/-/blob/main/docs/adr/0022-ephemeral-demo-cluster.md">ADR-0022</a>
+          for the cost math.
+        </p>
+        <p>
+          <a class="cta" href="mailto:benoit.besson@gmail.com?subject=Mirador%20demo%20request">📧 Request a live walkthrough</a>
+          <a class="cta secondary" href="https://gitlab.com/mirador1/mirador-service">📁 Browse the code</a>
+        </p>
+      </div>
+
+      <section>
+        <h2>What's in the demo</h2>
+        <div class="grid">
+          <div class="card"><h3>GitOps</h3><p>Argo CD reconciles the cluster from <code>main</code>. Self-heal + prune enabled.</p></div>
+          <div class="card"><h3>Secrets</h3><p>External Secrets Operator + Google Secret Manager via Workload Identity.</p></div>
+          <div class="card"><h3>Observability</h3><p>OpenTelemetry → LGTM stack (Loki + Grafana + Tempo + Mimir) in-cluster.</p></div>
+          <div class="card"><h3>Resilience</h3><p>Resilience4J (CB + retry), Bucket4J rate limiting, idempotency filter.</p></div>
+          <div class="card"><h3>Security</h3><p>JWT + Keycloak OIDC, brute-force lockout, API keys, PodSecurity restricted.</p></div>
+          <div class="card"><h3>Supply chain</h3><p>SBOM (syft), Grype CVE scan, Dockle, hadolint, cosign keyless signing.</p></div>
+          <div class="card"><h3>API versioning</h3><p>Spring Framework 7 native <code>@RequestMapping(version="2.0+")</code>.</p></div>
+          <div class="card"><h3>Idempotency</h3><p>IETF draft-compliant <code>Idempotency-Key</code> header with Redis backing.</p></div>
+          <div class="card"><h3>Chaos</h3><p>Chaos Mesh experiments triggered from the frontend Angular UI.</p></div>
+        </div>
+      </section>
+
+      <section>
+        <h2>ADRs — architecture decisions (23 recorded)</h2>
+        <p class="tagline">
+          Every non-obvious choice in the codebase is justified in an
+          <a href="https://gitlab.com/mirador1/mirador-service/-/tree/main/docs/adr">ADR</a>
+          with context, alternatives considered, and consequences.
+          Highlights:
+        </p>
+        <ul class="bullets">
+          <li><a href="https://gitlab.com/mirador1/mirador-service/-/blob/main/docs/adr/0015-argocd-for-gitops-deployment.md">ADR-0015</a> — Argo CD for GitOps deployment</li>
+          <li><a href="https://gitlab.com/mirador1/mirador-service/-/blob/main/docs/adr/0017-jvm-25-spring-boot-4-strategy.md">ADR-0017</a> — why bleeding-edge Java 25 + Spring Boot 4</li>
+          <li><a href="https://gitlab.com/mirador1/mirador-service/-/blob/main/docs/adr/0021-cost-deferred-industrial-patterns.md">ADR-0021</a> — patterns deferred for cost reasons + self-hosted alternatives</li>
+          <li><a href="https://gitlab.com/mirador1/mirador-service/-/blob/main/docs/adr/0022-ephemeral-demo-cluster.md">ADR-0022</a> — ephemeral demo cluster pattern</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Tech stack (highlights)</h2>
+        <div class="grid">
+          <div class="card"><h3>Runtime</h3><p>Java 25, Spring Boot 4.0, Spring Framework 7, virtual threads, ScopedValue.</p></div>
+          <div class="card"><h3>Data</h3><p>PostgreSQL 17 (in-cluster StatefulSet), Redis 7, Kafka (KRaft).</p></div>
+          <div class="card"><h3>AI</h3><p>Spring AI 1.1 + Ollama (llama3.2) for customer-bio generation.</p></div>
+          <div class="card"><h3>Tests</h3><p>JUnit 5, AssertJ, Mockito, Testcontainers, k6 smoke.</p></div>
+          <div class="card"><h3>Quality</h3><p>Sonar (0 actionable), SpotBugs, PMD, Checkstyle 13, JaCoCo 75 %.</p></div>
+          <div class="card"><h3>Frontend</h3><p>Angular 21 zoneless, signals, raw SVG visualisations, pipeline monitor.</p></div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p>
+        <a href="https://gitlab.com/mirador1/mirador-service">gitlab.com/mirador1/mirador-service</a> ·
+        <a href="https://gitlab.com/mirador1/mirador-ui">/mirador-ui</a> ·
+        <a href="https://sonarcloud.io/project/overview?id=mirador1_mirador-service">SonarCloud</a>
+      </p>
+      <p>MIT-licensed portfolio demo · Built with an ephemeral €2/month cluster</p>
+    </footer>
+  </body>
+</html>

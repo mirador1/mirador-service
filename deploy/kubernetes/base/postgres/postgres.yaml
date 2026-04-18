@@ -64,6 +64,11 @@ spec:
                 secretKeyRef:
                   name: mirador-secrets
                   key: DB_PASSWORD
+            # PGDATA as a subdirectory of the mount point — GKE Autopilot
+            # mounts the PVC with a lost+found directory, which postgres
+            # initdb refuses to use as its data dir.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
           resources:
             requests:
               memory: "256Mi"

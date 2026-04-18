@@ -30,6 +30,10 @@ resources:
   # into K8s Secrets. ADR-0016 + external-secrets/README.md explain the
   # pre-flight + rollback paths. Wired in 2026-04-18.
   - external-secrets
+  # LGTM all-in-one (Grafana + Loki + Tempo + Mimir + OTel Collector).
+  # Provides the OTLP backend for the app's OpenTelemetry export, plus
+  # live traces / logs / metrics visualisation at http://<service>:3000.
+  - observability
 
 # NOTE: Postgres is NOT in the base. It lives in `base/postgres/` as a
 # standalone mini-base and is pulled in only by overlays that need an

@@ -33,11 +33,10 @@ spec:
           image: quay.io/keycloak/keycloak:26.2
           args: ["start-dev"]   # start-dev for non-TLS in-cluster; use start in prod with TLS termination at ingress
           env:
+            # KEYCLOAK_ADMIN is not a secret (username "admin"); the password
+            # IS (projected by ESO from GSM into the keycloak-secrets Secret).
             - name: KEYCLOAK_ADMIN
-              valueFrom:
-                secretKeyRef:
-                  name: keycloak-secrets
-                  key: KEYCLOAK_ADMIN
+              value: "admin"
             - name: KEYCLOAK_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
