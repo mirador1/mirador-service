@@ -1,22 +1,19 @@
 # =============================================================================
-# gke/ overlay — GKE Autopilot + in-cluster Postgres + cert-manager TLS
+# gke/ overlay — GKE Autopilot, in-cluster Postgres, no public surface.
 #
-# Target: `mirador` GKE Autopilot cluster, Postgres as a StatefulSet
-# (Cloud SQL is available as a future upgrade — files archived under
-# docs/archive/gke-cloud-sql/).
+# Per ADR-0025 the cluster exposes nothing to the public internet. Dropped
+# with that ADR:
+#   • cert-manager-gke-fix.yaml  (no cert-manager, no TLS)
+#   • ingress-tls-patch.yaml     (no Ingress)
+#   • lgtm-ingress.yaml          (no public Grafana)
 #
-# What this overlay does:
-#   • Inherits base (namespace, ingress, backend, frontend, kafka, redis,
-#     keycloak, postgres).
-#   • Adds cert-manager-gke-fix.yaml — RBAC fix for Autopilot so cert-manager
-#     can take leader-election leases outside kube-system.
-#   • Patches the Ingress to add cert-manager + TLS block (Let's Encrypt).
+# What this overlay still does:
+#   • Inherits base + in-cluster Postgres (base/postgres).
+#   • Patches the backend ConfigMap with GKE-specific values.
+#   • Pins the backend image tag (Argo CD doesn't do envsubst).
 #
-# Apply:
-#   kubectl apply -k deploy/kubernetes/overlays/gke
-#
-# CI (.gitlab-ci.yml → deploy:gke) substitutes ${K8S_HOST} via envsubst
-# before feeding into kustomize.
+# Apply:   kubectl apply -k deploy/kubernetes/overlays/gke
+# Access:  kubectl port-forward (see bin/pf-prod.sh).
 # =============================================================================
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -24,22 +21,11 @@ kind: Kustomization
 resources:
   - ../../base
   - ../../base/postgres
-  - cert-manager-gke-fix.yaml
-  - lgtm-ingress.yaml
 
-# Strategic merge patches — overlay fragments that merge with the base
-# resources by matching kind+name. The patched field is replaced; the
-# rest of the resource is left untouched.
 patches:
-  - path: ingress-tls-patch.yaml
-    target:
-      kind: Ingress
-      name: mirador-ingress
   - path: configmap-gke-patch.yaml
     target:
       kind: ConfigMap
       name: mirador-config
-  # Concrete image refs to replace envsubst placeholders (ADR-0022 note:
-  # Argo CD doesn't do envsubst, so the base's `${IMAGE_TAG}` stays literal
-  # unless we patch it here).
+  # Concrete image ref (Argo CD does not substitute env vars — see ADR-0015).
   - path: image-tags-patch.yaml

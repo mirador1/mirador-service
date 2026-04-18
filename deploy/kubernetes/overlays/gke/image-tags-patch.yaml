@@ -26,22 +26,6 @@ spec:
       containers:
         - name: mirador
           image: "registry.gitlab.com/mirador1/mirador-service/backend:1538631a2fe883d409804d380138a035a617b61c"
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: customer-ui
-  namespace: app
-  labels:
-    app.kubernetes.io/version: "1538631"
-spec:
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/version: "1538631"
-    spec:
-      containers:
-        - name: customer-ui
-          # UI image lives in the mirador-ui project registry. Tag pinned to
-          # the same SHA era as the backend for consistency.
-          image: "registry.gitlab.com/mirador1/mirador-ui/frontend:latest"
+# customer-ui image patch removed with ADR-0025 — the UI is no longer
+# deployed in Kubernetes. It runs on the developer laptop only and
+# reaches the cluster through bin/pf-prod.sh tunnels.

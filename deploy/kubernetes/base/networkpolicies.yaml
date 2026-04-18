@@ -106,12 +106,17 @@ spec:
         - protocol: TCP
           port: 53
 
-# ── 3. allow-ingress-to-backend — nginx-ingress-controller → mirador:8080 ────
+# ── 3. allow-port-forward-to-backend — kubectl → mirador:8080 ────────────────
+# Replaces the former allow-ingress-to-backend. `kubectl port-forward` routes
+# traffic through the kubelet which appears as the node IP, NOT as a pod in
+# ingress-nginx. Allowing from everywhere in the cluster is acceptable
+# here — the cluster has no public surface (ADR-0025), so anything that
+# can reach :8080 is already authenticated against the API server.
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-ingress-to-backend
+  name: allow-port-forward-to-backend
   namespace: app
 spec:
   podSelector:
@@ -121,35 +126,14 @@ spec:
   policyTypes:
     - Ingress
   ingress:
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: ingress-nginx
-      ports:
+    - ports:
         - protocol: TCP
           port: 8080
 
-# ── 4. allow-ingress-to-frontend — nginx-ingress-controller → customer-ui:80 ─
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: allow-ingress-to-frontend
-  namespace: app
-spec:
-  podSelector:
-    matchLabels:
-      app.kubernetes.io/name: customer-ui
-  policyTypes:
-    - Ingress
-  ingress:
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: ingress-nginx
-      ports:
-        - protocol: TCP
-          port: 80
+# allow-ingress-to-frontend removed with ADR-0025 — no UI Deployment in the
+# cluster anymore (UI runs on the developer laptop, accesses the cluster
+# through kubectl port-forward). The ingress-nginx controller itself is
+# also uninstalled by `bin/demo-up.sh`.
 
 # ── 5. allow-backend-to-infra — app → postgres/redis/kafka ────────────────────
 ---

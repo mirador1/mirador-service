@@ -22,15 +22,4 @@ spec:
       containers:
         - name: mirador
           imagePullPolicy: Never
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: customer-ui
-  namespace: app
-spec:
-  template:
-    spec:
-      containers:
-        - name: customer-ui
-          imagePullPolicy: Never
+# customer-ui patch removed with ADR-0025 — no UI Deployment in any cluster.

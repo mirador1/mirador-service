@@ -137,25 +137,12 @@ helm upgrade --install chaos-mesh chaos-mesh/chaos-mesh \
   --set dashboard.securityMode=true \
   --wait --timeout 5m || echo "⚠️  chaos-mesh install had issues; non-blocking"
 
-# cert-manager — Let's Encrypt certificate issuer + the cert-manager
-# namespace that overlays/gke/cert-manager-gke-fix.yaml expects to patch.
-# Without this step, Argo CD sync fails on the RBAC RoleBindings in
-# that namespace with "namespace not found" and the whole app stays
-# OutOfSync. Installing from the upstream manifest (not helm) to match
-# the versions the GKE-fix RoleBindings target.
-helm repo add jetstack https://charts.jetstack.io >/dev/null 2>&1 || true
-helm repo update jetstack >/dev/null
-helm upgrade --install cert-manager jetstack/cert-manager \
-  -n cert-manager --create-namespace \
-  --set crds.enabled=true \
-  --set replicaCount=1 \
-  --set webhook.replicaCount=1 \
-  --set cainjector.replicaCount=1 \
-  --wait --timeout 5m
+# cert-manager, argocd Ingress, DuckDNS update and TLS wiring removed with
+# ADR-0025 — the cluster no longer exposes anything to the public internet.
+# Access is through bin/pf-prod.sh (kubectl port-forward) from the laptop.
 
 # 5. Apply the Argo CD Application — reconciles the app from main.
 kubectl apply -f "$REPO_ROOT/deploy/argocd/application.yaml"
-kubectl apply -f "$REPO_ROOT/deploy/argocd/ingress.yaml"
 
 echo "⏳  waiting for Argo CD to sync the app (up to 5 min)..."
 kubectl wait --for=condition=Available deployment --all -n argocd --timeout=5m || true
@@ -163,17 +150,24 @@ kubectl wait --for=condition=Available deployment --all -n argocd --timeout=5m |
 # 6. Summary.
 ARGOCD_PWD=$(kubectl -n argocd get secret argocd-initial-admin-secret \
   -o jsonpath='{.data.password}' 2>/dev/null | base64 -d || echo "(already rotated)")
-INGRESS_IP=$(kubectl get ingress mirador-ingress -n app \
-  -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
 
 cat <<EOF
 
 ✅  demo-up complete
 ---
-Argo CD UI     : https://argocd.mirador1.duckdns.org  (or kubectl port-forward -n argocd svc/argocd-server 8080:443)
+Cluster has NO public ingress (ADR-0025). Access from your laptop:
+
+  bin/pf-prod.sh        # start tunnels for every service
+  bin/pf-status.sh      # list active tunnels + local ports
+  bin/pf-stop.sh        # tear them all down
+
+Then in the Angular UI topbar pick "prod-tunnel" as the environment.
+
+Argo CD UI     : http://localhost:18081   (once pf-prod.sh is running)
   admin / $ARGOCD_PWD
-App ingress IP : $INGRESS_IP  (point mirador1.duckdns.org at this IP)
-App            : https://mirador1.duckdns.org  (once DNS + TLS propagate, ~5 min)
+Backend API    : http://localhost:18080
+Grafana        : http://localhost:13000
+Unleash        : http://localhost:14242
 
 Shut everything down with: bin/demo-down.sh
 EOF

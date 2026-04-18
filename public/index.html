@@ -46,17 +46,23 @@
 
     <main>
       <div class="status">
-        <h2>💤 Live demo is sleeping</h2>
+        <h2>🚪 There is no public URL on purpose</h2>
         <p>
-          This project runs on an <strong>ephemeral GKE Autopilot cluster</strong>.
-          To keep the monthly bill at <code>~€2</code> (vs €190 for a 24/7 cluster),
-          the environment is default-<em>down</em> and spun up on demand — typically
-          in response to a recruiter request or for a specific walkthrough session.
-          See <a href="https://gitlab.com/mirador1/mirador-service/-/blob/main/docs/adr/0022-ephemeral-demo-cluster.md">ADR-0022</a>
-          for the cost math.
+          The cluster <strong>does not expose any port to the public internet</strong>.
+          No Grafana, no Argo CD, no API — all reached through
+          <code>kubectl port-forward</code> tunnels from a developer laptop (see
+          <a href="https://gitlab.com/mirador1/mirador-service/-/blob/main/docs/adr/0025-ui-local-only-no-public-prod-ingress.md">ADR-0025</a>).
+          It also sleeps by default to keep costs at ~€2 / month
+          (<a href="https://gitlab.com/mirador1/mirador-service/-/blob/main/docs/adr/0022-ephemeral-demo-cluster.md">ADR-0022</a>).
         </p>
         <p>
-          <a class="cta" href="mailto:benoit.besson@gmail.com?subject=Mirador%20demo%20request">📧 Request a live walkthrough</a>
+          To see the live demo: clone the repo, run
+          <code>bin/demo-up.sh</code>, then <code>bin/pf-prod.sh</code>, then
+          open the Angular UI locally and pick the <em>prod-tunnel</em>
+          environment in the topbar.
+        </p>
+        <p>
+          <a class="cta" href="mailto:benoit.besson@gmail.com?subject=Mirador%20demo%20request">📧 Request a walkthrough</a>
           <a class="cta secondary" href="https://gitlab.com/mirador1/mirador-service">📁 Browse the code</a>
         </p>
       </div>
