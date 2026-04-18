@@ -1634,7 +1634,15 @@ deploy:gke:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH   # auto on every main push
+    # ADR-0022 (ephemeral cluster) + ADR-0025 (Argo CD reconciles from main):
+    # a scheduled deploy on every main push fails 99 % of the time because
+    # the cluster is destroyed by bin/demo-down.sh after each validation.
+    # Kept as a manual trigger for the one-off "apply to a running cluster
+    # without waiting for Argo CD" case. Same pattern as deploy:eks / :aks /
+    # :cloud-run / :fly / :k3s.
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+      allow_failure: true
   environment:
     name: production/gke
     url: "https://$K8S_HOST"

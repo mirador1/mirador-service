@@ -23,11 +23,15 @@
       `.gitlab-ci.yml`. The image is no longer deployed anywhere
       (ADR-0025). Keeping the job is ~3 min of CI waste per MR.
 
-- [ ] **Make `deploy:gke` CI job manual** (or delete it). It runs on
-      every main push and fails when the ephemeral cluster is down
-      (99 % of the time). Argo CD reconciles from main now anyway so
-      the job is redundant; matches the pattern used for `deploy:eks`,
-      `deploy:aks`, `deploy:cloud-run` which are all `manual`.
+- [ ] **`code-quality` CI job — javac `--enable-preview` missing**.
+      The job re-compiles `target/merged-sources` through
+      `maven-compiler-plugin` without the preview flag, so it fails on
+      the 7 unnamed-variable (`_`) usages across the codebase
+      (ApiExceptionHandler, AuthController, JwtAuthenticationFilter,
+      RecentCustomerBuffer, ObservabilityConfig, QualityReportEndpoint,
+      TestReportInfoContributor). Either add `--enable-preview` to the
+      `code-quality` maven invocation, OR rewrite those 7 `_` back to
+      named throwaway vars. Pre-existing, unrelated to ADR-0025.
 
 - [ ] **CI push `:main` + `:latest` tags on every merge to main** —
       registry only has `:<sha>` tags; `image-tags-patch.yaml` still
