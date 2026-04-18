@@ -39,3 +39,7 @@ patches:
     target:
       kind: ConfigMap
       name: mirador-config
+  # Concrete image refs to replace envsubst placeholders (ADR-0022 note:
+  # Argo CD doesn't do envsubst, so the base's `${IMAGE_TAG}` stays literal
+  # unless we patch it here).
+  - path: image-tags-patch.yaml
