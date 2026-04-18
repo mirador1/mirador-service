@@ -70,7 +70,7 @@ Sibling catalogue for the Angular UI: <https://gitlab.com/mirador1/mirador-ui/-/
 ### ☕ [JVM bytecode](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-4.html)
 - **What it is**: The intermediate instruction set emitted by `javac`, versioned per Java release (69 = Java 25).
 - **Usage here**: Every library that parses bytecode (ASM, SpotBugs, PMD, ArchUnit) must support version 69 — documented in `pom.xml` comments with upgrade pins.
-- **Why it's pertinent**: Version 69 is why we pin ASM 9.8, SpotBugs 4.8.6+, PMD 7.20+, Checkstyle 10.26+ — older versions crash when encountering Java 25 class files.
+- **Why it's pertinent**: Version 69 is why we pin ASM 9.8, SpotBugs 4.8.6+, PMD 7.20+, Checkstyle 13.4+ — older versions crash when encountering Java 25 class files.
 
 ### ☕ [OpenJDK / Eclipse Temurin](https://adoptium.net/)
 - **What it is**: Free, production-grade builds of the OpenJDK project, maintained by the Adoptium working group.
@@ -87,10 +87,10 @@ Sibling catalogue for the Angular UI: <https://gitlab.com/mirador1/mirador-ui/-/
 - **Usage here**: Primary `<repository>` in `pom.xml`. All production dependencies resolve here.
 - **Why it's pertinent**: Immutable, globally CDN-distributed, and trust-anchored via Sonatype. Every other Maven repo is a fallback.
 
-### 🌱 [Spring Milestones repository](https://repo.spring.io/milestone/)
-- **What it is**: Spring's own repo (`repo.spring.io/milestone`) for pre-release artifacts not yet on Maven Central.
-- **Usage here**: Declared in `pom.xml` `<repositories>` purely to pull `spring-ai 1.0.0-M6`.
-- **Why it's pertinent**: Removed from the build as soon as Spring AI migrates to a GA BOM. Marked to delete in a TODO comment next to its declaration.
+### 🌱 [Maven Central](https://repo1.maven.org/maven2/)
+- **What it is**: The default Maven repository — all compile-time and test dependencies resolve from here.
+- **Usage here**: Sole repository declared in `pom.xml`. Spring AI 1.1.4 GA now lives on Central, so the Spring Milestones repo that used to host the 1.0.0-M6 milestone is no longer needed and has been removed.
+- **Why it's pertinent**: Fewer repositories means fewer supply-chain attack surfaces and faster dependency resolution on cold builds.
 
 ---
 
@@ -421,8 +421,8 @@ Sibling catalogue for the Angular UI: <https://gitlab.com/mirador1/mirador-ui/-/
 
 ### 🤖 [Spring AI](https://spring.io/projects/spring-ai)
 - **What it is**: Spring's abstraction for LLM providers (`ChatClient`, `EmbeddingClient`).
-- **Usage here**: `spring-ai-ollama-spring-boot-starter:1.0.0-M6`. Used to generate customer bios in `com.mirador.customer`.
-- **Why it's pertinent**: Lets us swap Ollama for OpenAI/Anthropic/Bedrock by config. Pinned to milestone `1.0.0-M6` until we migrate to the renamed GA artifact (`spring-ai-starter-model-ollama`), which is tracked in `pom.xml` comments.
+- **Usage here**: `spring-ai-starter-model-ollama:1.1.4` (GA). Used to generate customer bios in `com.mirador.customer.BioService`.
+- **Why it's pertinent**: Lets us swap Ollama for OpenAI/Anthropic/Bedrock by config. The empty compat-shim classes under `src/main/java/org/springframework/boot/autoconfigure/` are still required — even 1.1.4 GA references the Spring Boot 3 `RestClientAutoConfiguration` / `WebClientAutoConfiguration` packages in `@AutoConfiguration(after=...)`, resolved at annotation-processing time.
 
 ### 🤖 [Ollama](https://ollama.com/)
 - **What it is**: Self-hosted LLM runtime (llama.cpp + model loader).
