@@ -457,22 +457,9 @@ app:
   observability:
     # Controls the Gauge metric for the RecentCustomerBuffer size (ObservabilityConfig)
     recent-buffer-gauge-enabled: true
-    # BFF proxy targets — read by BffObservabilityController. Default values
-    # point at the in-cluster LGTM pod (base/observability/lgtm.yaml); the
-    # local compose stack (docker-compose.observability.yml) overrides to
-    # http://localhost:3100 / :3200 via env vars. See ADR-0024.
-    loki-url: ${LOKI_URL:http://lgtm.infra.svc.cluster.local:3100}
-    tempo-url: ${TEMPO_URL:http://lgtm.infra.svc.cluster.local:3200}
-
-  # ---------------------------------------------------------------------------
-  # Feature flags — Unleash integration for the UI (see FeatureFlagController).
-  # Token is the default insecure dev token shipped with Unleash-server's
-  # "demo" auth mode. Rotate via a real Unleash client API token when
-  # going public. ADR-0024 covers the choice to skip the SDK.
-  # ---------------------------------------------------------------------------
-  features:
-    unleash-url: ${UNLEASH_URL:http://unleash.infra.svc.cluster.local:4242/api}
-    unleash-token: ${UNLEASH_TOKEN:default:development:unleash-insecure-api-token}
+    # Loki / Tempo / Unleash proxy config removed with ADR-0026: Spring Boot
+    # is not aware of third-party tools. The UI talks to Grafana's datasource
+    # proxy (for Loki/Tempo) and to unleash-proxy (for feature flags) directly.
 
   # ---------------------------------------------------------------------------
   # Kafka topic names and consumer groups
