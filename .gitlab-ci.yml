@@ -88,6 +88,7 @@ stages:
   - lint          # Static file checks — instant feedback before any compilation
   - test          # Unit tests + security scans — fast, no Docker
   - integration   # Testcontainers ITests + SpotBugs + coverage gate — needs Docker
+  - k8s           # kind-in-docker manifest apply + probe (ADR-0028)
   - package       # Produce deployable artifacts — JAR + Docker image
   - compat        # On-demand compatibility matrix: SB3/SB4 × Java17/21/25
   - native        # GraalVM AOT native-image build (native-build schedule only)
@@ -725,6 +726,73 @@ build-jar:
     paths:
       - target/*.jar    # Spring Boot fat JAR (includes embedded Tomcat + all dependencies)
     expire_in: 1 week   # short-lived: for manual download or downstream deploy jobs
+
+# ── k8s stage ────────────────────────────────────────────────────────────────
+# Spin up a local kind cluster, `kubectl apply -k overlays/local`, and wait
+# for the core infra pods (PG/Redis/Kafka/LGTM/Keycloak) to be Ready.
+#
+# Purpose (ADR-0028): catch K8s-specific bugs the compose path misses —
+# PodSecurity admission, NetworkPolicy default-deny, CRD shape drift,
+# kustomize overlay patches that silently miss their target, probe timing.
+# These all fail at `kubectl apply` time or during pod boot, long before
+# GKE would see them.
+#
+# Path-filtered — runs only when the manifests or their direct deps change.
+# Most MRs skip it entirely, so the added latency is <1 min/week in aggregate.
+#
+# The mirador backend pod is deliberately NOT in the Ready-wait list: its
+# image is built amd64-only via buildx, and the macbook-local runner is
+# arm64 kind (exec format error on load). GKE remains the source of truth
+# for the app pod itself; this job validates the cluster wiring around it.
+test:k8s-apply:
+  stage: k8s
+  interruptible: true   # OK to cancel if a new push supersedes this one
+  image: docker:28
+  tags:
+    - macbook-local   # needs host Docker socket for kind-in-docker
+  needs: []           # no upstream dependency — parallel to unit-test
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    # MRs: only when manifests actually change — most MRs skip entirely.
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - deploy/kubernetes/**/*
+    # main: same filter. Catches a drift merged via an unrelated MR.
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - deploy/kubernetes/**/*
+  variables:
+    KIND_VERSION: "v0.24.0"
+    # Unique cluster name per job so parallel runs don't collide on the
+    # runner's shared Docker daemon.
+    KIND_CLUSTER: "ci-k8s-${CI_JOB_ID}"
+  before_script:
+    - apk add --no-cache bash curl
+    - |
+      # arch detection — runner is arm64 (Apple Silicon) by policy, but we
+      # stay honest in case someone ever flips the runner tag to amd64.
+      ARCH=$(uname -m)
+      case "$ARCH" in
+        aarch64) KARCH=arm64 ;;
+        x86_64)  KARCH=amd64 ;;
+        *) echo "unsupported arch: $ARCH"; exit 1 ;;
+      esac
+      # Install kind binary
+      curl -sSL "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-${KARCH}" \
+        -o /usr/local/bin/kind
+      chmod +x /usr/local/bin/kind
+      # Install kubectl matching the latest stable release
+      KUBECTL_VERSION=$(curl -sL https://dl.k8s.io/release/stable.txt)
+      curl -sSL "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${KARCH}/kubectl" \
+        -o /usr/local/bin/kubectl
+      chmod +x /usr/local/bin/kubectl
+      kubectl version --client --output=yaml | head -3
+  script:
+    - scripts/ci-k8s-test.sh
+  after_script:
+    # Always tear down — leaked kind containers eat runner disk fast.
+    - kind delete cluster --name "$KIND_CLUSTER" 2>/dev/null || true
 
 # Build the Docker image and push it to the GitLab Container Registry.
 #
