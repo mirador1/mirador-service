@@ -9,15 +9,16 @@
 
 ## Pending — Post-ADR-0025 follow-up
 
-- [ ] **UI repo — EnvService selector** (blocks the real use of
-      `bin/pf-prod.sh`). In `mirador-ui`: add a dropdown in the topbar
-      with two entries — `dev` (compose defaults: backend 8080, grafana
-      3000, keycloak 9090, …) and `prod-tunnel` (port-forward map:
-      backend 18080, grafana 13000, unleash 14242, argocd 18081, etc.).
-      Persist selection in `localStorage`. Replace every hardcoded
-      `http://localhost:<port>` URL with a computed one reading from
-      the selected env. Port map is in
-      `docs/adr/0025-ui-local-only-no-public-prod-ingress.md`.
+<!-- EnvService selector (Local / Kind / Prod) landed in mirador-ui MR 28. -->
+
+- [ ] **unleash-proxy token bootstrap** — under `AUTH_TYPE=demo` Unleash 7.x
+      rejects the static placeholder token with HTTP 401 on
+      `/api/client/features`. Solution: a one-off `Job` or `initContainer`
+      that calls Unleash admin API after boot, creates a real client API
+      token, writes it to a `Secret`, which `unleash-proxy` consumes as
+      `UNLEASH_API_TOKEN`. Without this, the browser's feature-flag SDK
+      cannot fetch flags in the cluster (compose pgweb-local is unaffected).
+      Everything else on the ADR-0026 wiring is green (validated 2026-04-18).
 
 <!-- The mirador-ui docker image stays built + pushed. Even with ADR-0025
      (no prod deployment) the image is useful for: local prod-like run
