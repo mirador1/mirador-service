@@ -26,6 +26,10 @@ resources:
   - stateful/kafka.yaml
   - stateful/redis.yaml
   - stateful/keycloak.yaml
+  # External Secrets Operator projects secrets from Google Secret Manager
+  # into K8s Secrets. ADR-0016 + external-secrets/README.md explain the
+  # pre-flight + rollback paths. Wired in 2026-04-18.
+  - external-secrets
 
 # NOTE: Postgres is NOT in the base. It lives in `base/postgres/` as a
 # standalone mini-base and is pulled in only by overlays that need an

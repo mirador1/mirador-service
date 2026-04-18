@@ -1,6 +1,6 @@
 # ADR-0016: External Secrets Operator + Google Secret Manager
 
-- **Status**: Accepted (operator installed, migration pending)
+- **Status**: Accepted — **cut over 2026-04-18**
 - **Date**: 2026-04-18
 
 ## Context
@@ -84,6 +84,40 @@ Negative:
   yet. The 1 h refresh is fine for password rotation, tight for an
   incident requiring immediate credential rotation — there's a manual
   `kubectl annotate externalsecret` hook for forced refresh.
+
+## Cut-over log (2026-04-18)
+
+Executed during the GKE bring-up session. Decision: the demo goes
+all-in on the "industry-standard" pattern because (a) GSM is free for
+up to 6 active secret versions + 10k accesses/month (8 secrets × 24
+accesses/day ≈ 5800 ops/month — well under the free tier), and
+(b) documenting the cutover via this ADR + README is itself part of
+what the demo showcases.
+
+Concrete steps applied:
+
+1. `gcloud services enable secretmanager.googleapis.com iamcredentials.googleapis.com`
+2. Created 8 GSM entries: `mirador-db-password`, `mirador-jwt-secret`,
+   `mirador-api-key`, `mirador-gitlab-api-token`, `mirador-otel-auth`,
+   `mirador-keycloak-admin`, `mirador-keycloak-admin-password`,
+   `mirador-keycloak-kc-db-password`.
+3. Created GCP service account
+   `external-secrets-operator@<project>.iam.gserviceaccount.com` with
+   `roles/secretmanager.secretAccessor` on each entry.
+4. Bound the K8s SA `external-secrets/external-secrets` to the GCP SA via
+   Workload Identity (`roles/iam.workloadIdentityUser`) and annotated
+   the K8s SA with `iam.gke.io/gcp-service-account=...`.
+5. Committed `deploy/kubernetes/base/external-secrets/` (SecretStore ×
+   2 namespaces + 2 ExternalSecret CRs + a README) and wired it into
+   `base/kustomization.yaml`.
+6. Argo CD reconciled the CRDs within ~3 min; ESO projected the GSM
+   entries into K8s Secrets with the same names as the hand-created ones
+   (`mirador-secrets` in `app` + `infra`, `keycloak-secrets` in `infra`).
+7. Verified via
+   `kubectl get secret mirador-secrets -n app -o jsonpath='{.data.DB_PASSWORD}' | base64 -d`.
+
+Cost: ~€0.10/month (2 secrets over the 6-free tier × $0.06, with the
+access operations well under the 10k free quota).
 
 ## Reactivation path (for future you)
 
