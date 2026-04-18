@@ -41,14 +41,20 @@
         <bucket4j.version>8.10.1</bucket4j.version>                 <!-- token-bucket rate limiting (in-memory, per IP) -->
         <resilience4j.version>2.4.0</resilience4j.version>          <!-- @CircuitBreaker / @Retry / @Bulkhead annotations -->
         <!--
-          Spring AI 1.0.0-M6: CVE-2026-22730 (8.8 HIGH), CVE-2026-22729 (8.6 HIGH),
-          CVE-2022-27772 (7.8 HIGH), CVE-2023-20883 (7.5 HIGH), CVE-2018-1196 (5.9 MEDIUM).
-          Cannot upgrade to 1.0.0 GA: Spring AI 1.0.0 renamed the Ollama starter artifact
-          (spring-ai-ollama-spring-boot-starter → spring-ai-starter-model-ollama) and
-          reorganised autoconfigure modules. Migration requires updating the dependency
-          declaration and validating API compatibility. Blocked until migration is done.
+          Spring AI 1.1.4 GA. Closes five CVEs that were still open on the
+          1.0.0-M6 milestone: CVE-2026-22730 (8.8 HIGH), CVE-2026-22729 (8.6 HIGH),
+          CVE-2022-27772 (7.8 HIGH), CVE-2023-20883 (7.5 HIGH), CVE-2018-1196 (5.9).
+          1.0.0+ renamed the Ollama starter artifact
+          (spring-ai-ollama-spring-boot-starter → spring-ai-starter-model-ollama).
+
+          NOTE: the SB4-compat shims under
+          src/main/java/org/springframework/boot/autoconfigure/ must stay —
+          even 1.1.4 GA still has @AutoConfiguration(after = {
+            org.springframework.boot.autoconfigure.web.client.RestClientAutoConfiguration.class,
+            org.springframework.boot.autoconfigure.web.reactive.function.client.WebClientAutoConfiguration.class
+          }) on OllamaApiAutoConfiguration, pointing at the Spring Boot 3 package.
         -->
-        <spring-ai.version>1.0.0-M6</spring-ai.version>
+        <spring-ai.version>1.1.4</spring-ai.version>
         <datasource-micrometer.version>2.2.1</datasource-micrometer.version> <!-- JDBC DataSource observation bridge → query latency in Prometheus -->
         <!--
           springdoc 3.0.3 (upgraded from 3.0.2) — bundles swagger-ui 5.32.2 which patches
@@ -118,7 +124,7 @@
         <!-- Jackson 3.x (tools.jackson.core) pulled in transitively by
              spring-data-rest-webmvc. 3.1.0 has CVE GHSA-2m67-wjpj-xhg9 (HIGH);
              3.1.1 is the fix. Pin here until the BOM catches up. -->
-        <jackson3.version>3.1.1</jackson3.version>
+        <jackson3.version>3.1.2</jackson3.version>
         <!--
           opentelemetry-logback-appender-1.0 tracks OTel API tightly.
           2.26.1-alpha calls LogRecordBuilder.setException(Throwable) which
@@ -129,7 +135,7 @@
           its OTel floor.
         -->
         <opentelemetry-appender.version>2.18.1-alpha</opentelemetry-appender.version>
-        <testcontainers-keycloak.version>4.1.1</testcontainers-keycloak.version>
+        <testcontainers-keycloak.version>4.2.0</testcontainers-keycloak.version>
 
         <!--
           SonarCloud analysis configuration (sonarcloud.io — free for public repos).
@@ -467,7 +473,7 @@
         <!-- Spring AI — Ollama starter for local LLM inference (llama3.2 model) -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-ollama-spring-boot-starter</artifactId>
+            <artifactId>spring-ai-starter-model-ollama</artifactId>
             <version>${spring-ai.version}</version>
         </dependency>
 

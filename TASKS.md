@@ -35,10 +35,6 @@
 
 ## Pending — Version upgrades (deferred majors, separate MRs each)
 
-- [ ] **Spring AI** `1.0.0-M6` → `1.1.4` GA (or `2.0.0-M4`). Closes 5
-      known CVEs. Requires artifact rename
-      (`spring-ai-ollama-spring-boot-starter` → `spring-ai-starter-model-ollama`)
-      and API-surface validation.
 - [ ] **Testcontainers** 1.21 → 2.0 — **blocked**. 2.0.x core is on
       Maven Central but companion modules (`junit-jupiter`,
       `postgresql`, `kafka`) only ship for 1.21.x; stay on 1.21.4
@@ -73,6 +69,14 @@
 
 ## Recently Completed
 
+- [x] **Spring AI 1.0.0-M6 → 1.1.4 GA**. Artifact rename
+      (`spring-ai-ollama-spring-boot-starter` →
+      `spring-ai-starter-model-ollama`); the two SB4-compat shims
+      under `src/main/java/org/springframework/boot/autoconfigure/`
+      are deleted (Spring AI 1.1 is built against Spring Boot 4
+      natively, so the @ImportAutoConfiguration shim targets are
+      no longer referenced). Closes 5 CVEs carried by M6. ChatClient
+      API unchanged — BioService + OllamaHealthIndicator untouched.
 - [x] **Version bumps (post-Sonar)**: Checkstyle 10.26.1 → 13.4.0
       (3 majors; Java 25 parser verified clean, only stylistic
       warnings emitted), ShedLock 6.0.2 → 7.7.0 (same import paths),
