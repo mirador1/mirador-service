@@ -1854,16 +1854,6 @@
             <url>https://repo1.maven.org/maven2</url>
             <snapshots><enabled>false</enabled></snapshots>
         </repository>
-        <!--
-          Spring Milestones — required for Spring AI milestone releases (1.0.0-M6).
-          Remove once Spring AI CVEs are resolved and the migration to 1.0.0 GA is done.
-        -->
-        <repository>
-            <id>spring-milestones</id>
-            <name>Spring Milestones</name>
-            <url>https://repo.spring.io/milestone</url>
-            <snapshots><enabled>false</enabled></snapshots>
-        </repository>
     </repositories>
 
     <!--
