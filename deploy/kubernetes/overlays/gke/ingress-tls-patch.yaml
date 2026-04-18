@@ -24,8 +24,28 @@ metadata:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
 spec:
+  # Concrete hostname — Argo CD does not do envsubst (ADR-0015), so the
+  # base's `${K8S_HOST}` would otherwise land as a literal invalid host.
+  # Pinned here to the DuckDNS demo hostname used by the Let's Encrypt cert.
+  rules:
+    - host: mirador1.duckdns.org
+      http:
+        paths:
+          - path: /api(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: mirador
+                port:
+                  number: 8080
+          - path: /()(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: customer-ui
+                port:
+                  number: 80
   tls:
-    # Hostname substituted by envsubst before `kubectl apply -k`.
     - hosts:
-        - "${K8S_HOST}"
+        - mirador1.duckdns.org
       secretName: mirador-tls

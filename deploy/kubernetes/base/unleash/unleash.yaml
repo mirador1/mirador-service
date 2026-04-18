@@ -157,7 +157,7 @@ spec:
               done
       containers:
         - name: unleash
-          image: unleashorg/unleash-server:6.11.0
+          image: unleashorg/unleash-server:7.6.3
           ports:
             - name: http
               containerPort: 4242

@@ -201,6 +201,57 @@ spec:
         - protocol: TCP
           port: 9092
 
+# ── 5b. allow-infra-intra — infra pods talking to each other ──────────────
+# Added when Unleash landed (ADR-0024 side-effect): Unleash's initContainer
+# calls pg_isready against unleash-db, both in the infra namespace. Without
+# this policy, default-deny-all blocks the pod-to-pod TCP 5432, so the init
+# container hangs forever. Keep this narrow — only DB and cache ports — so
+# a compromise of one infra pod can't scan the whole namespace.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-infra-intra
+  namespace: infra
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: infra
+      ports:
+        - protocol: TCP
+          port: 5432      # postgres (app + unleash)
+        - protocol: TCP
+          port: 6379      # redis
+        - protocol: TCP
+          port: 9092      # kafka
+        - protocol: TCP
+          port: 4242      # unleash API
+        - protocol: TCP
+          port: 8080      # keycloak
+        - protocol: TCP
+          port: 3000      # grafana (LGTM)
+        - protocol: TCP
+          port: 3100      # loki
+        - protocol: TCP
+          port: 3200      # tempo
+        - protocol: TCP
+          port: 9009      # mimir
+        - protocol: TCP
+          port: 4317      # OTLP gRPC
+        - protocol: TCP
+          port: 4318      # OTLP HTTP
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: infra
+
 # ── 6. allow-backend-https-egress — Auth0 / Ollama / Grafana OTLP / GitLab ───
 ---
 apiVersion: networking.k8s.io/v1
