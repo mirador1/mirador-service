@@ -1864,7 +1864,10 @@ github-mirror:
   tags:
     - macbook-local
   rules:
-    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $GITHUB_MIRROR_SSH_KEY'
+    # Explicit not-empty check — short-form `$VAR` as a rule expression
+    # has surprised us (pipeline 464 skipped the job even with the
+    # variable set). The != "" form is deterministic.
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $GITHUB_MIRROR_SSH_KEY != ""'
   needs: []          # Independent — mirror even if some optional jobs failed
   interruptible: false   # A new push should not cancel the mirror mid-flight
   variables:
