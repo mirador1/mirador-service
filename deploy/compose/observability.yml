@@ -60,17 +60,17 @@ services:
       # Dashboard provisioning — the entire dashboards-lgtm/ directory is mounted so
       # adding a new *.json file is enough to provision a new Grafana dashboard without
       # any container restart. The YAML provider scans the directory every 10 s.
-      - ./infra/observability/grafana/dashboards-lgtm/dashboard-demo-lgtm.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/dashboard-demo-lgtm.yaml
-      - ./infra/observability/grafana/dashboards-lgtm/:/otel-lgtm/dashboards/
+      - ../../infra/observability/grafana/dashboards-lgtm/dashboard-demo-lgtm.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/dashboard-demo-lgtm.yaml
+      - ../../infra/observability/grafana/dashboards-lgtm/:/otel-lgtm/dashboards/
       # Override OTEL collector config (Tempo-only pipeline, CORS allowed)
-      - ./infra/observability/otelcol-override.yaml:/otel-lgtm/otelcol-config.yaml:ro
+      - ../../infra/observability/otelcol-override.yaml:/otel-lgtm/otelcol-config.yaml:ro
       # Override Loki config to enable bloom filters (ADR-0012). The
       # baseline file ships no bloom sections so blooms are off by default.
-      - ./infra/observability/loki-override.yaml:/otel-lgtm/loki-config.yaml:ro
+      - ../../infra/observability/loki-override.yaml:/otel-lgtm/loki-config.yaml:ro
       # Override Grafana datasource provisioning — fixes Tempo→Loki trace-to-logs query:
       # trace_id is a Loki stream label so the lookup must use {trace_id="<id>"},
       # not the default line-filter syntax (| trace_id = "<id>") shipped by otel-lgtm.
-      - ./infra/observability/grafana/provisioning/datasources.yaml:/otel-lgtm/grafana/conf/provisioning/datasources/grafana-datasources.yaml:ro
+      - ../../infra/observability/grafana/provisioning/datasources.yaml:/otel-lgtm/grafana/conf/provisioning/datasources/grafana-datasources.yaml:ro
     environment:
       # Forward all application logs received via OTLP to Loki
       ENABLE_LOGS_ALL: "true"
@@ -82,8 +82,14 @@ services:
       # Plugins installed at startup:
       # - yesoreyeram-infinity-datasource: call REST endpoints (actuator health probes)
       # - marcusolsson-dynamictext-panel:  rich HTML+JS panels (Docker service control)
-      # - volkovlabs-button-panel:         single-action buttons (generate traffic)
-      GF_INSTALL_PLUGINS: "yesoreyeram-infinity-datasource,marcusolsson-dynamictext-panel,volkovlabs-button-panel"
+      # Note — `volkovlabs-button-panel` dropped because Grafana's plugin
+      # registry began returning 404 for the unversioned name in 2026-04,
+      # which crashed the whole Grafana process on startup (dependent
+      # services failed to initialise, no HTTP on :3000). If we want
+      # single-action buttons back, install explicitly via
+      # `GF_INSTALL_PLUGINS: ...,volkovlabs-form-panel@<pinned-version>` —
+      # the form-panel variant is still published.
+      GF_INSTALL_PLUGINS: "yesoreyeram-infinity-datasource,marcusolsson-dynamictext-panel"
     # Wait until Tempo's query API is ready before Grafana attempts datasource connection.
     # Tempo exposes /ready at port 3200; LGTM takes ~15-20s to start all internal services.
     healthcheck:
@@ -113,7 +119,7 @@ services:
       - "2375:2375"    # Docker API CORS proxy
       - "4319:4319"    # OTLP HTTP CORS proxy (browser telemetry — ADR-0009)
     volumes:
-      - ./infra/observability/cors-proxy.conf:/etc/nginx/conf.d/default.conf:ro
+      - ../../infra/observability/cors-proxy.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       lgtm:
         condition: service_healthy   # Loki runs inside LGTM — don't proxy before Loki is ready
