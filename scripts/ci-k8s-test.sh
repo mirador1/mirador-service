@@ -95,13 +95,31 @@ if ! kubectl apply -k "$OVERLAY" 2>&1 | tee /tmp/apply.log; then
   exit 1
 fi
 
-# Grep for the "Warning: would violate PodSecurity" lines — those are the
-# kind of drift the admission webhook catches in production but doesn't
-# block on compose. Fail the job if any appear.
-if grep -q "would violate PodSecurity" /tmp/apply.log; then
-  echo "❌  PodSecurity admission would reject one or more resources on this cluster:"
-  grep "would violate" /tmp/apply.log
+# PodSecurity check — only treat *enforcement rejections* as fatal, not
+# warnings. Our namespace policy (base/namespace.yaml) is deliberate:
+#   • app           → enforce=restricted (app pods must be hardened)
+#   • infra / obs   → enforce=baseline + warn=restricted
+# The `warn=restricted` label causes kubectl to emit "Warning: would
+# violate PodSecurity" lines at apply time for off-the-shelf infra
+# charts (Kafka, Keycloak, LGTM) that legitimately aren't restricted-
+# ready. Those are informational — the pods are still admitted under
+# the baseline policy. Treating them as CI failures would mean a
+# policy drift: either we move infra to restricted (would require
+# non-trivial patches), or we silently tolerate them (what we do now).
+#
+# Real enforcement rejections show up as "Error from server
+# (Forbidden): ... violates PodSecurity" — those we DO fail on.
+if grep -qE "Error from server \(Forbidden\).*violates PodSecurity" /tmp/apply.log; then
+  echo "❌  PodSecurity admission *rejected* one or more resources:"
+  grep -E "Forbidden.*PodSecurity" /tmp/apply.log
   exit 1
+fi
+# Still surface the warnings for visibility so we don't silently let
+# a restricted-enforced namespace (app) accumulate drift.
+if grep -q "would violate PodSecurity" /tmp/apply.log; then
+  echo "ℹ️  PodSecurity warnings (informational — baseline policy in effect):"
+  grep "would violate PodSecurity" /tmp/apply.log | head -3
+  echo "   …$(grep -c 'would violate PodSecurity' /tmp/apply.log) total."
 fi
 
 echo "⏳  Waiting for core pods to become Ready (timeout=$TIMEOUT)…"
