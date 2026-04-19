@@ -5,8 +5,8 @@
 [![pipeline](https://gitlab.com/mirador1/mirador-service/badges/main/pipeline.svg)](https://gitlab.com/mirador1/mirador-service/-/pipelines)
 [![coverage](https://gitlab.com/mirador1/mirador-service/badges/main/coverage.svg)](https://gitlab.com/mirador1/mirador-service/-/pipelines)
 [![latest release](https://gitlab.com/mirador1/mirador-service/-/badges/release.svg)](https://gitlab.com/mirador1/mirador-service/-/releases)
-[![CodeQL](https://github.com/Beennnn/mirador-service/actions/workflows/codeql.yml/badge.svg)](https://github.com/Beennnn/mirador-service/actions/workflows/codeql.yml)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Beennnn/mirador-service/badge)](https://scorecard.dev/viewer/?uri=github.com/Beennnn/mirador-service)
+[![CodeQL](https://github.com/mirador1/mirador-service/actions/workflows/codeql.yml/badge.svg)](https://github.com/mirador1/mirador-service/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/mirador1/mirador-service/badge)](https://scorecard.dev/viewer/?uri=github.com/mirador1/mirador-service)
 
 <!-- Tech badges — grouped by concern so the README reflects the ADR story,
      not just a technology dump. Each group corresponds to an ADR or a

@@ -1868,7 +1868,7 @@ github-mirror:
   needs: []          # Independent — mirror even if some optional jobs failed
   interruptible: false   # A new push should not cancel the mirror mid-flight
   variables:
-    GITHUB_REPO: "Beennnn/mirador-service"
+    GITHUB_REPO: "mirador1/mirador-service"
   before_script:
     - apk add --no-cache git openssh-client
   script:

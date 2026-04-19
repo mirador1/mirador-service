@@ -76,7 +76,7 @@ docker exec mirador-jenkins-test cat /var/jenkins_home/secrets/initialAdminPassw
 # In the web UI (http://localhost:8080):
 #   1. Install suggested plugins + "Docker Pipeline", "JaCoCo", "Pipeline: Stage View"
 #   2. New Item → Multibranch Pipeline
-#      → Git repo: https://github.com/Beennnn/mirador-service
+#      → Git repo: https://github.com/mirador1/mirador-service
 #      → Branch Sources: scan all branches
 #   3. Credentials → System → Global credentials (unrestricted)
 #      → Add "sonar-token" (Secret text), "cosign-password" (Secret text),

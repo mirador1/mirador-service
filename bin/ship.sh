@@ -52,8 +52,8 @@ GITLAB_PROJECT=$(git remote get-url origin 2>/dev/null | sed -E 's|.*gitlab\.com
 GITHUB_REPO="${GITHUB_MIRROR:-}"   # Override per repo in an env file if needed
 if [[ -z "$GITHUB_REPO" ]]; then
   case "$GITLAB_PROJECT" in
-    mirador1/mirador-service) GITHUB_REPO="Beennnn/mirador-service" ;;
-    mirador1/mirador-ui)      GITHUB_REPO="Beennnn/mirador-ui" ;;
+    mirador1/mirador-service) GITHUB_REPO="mirador1/mirador-service" ;;
+    mirador1/mirador-ui)      GITHUB_REPO="mirador1/mirador-ui" ;;
     *)                        GITHUB_REPO="" ;;
   esac
 fi

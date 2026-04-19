@@ -10,8 +10,8 @@ Most recruiters browse **GitHub**, not GitLab. A project invisible on
 GitHub is missing an audience at effectively zero cost to reach.
 
 The fix: a read-only GitHub **mirror** at
-[github.com/Beennnn/mirador-service](https://github.com/Beennnn/mirador-service)
-and [github.com/Beennnn/mirador-ui](https://github.com/Beennnn/mirador-ui).
+[github.com/mirador1/mirador-service](https://github.com/mirador1/mirador-service)
+and [github.com/mirador1/mirador-ui](https://github.com/mirador1/mirador-ui).
 It reflects `main` + tags on every push. **It is not a fork** — GitHub
 cannot host MRs against it; contributors are told to open MRs on
 GitLab.
@@ -90,7 +90,7 @@ because:
 
 ```bash
 gitlab=$(git ls-remote https://gitlab.com/mirador1/mirador-service main | awk '{print $1}')
-github=$(git ls-remote https://github.com/Beennnn/mirador-service main | awk '{print $1}')
+github=$(git ls-remote https://github.com/mirador1/mirador-service main | awk '{print $1}')
 [ "$gitlab" = "$github" ] && echo "✅ in sync" || echo "❌ drift: GitLab=$gitlab GitHub=$github"
 ```
 
