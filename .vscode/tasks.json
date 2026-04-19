@@ -1,0 +1,56 @@
+{
+  // VS Code tasks — Cmd+Shift+B opens the menu. Each task wraps a
+  // common `./run.sh` action so you don't switch to a terminal.
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "stack: up (db + kafka + redis)",
+      "type": "shell",
+      "command": "./run.sh db && ./run.sh kafka",
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "problemMatcher": []
+    },
+    {
+      "label": "stack: down (clean)",
+      "type": "shell",
+      "command": "./run.sh stop",
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "problemMatcher": []
+    },
+    {
+      "label": "obs: up (LGTM)",
+      "type": "shell",
+      "command": "docker compose -f deploy/compose/observability.yml up -d lgtm cors-proxy",
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "problemMatcher": []
+    },
+    {
+      "label": "test: unit (mvn)",
+      "type": "shell",
+      "command": "./mvnw -q test",
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": "$tsc"
+    },
+    {
+      "label": "test: integration (mvn verify, no Keycloak)",
+      "type": "shell",
+      "command": "./mvnw -q verify -Dsurefire.skip=true",
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "problemMatcher": []
+    },
+    {
+      "label": "lint: spectral OpenAPI",
+      "type": "shell",
+      "command": "./run.sh openapi-lint",
+      "presentation": { "reveal": "silent", "panel": "shared" },
+      "problemMatcher": []
+    },
+    {
+      "label": "ship: open MR + arm auto-merge",
+      "type": "shell",
+      "command": "bin/ship.sh --wait",
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "problemMatcher": []
+    }
+  ]
+}

@@ -114,6 +114,9 @@
         <dependency-check-maven.version>12.2.1</dependency-check-maven.version>
         <sonar-maven-plugin.version>5.5.0.6356</sonar-maven-plugin.version>
 
+        <!-- Build provenance — git SHA + tag in /actuator/info -->
+        <git-commit-id-maven-plugin.version>9.0.2</git-commit-id-maven-plugin.version>
+
         <!-- Bytecode manipulation (ASM) — 9.9.1 adds Java 26 class-file version 70 support
              and retains Java 25 (version 69) compatibility. Pulled in by SpotBugs and
              overridden at the top-level dependency block. -->
@@ -581,6 +584,35 @@
                         <goals><goal>build-info</goal></goals>
                     </execution>
                 </executions>
+            </plugin>
+
+            <!--
+              git-commit-id-maven-plugin — exposes the build's git SHA, tag,
+              branch, and commit time to /actuator/info as `git.*` keys.
+              Combined with build-info above (`build.*`) this gives the
+              README footer + every Tempo trace a clear, immutable identity:
+              "this trace came from build a1b2c3d (v1.3, 2026-04-19)".
+              Pinned in <properties>; runs in the `initialize` phase so the
+              generated git.properties is on the classpath before tests.
+            -->
+            <plugin>
+                <groupId>io.github.git-commit-id</groupId>
+                <artifactId>git-commit-id-maven-plugin</artifactId>
+                <version>${git-commit-id-maven-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>get-git-info</id>
+                        <goals><goal>revision</goal></goals>
+                        <phase>initialize</phase>
+                    </execution>
+                </executions>
+                <configuration>
+                    <generateGitPropertiesFile>true</generateGitPropertiesFile>
+                    <generateGitPropertiesFilename>${project.build.outputDirectory}/git.properties</generateGitPropertiesFilename>
+                    <!-- Skip if the working tree isn't a git repo (e.g. in
+                         a tarball release) so the build still passes. -->
+                    <failOnNoGitDirectory>false</failOnNoGitDirectory>
+                </configuration>
             </plugin>
 
             <!--

@@ -1,0 +1,49 @@
+{
+  // VS Code debug configurations for the Mirador backend.
+  //
+  // F5 in any .java file → "Spring Boot — Mirador" launches the app
+  // attached to the debugger (Java extension required). Pick "Compound:
+  // Backend + UI" from the dropdown to also start the Angular dev server
+  // in a sibling workspace folder (../mirador-ui).
+  //
+  // The infra (Postgres, Kafka, Redis) is expected to be up via
+  // `./run.sh db kafka` or `./run.sh all` BEFORE pressing F5; the
+  // launch config does not bring it up to keep startup fast.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "java",
+      "name": "Spring Boot — Mirador",
+      "request": "launch",
+      "mainClass": "com.mirador.MiradorApplication",
+      "projectName": "mirador",
+      // Match `./run.sh app` env so VS Code F5 produces identical
+      // observability output (OTLP → Tempo, structured Logback → Loki).
+      "env": {
+        "SPRING_PROFILES_ACTIVE": "local",
+        "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4318",
+        "OTEL_SERVICE_NAME": "mirador"
+      }
+    },
+    {
+      "type": "node",
+      "name": "Angular dev server (mirador-ui)",
+      "request": "launch",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["start"],
+      "cwd": "${workspaceFolder}/../../js/mirador-ui",
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    }
+  ],
+  "compounds": [
+    {
+      // One-click full local stack. Backend + UI start in parallel;
+      // their consoles split into two integrated-terminal panes so you
+      // can tail logs from both without leaving the editor.
+      "name": "Backend + UI (full stack)",
+      "configurations": ["Spring Boot — Mirador", "Angular dev server (mirador-ui)"],
+      "stopAll": true
+    }
+  ]
+}

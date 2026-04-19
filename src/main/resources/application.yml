@@ -201,6 +201,13 @@ management:
       enabled: true
     build:
       enabled: true
+    # Expose `git.*` keys (commit SHA, tag, branch, build time) at
+    # /actuator/info — populated by git-commit-id-maven-plugin in pom.xml.
+    # `mode: full` includes the full commit message + author; switch to
+    # `simple` if you want only sha + branch in production.
+    git:
+      enabled: true
+      mode: full
 
   endpoint:
     health:
