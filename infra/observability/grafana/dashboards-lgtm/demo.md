@@ -38,7 +38,7 @@ stack is running (`./run.sh obs`). Open Grafana at http://localhost:3001.
 ## Provisioning path
 
 ```
-docker-compose.observability.yml
+deploy/compose/observability.yml
   └── grafana/otel-lgtm container
         └── /otel-lgtm/demo.json          ← this file (mounted from dashboards-lgtm/)
         └── /otel-lgtm/dashboard-demo-lgtm.yaml  ← provisioning config

@@ -18,7 +18,7 @@
 #   simulate  run HTTP traffic simulation (default: 60 iterations, 2s pause)
 #
 # GitLab CI/CD commands (runners execute on this machine, not gitlab.com shared runners):
-#   runner         start GitLab Runner (docker-compose.runner.yml)
+#   runner         start GitLab Runner (deploy/compose/runner.yml)
 #   runner-stop    stop GitLab Runner
 #   register-cloud register runner against gitlab.com  (./scripts/register-runner.sh cloud <TOKEN>)
 #
@@ -97,13 +97,13 @@ case "$1" in
   obs)
     ensure_docker
     echo "Starting observability stack..."
-    docker compose -f docker-compose.observability.yml up -d
+    docker compose -f deploy/compose/observability.yml up -d
     ;;
 
   runner)
     ensure_docker
     echo "Starting GitLab Runner..."
-    docker compose -f docker-compose.runner.yml up -d
+    docker compose -f deploy/compose/runner.yml up -d
     echo ""
     echo "  Runner is up. Register it against gitlab.com with:"
     echo "    ./run.sh register-cloud <TOKEN>"
@@ -112,7 +112,7 @@ case "$1" in
 
   runner-stop)
     echo "Stopping GitLab Runner..."
-    docker compose -f docker-compose.runner.yml down
+    docker compose -f deploy/compose/runner.yml down
     ;;
 
   register-cloud)
@@ -138,7 +138,7 @@ case "$1" in
     # Start infra services only (not the app container — we run locally via Maven)
     docker compose up -d db kafka redis ollama keycloak cloudbeaver kafka-ui redisinsight
     # Start observability stack
-    docker compose -f docker-compose.observability.yml up -d
+    docker compose -f deploy/compose/observability.yml up -d
     # Wait for DB to be healthy before starting the app
     echo -n "Waiting for PostgreSQL"
     until docker inspect -f '{{.State.Health.Status}}' postgres-demo 2>/dev/null | grep -q healthy; do
@@ -161,12 +161,12 @@ case "$1" in
     pgrep -f 'MiradorApplication' | xargs kill 2>/dev/null || true
     pgrep -f 'spring-boot:run' | xargs kill 2>/dev/null || true
     # Stop all containers (both compose files)
-    docker compose -f docker-compose.observability.yml down
+    docker compose -f deploy/compose/observability.yml down
     docker compose down
     # Start infra (not the app container — we run locally via Maven)
     docker compose up -d db kafka redis ollama keycloak cloudbeaver kafka-ui redisinsight
     # Start observability stack
-    docker compose -f docker-compose.observability.yml up -d
+    docker compose -f deploy/compose/observability.yml up -d
     # Wait for DB to be healthy before starting the app
     echo -n "Waiting for PostgreSQL"
     until docker inspect -f '{{.State.Health.Status}}' postgres-demo 2>/dev/null | grep -q healthy; do
@@ -184,8 +184,8 @@ case "$1" in
     pgrep -f 'MiradorApplication' | xargs kill 2>/dev/null || true
     pgrep -f 'spring-boot:run' | xargs kill 2>/dev/null || true
     docker compose down -v
-    docker compose -f docker-compose.observability.yml down -v
-    docker compose -f docker-compose.runner.yml down -v 2>/dev/null || true
+    docker compose -f deploy/compose/observability.yml down -v
+    docker compose -f deploy/compose/runner.yml down -v 2>/dev/null || true
     $MAVEN clean
     echo "Done. Run './run.sh all' to start from scratch."
     ;;
@@ -195,8 +195,8 @@ case "$1" in
     pgrep -f 'MiradorApplication' | xargs kill 2>/dev/null || true
     pgrep -f 'spring-boot:run' | xargs kill 2>/dev/null || true
     docker compose down
-    docker compose -f docker-compose.observability.yml down
-    docker compose -f docker-compose.runner.yml down 2>/dev/null || true
+    docker compose -f deploy/compose/observability.yml down
+    docker compose -f deploy/compose/runner.yml down 2>/dev/null || true
     ;;
 
   # ---------------------------------------------------------------------------

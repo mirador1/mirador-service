@@ -192,8 +192,15 @@ Kept regardless of pressure, with the reason each earns its place:
 
 ## AI-assisted integration — where it contributed, where it didn't
 
-The project was built in close collaboration with a reasoning LLM. The
-split between what came from the model and what came from a human
+The project was built in close collaboration with a reasoning LLM —
+specifically **Anthropic's [Claude Opus 4.7](https://www.anthropic.com/claude)**
+(1 M-token context window), driven from the
+[Claude Code](https://docs.anthropic.com/claude/docs/claude-code) CLI.
+Each commit's `Co-Authored-By:` trailer names the exact model
+responsible, so the git log doubles as an audit trail of where the
+assistant contributed.
+
+The split between what came from the model and what came from a human
 review is worth being explicit about, because it changes how each
 part should be read.
 
@@ -745,7 +752,7 @@ Credentials: `admin/admin` · `user/user` · `viewer/viewer`
 
 ```bash
 # 1. Start the runner
-docker compose -f docker-compose.runner.yml up -d
+docker compose -f deploy/compose/runner.yml up -d
 
 # 2. Register it (one-time — get the token from gitlab.com → Settings → CI/CD → Runners)
 ./scripts/register-runner.sh glrt-xxxxxxxxxxxx

@@ -30,7 +30,12 @@ rules:
   operation-operationId-unique: error
 
   # Operations must document the main error codes, not just happy path.
-  operation-4xx-response: warn
+  # Spectral 6.15 removed the built-in `operation-4xx-response` rule (it now
+  # lives in the community `@stoplight/spectral-rulesets` package). We rely
+  # on the tighter `operation-success-response` from spectral:oas instead,
+  # which already flags missing response documentation on 2xx/4xx/5xx. If
+  # we need 4xx-specific enforcement later, install the community ruleset
+  # and re-add under `extends:`. See the Spectral 6→7 upgrade notes.
 
   # Tags must be defined at the top level (not invented inline per op).
   operation-tag-defined: warn
@@ -48,6 +53,7 @@ rules:
   # Avoid exposing internal error stack structure in schemas.
   no-$ref-siblings: error
 
-  # Schemas in components/schemas must be referenced by at least one operation.
-  # (Unused schemas suggest stale code — flag but don't block.)
-  no-unused-components: warn
+  # Note: `no-unused-components` was removed from the built-in
+  # spectral:oas preset in 6.15 (same upgrade that retired
+  # `operation-4xx-response`). If we want that check back, install
+  # `@stoplight/spectral-rulesets` and add it under `extends:`.

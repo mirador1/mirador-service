@@ -1,7 +1,7 @@
 # =============================================================================
 # Prometheus scrape configuration
 #
-# This file is mounted into the Prometheus container via docker-compose.observability.yml.
+# This file is mounted into the Prometheus container via deploy/compose/observability.yml.
 # Prometheus scrapes the Spring Boot Actuator Prometheus endpoint at the configured interval
 # and stores time-series metrics in its local TSDB.
 #

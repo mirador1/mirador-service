@@ -133,9 +133,17 @@ Conservés quelle que soit la pression, avec la raison pour chacun :
 ## Intégration assistée par IA — où elle a contribué, où elle n'a pas
 
 Le projet a été construit en collaboration serrée avec un LLM de
-raisonnement. Le partage entre ce qui vient du modèle et ce qui vient
-d'une revue humaine vaut d'être explicite, parce qu'il change la
-façon dont chaque partie doit être lue.
+raisonnement — en l'occurrence **[Claude Opus 4.7](https://www.anthropic.com/claude)
+d'Anthropic** (fenêtre contextuelle d'un million de tokens), piloté
+depuis le CLI
+[Claude Code](https://docs.anthropic.com/claude/docs/claude-code).
+Chaque commit porte un trailer `Co-Authored-By:` qui nomme le modèle
+exact, de sorte que le log git fait office de piste d'audit sur les
+zones où l'assistant a contribué.
+
+Le partage entre ce qui vient du modèle et ce qui vient d'une revue
+humaine vaut d'être explicite, parce qu'il change la façon dont
+chaque partie doit être lue.
 
 **Division du travail, en une phrase** :
 

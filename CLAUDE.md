@@ -175,7 +175,7 @@ Full details in `pom.xml` property comments and the cached report at `src/main/r
 
 Two compose files — never merge them:
 - `docker-compose.yml` — infra (PostgreSQL, Kafka, Redis, Ollama, Keycloak, admin tools)
-- `docker-compose.observability.yml` — observability (Grafana, Prometheus, Tempo, Loki, Zipkin, Pyroscope)
+- `deploy/compose/observability.yml` — observability (Grafana, Prometheus, Tempo, Loki, Zipkin, Pyroscope)
 
 Loki, Tempo, Grafana are already inside the LGTM container — do NOT add them as separate services.
 
@@ -187,6 +187,9 @@ Loki, Tempo, Grafana are already inside the LGTM container — do NOT add them a
 - [ ] New timer/counter/gauge — pre-registered in constructor, not lazily?
 - [ ] Exception handlers — nothing silently swallowed (empty `catch` blocks)?
 - [ ] Javadoc on public methods with non-obvious parameters or return values
+- [ ] **Root hygiene**: no new file added to repo root that belongs under
+      `config/`, `build/`, `deploy/compose/`, `docs/`, or `ci/`. See
+      ~/.claude/CLAUDE.md → "Root file hygiene" for the authoritative list.
 
 ## Docker Cleanup
 

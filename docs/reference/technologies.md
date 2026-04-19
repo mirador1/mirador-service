@@ -64,7 +64,7 @@ Sibling catalogue for the Angular UI: <https://gitlab.com/mirador1/mirador-ui/-/
 
 ### ☕ [GraalVM Community Edition 25](https://www.graalvm.org/)
 - **What it is**: Alternative JVM implementation with an ahead-of-time (AOT) native-image compiler.
-- **Usage here**: `Dockerfile.native` stage 1 uses `ghcr.io/graalvm/native-image-community:25`; `mvn -Pnative native:compile` runs `process-aot` then `native:compile`. CI job `build-native` produces the native image on the daily schedule or on demand.
+- **Usage here**: build/Dockerfile.native` stage 1 uses `ghcr.io/graalvm/native-image-community:25`; `mvn -Pnative native:compile` runs `process-aot` then `native:compile`. CI job `build-native` produces the native image on the daily schedule or on demand.
 - **Why it's pertinent**: Startup drops from ~3 s to ~50 ms and RSS from ~250 MB to ~50 MB. Critical for serverless (Cloud Run) and GKE Autopilot where pod-level memory costs money.
 
 ### ☕ [JVM bytecode](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-4.html)
@@ -372,7 +372,7 @@ Sibling catalogue for the Angular UI: <https://gitlab.com/mirador1/mirador-ui/-/
 
 ### 📡 [LGTM stack (Grafana Labs)](https://github.com/grafana/docker-otel-lgtm)
 - **What it is**: Single container bundling Loki, Grafana, Tempo, Mimir and Pyroscope for development.
-- **Usage here**: `grafana/otel-lgtm:0.22.1` in `docker-compose.observability.yml`; OTel Collector inside the container scrapes `/actuator/prometheus` every 15 s and ingests OTLP traces/logs.
+- **Usage here**: `grafana/otel-lgtm:0.22.1` in `deploy/compose/observability.yml`; OTel Collector inside the container scrapes `/actuator/prometheus` every 15 s and ingests OTLP traces/logs.
 - **Why it's pertinent**: One container gives you the full Grafana observability experience for local dev. In production we use Grafana Cloud (same stack, hosted).
 
 ### 📡 [Loki](https://grafana.com/oss/loki/)
@@ -809,7 +809,7 @@ Sibling catalogue for the Angular UI: <https://gitlab.com/mirador1/mirador-ui/-/
 
 ### 🐳 [Docker Compose](https://docs.docker.com/compose/)
 - **What it is**: Multi-container orchestration file format (v3).
-- **Usage here**: `docker-compose.yml` (infra: db, kafka, redis, ollama, keycloak, app, admin UIs, SonarQube, nginx report servers) + `docker-compose.observability.yml` (LGTM stack) + `docker-compose.runner.yml` (optional GitLab runner container).
+- **Usage here**: `docker-compose.yml` (infra: db, kafka, redis, ollama, keycloak, app, admin UIs, SonarQube, nginx report servers) + `deploy/compose/observability.yml` (LGTM stack) + `deploy/compose/runner.yml` (optional GitLab runner container).
 - **Why it's pertinent**: One command stands up the full dev stack. Keeps `docker compose up -d` as the entry point for every new developer.
 
 ### 🐘 [CloudBeaver](https://dbeaver.com/docs/cloudbeaver/)

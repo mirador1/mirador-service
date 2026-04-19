@@ -221,10 +221,14 @@ Heuristics the maintainer applies:
 
 ## Acknowledgements
 
-The project is built in close collaboration with an LLM — see the
-"AI-assisted integration" section in the README. Contributors are
-welcome to use the same tooling. Human review remains the authority
-on scope and arbitrage.
+The project is built in close collaboration with Anthropic's
+[Claude Opus 4.7](https://www.anthropic.com/claude) (1 M-token
+context), driven from the
+[Claude Code](https://docs.anthropic.com/claude/docs/claude-code) CLI
+— see the "AI-assisted integration" section in the README for the
+split of contributions. Contributors are welcome to use the same
+tooling; the `Co-Authored-By:` trailer on each commit names the exact
+model. Human review remains the authority on scope and arbitrage.
 
 ---
 

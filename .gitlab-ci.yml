@@ -109,8 +109,12 @@ default:
   # trivy scans the registry image directly (no DinD needed either).
 
 variables:
-  # Keep the local Maven repo inside the project dir so it is cached across jobs
-  MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+  # Keep the local Maven repo inside the project dir so it is cached across jobs.
+  # -Xmx3g: pipeline #482 SIGKILL'd (exit 137) during integration-test because
+  # Testcontainers + Spring Boot + Keycloak quarkus process each reserve ~400-800 MB
+  # against the default heap (~400 MB on a 2-GB runner). 3 GB gives headroom for
+  # the integration matrix without needing a bigger runner tier.
+  MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository -Xmx3g"
   MAVEN_CLI_OPTS: "--batch-mode --errors --fail-at-end --show-version --no-transfer-progress"
   # Testcontainers default: Ryuk disabled so cleanup doesn't bind 172.17.0.1.
   # TESTCONTAINERS_HOST_OVERRIDE is overridden per-job (integration-test uses host.docker.internal).
@@ -232,7 +236,9 @@ openapi-lint:
       kill "$APP_PID" 2>/dev/null || true
       test -s /tmp/openapi.json || { echo "Failed to fetch /v3/api-docs"; cat /tmp/app.log | tail -40; exit 1; }
     # Run Spectral with our ruleset. --fail-severity error = block only on errors.
-    - npx --yes @stoplight/spectral-cli lint /tmp/openapi.json --ruleset .spectral.yaml --fail-severity error
+    # Pin the CLI version — floating `latest` silently renamed/removed rules
+    # (e.g. `operation-4xx-response` gone in 6.15 broke pipeline #474).
+    - npx --yes @stoplight/spectral-cli@6.15.1 lint /tmp/openapi.json --ruleset .spectral.yaml --fail-severity error
   artifacts:
     when: always
     paths:
@@ -471,6 +477,15 @@ integration-test:
   needs:
     - job: unit-test
       artifacts: true   # downloads target/jacoco.exec so JaCoCo:merge can combine unit + IT coverage
+  # Testcontainers container startup on a cold runner is the #1 transient
+  # flake: a Keycloak + Postgres + Kafka + Redis pull happens fresh on
+  # every new CI worker. Retry once on `runner_system_failure` (Docker
+  # daemon hiccup) — real test failures still surface via exit 1 and
+  # won't loop. Paired with the 5-min `withStartupTimeout` bumped on
+  # KeycloakAuthITest in 2026-Q2.
+  retry:
+    max: 1
+    when: runner_system_failure
   # No DinD service — Testcontainers uses /var/run/docker.sock mounted by the runner
   script:
     # -Dsurefire.skip=true: unit tests already validated in the previous stage,
@@ -963,6 +978,13 @@ sbom:syft:
       when: never
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_COMMIT_TAG
+  # Go runtime occasionally panics with `lfstack.push invalid packing` when
+  # syft's multi-arch amd64 binary runs under QEMU emulation on the arm64
+  # macbook-local runner (see pipeline #474). Two retries absorb this
+  # transient flake without hiding real failures.
+  retry:
+    max: 2
+    when: runner_system_failure
   script:
     - |
       export PATH="/:$PATH"
@@ -1427,7 +1449,7 @@ build-native:
     # `changes:` compares against the previous pipeline on this branch; skips if nothing changed.
     - if: $CI_PIPELINE_SOURCE == "schedule" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $REPORT_PIPELINE != "true"
       changes:
-        - Dockerfile.native
+        - build/Dockerfile.native
         - pom.xml
         - src/**/*
     # Manual ▶ button in any pipeline (MR or branch) — click to trigger a native build.
@@ -1446,7 +1468,7 @@ build-native:
     - |
       /kaniko/executor \
         --context "$CI_PROJECT_DIR" \
-        --dockerfile "$CI_PROJECT_DIR/Dockerfile.native" \
+        --dockerfile "$CI_PROJECT_DIR/build/Dockerfile.native" \
         --destination "$CI_REGISTRY_IMAGE:native-$CI_COMMIT_SHA" \
         --destination "$CI_REGISTRY_IMAGE:native-$CI_COMMIT_REF_SLUG" \
         --cache=true \

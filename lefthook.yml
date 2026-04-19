@@ -276,7 +276,7 @@ commit-msg:
           echo "  chore(deps): bump jjwt 0.12.6 -> 0.13.0"
           echo "  refactor!: rename package com.example.app -> com.mirador"
           echo ""
-          echo "Doc: commitlint.config.mjs describes the rules."
+          echo "Doc: config/commitlint.config.mjs describes the rules."
           exit 1
         fi
         # Enforce max header length (72 chars).
