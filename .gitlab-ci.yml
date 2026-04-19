@@ -1879,7 +1879,10 @@ github-mirror:
       # Decode the base64-wrapped private key. Base64 is used because
       # GitLab's `masked` flag only accepts single-line printable values.
       mkdir -p ~/.ssh && chmod 700 ~/.ssh
-      echo "$GITHUB_MIRROR_SSH_KEY" | base64 -d > ~/.ssh/id_ed25519
+      # `printf '%s'` avoids the trailing newline that `echo` appends;
+      # with a trailing newline the base64 decode silently drops the
+      # last quartet and produces a corrupt key ("error in libcrypto").
+      printf '%s' "$GITHUB_MIRROR_SSH_KEY" | base64 -d > ~/.ssh/id_ed25519
       chmod 600 ~/.ssh/id_ed25519
       # Preload GitHub's host key so the connection doesn't prompt.
       ssh-keyscan -t ed25519,ecdsa-sha2-nistp256 github.com >> ~/.ssh/known_hosts 2>/dev/null
