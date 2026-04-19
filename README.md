@@ -1,5 +1,13 @@
 ![Mirador Service](docs/assets/banner.svg)
 
+<!-- Build / release status. GitLab badges first — canonical CI.
+     GitHub badges (CodeQL, Scorecard) render only on the GitHub mirror. -->
+[![pipeline](https://gitlab.com/mirador1/mirador-service/badges/main/pipeline.svg)](https://gitlab.com/mirador1/mirador-service/-/pipelines)
+[![coverage](https://gitlab.com/mirador1/mirador-service/badges/main/coverage.svg)](https://gitlab.com/mirador1/mirador-service/-/pipelines)
+[![latest release](https://gitlab.com/mirador1/mirador-service/-/badges/release.svg)](https://gitlab.com/mirador1/mirador-service/-/releases)
+[![CodeQL](https://github.com/Beennnn/mirador-service/actions/workflows/codeql.yml/badge.svg)](https://github.com/Beennnn/mirador-service/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Beennnn/mirador-service/badge)](https://scorecard.dev/viewer/?uri=github.com/Beennnn/mirador-service)
+
 <!-- Tech badges — grouped by concern so the README reflects the ADR story,
      not just a technology dump. Each group corresponds to an ADR or a
      docs/architecture/*.md page. Bumping the list here should mirror
@@ -52,7 +60,8 @@
 ![Chaos Mesh](https://img.shields.io/badge/Chaos_Mesh-NetworkChaos-FF6B35?logo=kubernetes&logoColor=white)
 
 **CI / release**
-![GitLab CI](https://img.shields.io/badge/GitLab_CI-local_runner-FC6D26?logo=gitlab&logoColor=white)
+![GitLab CI](https://img.shields.io/badge/GitLab_CI-canonical-FC6D26?logo=gitlab&logoColor=white)
+![Jenkinsfile](https://img.shields.io/badge/Jenkinsfile-parity-D24939?logo=jenkins&logoColor=white)
 ![Renovate](https://img.shields.io/badge/Renovate-bump_bot-1A1F6C?logo=renovatebot&logoColor=white)
 ![release-please](https://img.shields.io/badge/release--please-CHANGELOG_+_semver-4285F4)
 ![lefthook](https://img.shields.io/badge/lefthook-pre--push_gates-000000)

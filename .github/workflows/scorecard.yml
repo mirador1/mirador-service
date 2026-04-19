@@ -1,0 +1,65 @@
+# =============================================================================
+# OSSF Scorecard — 20-point scan of supply-chain + repo-security signals.
+#
+# Why on GitHub, not GitLab: the data source is GitHub-specific (branch
+# protection rules, workflow files, Dependabot status, signed commits,
+# SAST presence on GitHub Actions). A GitLab equivalent would score
+# against different data and produce a different, non-comparable number.
+#
+# The badge renders on the README and at https://scorecard.dev/viewer/
+# and signals to reviewers at a glance: "this project passes 16/20 of
+# the OSSF best practices". Typical improvement targets that show up
+# here: pin Actions by SHA not tag, enable Dependabot (we don't —
+# Renovate on GitLab does it, and Scorecard doesn't cross-reference),
+# branch protection with require-signed-commits.
+# =============================================================================
+name: OSSF Scorecard
+
+on:
+  branch_protection_rule:
+  schedule:
+    # Weekly — Scorecard checks things that rarely change (branch rules,
+    # SBOM presence, SAST); daily runs would be noise.
+    - cron: '0 3 * * 1'
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions: read-all
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      # Needed to publish results to the Scorecard dashboard.
+      security-events: write
+      # Needed for publishing results via `publish_results: true`.
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Run analysis
+        uses: ossf/scorecard-action@v2.4.0
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          # Upload to https://scorecard.dev/viewer/ for the badge.
+          publish_results: true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SARIF-file
+          path: results.sarif
+          retention-days: 5
+
+      - name: Upload to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif

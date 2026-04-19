@@ -1,136 +1,95 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 280" width="1200" height="280" role="img" aria-label="Mirador — watchtower over a running system">
   <defs>
     <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%"  stop-color="#0b1628"/>
-      <stop offset="55%" stop-color="#0f2238"/>
-      <stop offset="100%" stop-color="#0a1a2d"/>
+      <stop offset="0%"  stop-color="#0a1424"/>
+      <stop offset="50%" stop-color="#0f2238"/>
+      <stop offset="100%" stop-color="#081526"/>
     </linearGradient>
-    <radialGradient id="glow" cx="50%" cy="55%" r="60%">
-      <stop offset="0%"   stop-color="#60a5fa" stop-opacity="0.15"/>
+    <radialGradient id="beam" cx="18%" cy="55%" r="55%">
+      <stop offset="0%"   stop-color="#60a5fa" stop-opacity="0.22"/>
+      <stop offset="60%"  stop-color="#60a5fa" stop-opacity="0.04"/>
       <stop offset="100%" stop-color="#60a5fa" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="title-grad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%"  stop-color="#e2e8f0"/>
+      <stop offset="55%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#93c5fd"/>
+    </linearGradient>
+    <!-- Pulsing dot for the lighthouse beacon -->
+    <radialGradient id="pulse" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"  stop-color="#34d399" stop-opacity="1"/>
+      <stop offset="60%" stop-color="#34d399" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#34d399" stop-opacity="0"/>
     </radialGradient>
   </defs>
 
+  <!-- Sky -->
   <rect width="1200" height="280" fill="url(#sky)"/>
-  <circle cx="600" cy="150" r="260" fill="url(#glow)"/>
+  <!-- Soft lighthouse beam, sweeping from the tower outward -->
+  <ellipse cx="210" cy="155" rx="900" ry="70" fill="url(#beam)" opacity="0.7"/>
 
-  <!-- Subtle stars -->
-  <g fill="#60a5fa" opacity="0.45">
-    <circle cx="90"   cy="40"  r="1.4"/>
-    <circle cx="180"  cy="70"  r="1.0"/>
-    <circle cx="1050" cy="50"  r="1.6"/>
-    <circle cx="1150" cy="100" r="1.1"/>
-    <circle cx="50"   cy="220" r="1.2"/>
-    <circle cx="1150" cy="240" r="1.3"/>
+  <!-- Distant stars / data points — very sparse, very subtle -->
+  <g fill="#93c5fd" opacity="0.5">
+    <circle cx="860"  cy="48" r="1.1"/>
+    <circle cx="940"  cy="68" r="0.9"/>
+    <circle cx="1020" cy="34" r="1.3"/>
+    <circle cx="1100" cy="80" r="0.8"/>
+    <circle cx="980"  cy="110" r="0.7"/>
+    <circle cx="1130" cy="150" r="1.0"/>
+  </g>
+  <g fill="#34d399" opacity="0.45">
+    <circle cx="900"  cy="92" r="0.9"/>
+    <circle cx="1070" cy="52" r="1.0"/>
   </g>
 
-  <!-- Watchtower silhouette (left) -->
-  <g transform="translate(92 48)" fill="#34d399" opacity="0.95">
-    <rect x="18" y="80" width="28" height="100" rx="2" opacity="0.9"/>
-    <rect x="8"  y="66" width="48" height="14" rx="2"/>
-    <rect x="8"  y="58" width="8"  height="8"  rx="1"/>
-    <rect x="20" y="58" width="8"  height="8"  rx="1"/>
-    <rect x="32" y="58" width="8"  height="8"  rx="1"/>
-    <rect x="44" y="58" width="8"  height="8"  rx="1"/>
-    <g fill="none" stroke="#34d399" stroke-width="1.2" opacity="0.8">
-      <path d="M 78 56 A 22 22 0 0 1 100 78"/>
-      <path d="M 78 46 A 32 32 0 0 1 110 78"/>
-      <path d="M 78 36 A 42 42 0 0 1 120 78"/>
+  <!-- Thin horizon line -->
+  <line x1="0" y1="228" x2="1200" y2="228" stroke="#1e293b" stroke-width="1" opacity="0.9"/>
+
+  <!-- Watchtower silhouette — same shape as before, just more
+       confidently placed and nothing else nearby to compete with it. -->
+  <g transform="translate(140 72)" opacity="0.95">
+    <!-- Tower body -->
+    <rect x="22" y="76" width="30" height="80" rx="2" fill="#34d399" opacity="0.92"/>
+    <!-- Observation deck -->
+    <rect x="10" y="62" width="54" height="16" rx="2" fill="#34d399"/>
+    <!-- Battlements -->
+    <rect x="10" y="54" width="9" height="8" rx="1" fill="#34d399"/>
+    <rect x="23" y="54" width="9" height="8" rx="1" fill="#34d399"/>
+    <rect x="36" y="54" width="9" height="8" rx="1" fill="#34d399"/>
+    <rect x="49" y="54" width="9" height="8" rx="1" fill="#34d399"/>
+    <!-- Window / eye -->
+    <ellipse cx="37" cy="92" rx="5.5" ry="4.5" fill="#0a1424" stroke="#93c5fd" stroke-width="1.4"/>
+    <circle cx="37" cy="92" r="2.2" fill="#60a5fa"/>
+    <!-- Pulsing beacon at the very top -->
+    <circle cx="37" cy="50" r="5" fill="url(#pulse)"/>
+    <circle cx="37" cy="50" r="1.8" fill="#34d399"/>
+    <!-- Radar-style wide arcs sweeping right — the single visual motif -->
+    <g fill="none" stroke="#34d399" stroke-linecap="round" opacity="0.75">
+      <path d="M 80 60 A 32 32 0 0 1 112 92"   stroke-width="1.3"/>
+      <path d="M 80 46 A 48 48 0 0 1 128 92"   stroke-width="1.1" opacity="0.55"/>
+      <path d="M 80 32 A 64 64 0 0 1 144 92"   stroke-width="0.9" opacity="0.35"/>
+      <path d="M 80 18 A 80 80 0 0 1 160 92"   stroke-width="0.7" opacity="0.20"/>
     </g>
-    <circle cx="34" cy="92" r="4" fill="#0b1628" stroke="#93c5fd" stroke-width="1.3"/>
-    <circle cx="34" cy="92" r="1.8" fill="#60a5fa"/>
   </g>
 
-  <!-- Main title -->
+  <!-- Title -->
   <g font-family="'Inter','Segoe UI',system-ui,sans-serif">
-    <text x="240" y="130" font-size="72" font-weight="800" fill="#e2e8f0" letter-spacing="4">
-      MIRADOR
+    <text x="296" y="138" font-size="96" font-weight="800" letter-spacing="6" fill="url(#title-grad)">MIRADOR</text>
+    <!-- Subtitle — one honest line, no marketing. -->
+    <text x="298" y="174" font-size="15" font-weight="500" fill="#94a3b8" letter-spacing="4.5">
+      WATCHTOWER OVER A RUNNING SYSTEM
     </text>
-    <text x="240" y="162" font-size="17" font-weight="500" fill="#94a3b8" letter-spacing="3">
-      <tspan fill="#34d399">·</tspan>  WATCHTOWER OVER A RUNNING SYSTEM  <tspan fill="#34d399">·</tspan>
-    </text>
-    <text x="240" y="188" font-size="13" font-weight="400" fill="#64748b" letter-spacing="1">
-      code · runtime metrics · CI/CD · industrial tooling — observed from one pane
-    </text>
-  </g>
-  <rect x="240" y="200" width="120" height="2" rx="1" fill="#34d399" opacity="0.6"/>
-
-  <!-- Word cloud -->
-  <g font-family="'Inter',system-ui,sans-serif" font-weight="700">
-    <!-- Platform axis (top) — GitOps + supply of manifests -->
-    <text x="240"  y="42"  font-size="13" fill="#94a3b8">Kubernetes</text>
-    <text x="342"  y="42"  font-size="13" fill="#94a3b8">Kustomize</text>
-    <text x="440"  y="42"  font-size="13" fill="#94a3b8">Argo CD</text>
-    <text x="520"  y="42"  font-size="13" fill="#94a3b8">Argo Rollouts</text>
-    <text x="622"  y="42"  font-size="13" fill="#94a3b8">Terraform</text>
-    <text x="710"  y="42"  font-size="13" fill="#94a3b8">GKE Autopilot</text>
-    <text x="830"  y="42"  font-size="13" fill="#94a3b8">kind</text>
-    <text x="870"  y="42"  font-size="13" fill="#94a3b8">Helm</text>
-
-    <text x="240"  y="62"  font-size="13" fill="#94a3b8">External Secrets · GSM</text>
-    <text x="400"  y="62"  font-size="13" fill="#94a3b8">cert-manager</text>
-    <text x="510"  y="62"  font-size="13" fill="#94a3b8">Kyverno</text>
-    <text x="580"  y="62"  font-size="13" fill="#94a3b8">Chaos Mesh</text>
-    <text x="685"  y="62"  font-size="13" fill="#94a3b8">Unleash</text>
-    <text x="760"  y="62"  font-size="13" fill="#94a3b8">Cloud Functions · Pub/Sub</text>
-
-    <!-- AI highlight (right) -->
-    <text x="240"  y="82"  font-size="13" fill="#34d399">🤖 AI-assisted integration — LLM-authored ADRs · glossary · CI · K8s baseline</text>
-
-    <!-- Languages / frameworks row -->
-    <text x="260"  y="104" font-size="15" fill="#dd0031">Angular 21</text>
-    <text x="370"  y="104" font-size="15" fill="#3178c6">TypeScript</text>
-    <text x="478"  y="104" font-size="15" fill="#6DB33F">Spring Boot 4</text>
-    <text x="620"  y="104" font-size="15" fill="#ed8b00">Java 25</text>
-    <text x="708"  y="104" font-size="13" fill="#94a3b8">Virtual Threads</text>
-    <text x="820"  y="104" font-size="13" fill="#94a3b8">Signals · Zoneless</text>
-    <text x="970"  y="104" font-size="13" fill="#94a3b8">Micrometer</text>
-
-    <!-- Resilience + security layer (between title and observability) -->
-    <text x="240"  y="212" font-size="13" fill="#94a3b8">Resilience4j</text>
-    <text x="335"  y="212" font-size="13" fill="#94a3b8">Bucket4j</text>
-    <text x="405"  y="212" font-size="13" fill="#94a3b8">Auth0</text>
-    <text x="455"  y="212" font-size="13" fill="#94a3b8">Keycloak</text>
-    <text x="530"  y="212" font-size="13" fill="#94a3b8">OIDC · JWT</text>
-    <text x="625"  y="212" font-size="13" fill="#94a3b8">NetworkPolicy</text>
-    <text x="738"  y="212" font-size="13" fill="#94a3b8">PodSecurity</text>
-    <text x="830"  y="212" font-size="13" fill="#94a3b8">Workload Identity</text>
-
-    <!-- Core observability (centre bright) -->
-    <text x="240"  y="234" font-size="22" fill="#60a5fa">OpenTelemetry</text>
-    <text x="410"  y="234" font-size="22" fill="#fbbf24">Grafana</text>
-    <text x="528"  y="234" font-size="18" fill="#f87171">Tempo</text>
-    <text x="600"  y="234" font-size="18" fill="#a78bfa">Loki</text>
-    <text x="660"  y="234" font-size="18" fill="#34d399">Mimir</text>
-    <text x="734"  y="234" font-size="14" fill="#22d3ee">Pyroscope</text>
-    <text x="820"  y="234" font-size="12" fill="#64748b">(LGTM)</text>
-
-    <!-- Data / messaging column (right) -->
-    <text x="1010" y="120" font-size="14" fill="#4169e1">PostgreSQL</text>
-    <text x="1010" y="142" font-size="14" fill="#dc382d">Redis</text>
-    <text x="1010" y="164" font-size="14" fill="#e0e0e0">Kafka KRaft</text>
-    <text x="1010" y="186" font-size="12" fill="#94a3b8">Flyway · Testcontainers</text>
-    <text x="1010" y="204" font-size="12" fill="#94a3b8">Spring AI · Ollama</text>
-
-    <!-- Supply chain / CI / quality (bottom row) -->
-    <text x="240"  y="260" font-size="12" fill="#94a3b8">GitLab CI</text>
-    <text x="310"  y="260" font-size="12" fill="#94a3b8">lefthook</text>
-    <text x="368"  y="260" font-size="12" fill="#94a3b8">commitlint</text>
-    <text x="440"  y="260" font-size="12" fill="#94a3b8">cosign · Sigstore</text>
-    <text x="538"  y="260" font-size="12" fill="#94a3b8">SBOM</text>
-    <text x="576"  y="260" font-size="12" fill="#94a3b8">Syft · Grype · Trivy</text>
-    <text x="697"  y="260" font-size="12" fill="#94a3b8">Dockle</text>
-    <text x="742"  y="260" font-size="12" fill="#94a3b8">Semgrep</text>
-    <text x="800"  y="260" font-size="12" fill="#94a3b8">gitleaks</text>
-    <text x="855"  y="260" font-size="12" fill="#94a3b8">OWASP Dep-Check</text>
-    <text x="960"  y="260" font-size="12" fill="#94a3b8">Sonar · PIT · JaCoCo</text>
-    <text x="1088" y="260" font-size="12" fill="#94a3b8">Renovate · RP</text>
+    <!-- Minimal accent bar under the subtitle. -->
+    <rect x="298" y="186" width="80" height="2" rx="1" fill="#34d399" opacity="0.8"/>
+    <rect x="382" y="186" width="4"  height="2" rx="1" fill="#34d399" opacity="0.4"/>
+    <rect x="390" y="186" width="2"  height="2" rx="1" fill="#34d399" opacity="0.2"/>
   </g>
 
-  <!-- Repo badge (top right corner) -->
-  <g transform="translate(1020 172)">
-    <rect x="0" y="0" width="160" height="38" rx="8" fill="#1e293b" stroke="#334155"/>
-    <text x="12" y="17" font-family="'Inter',system-ui,sans-serif" font-size="10" font-weight="700" fill="#94a3b8" letter-spacing="2">REPOSITORY</text>
-    <text x="12" y="31" font-family="'JetBrains Mono','Fira Code',monospace" font-size="13" font-weight="700" fill="#e2e8f0">mirador-service</text>
+  <!-- Bottom-right: two honest provenance labels, small, muted.
+       Nothing else. No tech list, no badge soup. -->
+  <g font-family="'JetBrains Mono','Fira Code',ui-monospace,monospace"
+     fill="#64748b" font-size="10.5" letter-spacing="1" text-anchor="end">
+    <text x="1170" y="248">mirador-service  ·  Spring Boot 4  ·  Java 25</text>
+    <text x="1170" y="264" fill="#475569" font-size="9.5">gitlab.com/mirador1  ·  paired UI: mirador-ui</text>
   </g>
 </svg>
