@@ -21,7 +21,7 @@ navigational, no file layout change.
 
 ## Status snapshot
 
-- **Accepted**: 32
+- **Accepted**: 33
 - **Superseded**: 1 (ADR-0003 → ADR-0013)
 - **Deprecated**: 0
 
@@ -75,6 +75,7 @@ monotonic across supersessions.
 | 0031 | Accepted | [Version adoption policy — patch / minor / major](0031-version-adoption-policy.md) |
 | 0032 | Accepted | [Community standards + hierarchical ADR index](0032-community-standards-and-hierarchical-adr-index.md) |
 | 0033 | Accepted | [Playwright E2E in kind-in-CI](0033-playwright-e2e-in-kind-in-ci.md) |
+| 0034 | Accepted | [CI memory budget + Testcontainers-heavy ITs](0034-ci-memory-budget-testcontainers.md) |
 
 ## Hierarchical index (by theme)
 
@@ -110,6 +111,7 @@ authoritative.
 - [ADR-0029](0029-jenkinsfile-parity-and-declarative-linter.md) — Jenkinsfile parity demonstrator + linter
 - [ADR-0031](0031-version-adoption-policy.md) — Version adoption policy
 - [ADR-0033](0033-playwright-e2e-in-kind-in-ci.md) — Playwright E2E in kind-in-CI
+- [ADR-0034](0034-ci-memory-budget-testcontainers.md) — CI memory budget + Testcontainers-heavy ITs
 
 ### ☸️ Kubernetes & deployment
 
