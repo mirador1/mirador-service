@@ -96,6 +96,7 @@ stages:
   - reports       # Maven site + docs generation (report schedule only — REPORT_PIPELINE=true)
   - infra         # Terraform plan/apply for GCP infrastructure (manual)
   - deploy        # Deploy to Kubernetes / PaaS (6 targets — see below)
+  - mirror        # Push main to the read-only GitHub mirror (ADR-0029 ci-philosophy.md)
 
 # ── shared defaults ────────────────────────────────────────────────────────────
 
@@ -1846,3 +1847,46 @@ deploy:k3s:
       kubectl config set-context default --cluster=self-hosted --user=ci-runner
       kubectl config use-context default
     - !reference [.kubectl-apply, script]
+
+# ── stage: mirror — read-only push to GitHub mirror ──────────────────────────
+#
+# Why this job exists: docs/ops/ci-philosophy.md (Rule 2 — GitHub is a
+# narrow-CI read-only mirror). Why a deploy key and not a PAT:
+# docs/ops/github-mirror.md ("Deploy key beats a PAT" section).
+#
+# Only runs on main. On `dev` pushes the mirror intentionally lags —
+# we want GitHub to reflect `main` state, not in-flight work.
+# allow_failure: true because a GitHub outage must not fail the pipeline
+# — the canonical repo is GitLab (ci-philosophy Rule 1).
+github-mirror:
+  stage: mirror
+  image: alpine:3.20
+  tags:
+    - macbook-local
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $GITHUB_MIRROR_SSH_KEY'
+  needs: []          # Independent — mirror even if some optional jobs failed
+  interruptible: false   # A new push should not cancel the mirror mid-flight
+  variables:
+    GITHUB_REPO: "Beennnn/mirador-service"
+  before_script:
+    - apk add --no-cache git openssh-client
+  script:
+    - |
+      # Decode the base64-wrapped private key. Base64 is used because
+      # GitLab's `masked` flag only accepts single-line printable values.
+      mkdir -p ~/.ssh && chmod 700 ~/.ssh
+      echo "$GITHUB_MIRROR_SSH_KEY" | base64 -d > ~/.ssh/id_ed25519
+      chmod 600 ~/.ssh/id_ed25519
+      # Preload GitHub's host key so the connection doesn't prompt.
+      ssh-keyscan -t ed25519,ecdsa-sha2-nistp256 github.com >> ~/.ssh/known_hosts 2>/dev/null
+    - |
+      # --mirror pushes every ref (branches + tags + notes). Safe
+      # because the source is GitLab's main ref only (filtered by
+      # the rules above) and the GitHub repo is read-only.
+      git clone --mirror "$CI_REPOSITORY_URL" mirror.git
+      cd mirror.git
+      git remote set-url --push origin "git@github.com:${GITHUB_REPO}.git"
+      git push --mirror
+  allow_failure: true
+  timeout: 3 minutes

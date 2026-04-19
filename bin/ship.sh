@@ -20,8 +20,12 @@
 #                                           # with the message, then ships
 #   bin/ship.sh                             # commits nothing, just ships
 #                                           # the current dev HEAD
-#   bin/ship.sh --wait                      # block until merged, then
-#                                           # sync dev + push GitHub mirror
+#   bin/ship.sh --wait                      # block until merged, then sync
+#                                           # dev + push GitHub mirror
+#   bin/ship.sh --release v1.2              # after merge, tag main with
+#                                           # the given version (implies --wait)
+#   bin/ship.sh --notify                    # macOS notification on merge
+#   bin/ship.sh --status                    # print MR + pipeline state, exit
 #   bin/ship.sh --dry-run                   # print the plan, do nothing
 #
 # Conventions (enforced by lefthook commit-msg + 72-char limit):
@@ -61,14 +65,27 @@ MAIN_BRANCH="${MAIN_BRANCH:-main}"
 COMMIT_MSG=""
 WAIT=0
 DRY=0
-for arg in "$@"; do
-  case "$arg" in
+STATUS=0
+NOTIFY=0
+RELEASE=""
+# Parse with shift so `--release vX.Y` (two tokens) can be captured.
+while [[ $# -gt 0 ]]; do
+  case "$1" in
     --wait)     WAIT=1 ;;
     --dry-run)  DRY=1 ;;
-    --help|-h)  sed -n '2,25p' "$0"; exit 0 ;;
-    *)          COMMIT_MSG="$arg" ;;
+    --status)   STATUS=1 ;;
+    --notify)   NOTIFY=1 ;;
+    --release)  shift; RELEASE="$1" ;;
+    --help|-h)  sed -n '2,40p' "$0"; exit 0 ;;
+    --*)        echo "Unknown flag: $1"; exit 2 ;;
+    *)          COMMIT_MSG="$1" ;;
   esac
+  shift
 done
+
+# --release implies --wait: we tag on main after merge, so we have to
+# wait for the merge first.
+if [[ -n "$RELEASE" ]]; then WAIT=1; fi
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 step() { printf "\033[34m▸\033[0m %s\n" "$1"; }
@@ -82,6 +99,43 @@ run() {
     eval "$@"
   fi
 }
+
+# ── Helpers for optional features ──────────────────────────────────────────
+notify_mac() {
+  # macOS-only. Best-effort — silently skip on other OSes.
+  [[ "$(uname)" == "Darwin" ]] || return 0
+  local title="$1" msg="$2"
+  osascript -e "display notification \"${msg//\"/\\\"}\" with title \"${title//\"/\\\"}\"" 2>/dev/null || true
+}
+
+# ── --status mode: print the open MR's state and exit ──────────────────────
+if [[ "$STATUS" == "1" ]]; then
+  project_url=$(printf '%s' "$GITLAB_PROJECT" | sed 's|/|%2F|')
+  echo "📊  Ship status — $GITLAB_PROJECT"
+  echo "    dev HEAD: $(git log -1 --format='%h %s' "$DEV_BRANCH")"
+  echo "    main HEAD: $(git log -1 --format='%h %s' "origin/$MAIN_BRANCH" 2>/dev/null || echo 'unknown')"
+  # Find the open MR dev → main, if any.
+  mr=$(glab api "projects/$project_url/merge_requests?state=opened&source_branch=$DEV_BRANCH" \
+       2>/dev/null | python3 -c "
+import sys, json
+arr = json.load(sys.stdin)
+for m in arr:
+    if m.get('source_branch') == '$DEV_BRANCH' and m.get('target_branch') == '$MAIN_BRANCH':
+        hp = m.get('head_pipeline') or {}
+        print(f\"{m['iid']}|{m.get('detailed_merge_status','?')}|{hp.get('status','none')}|{m.get('merge_when_pipeline_succeeds')}\")
+        break
+" 2>/dev/null)
+  if [[ -z "$mr" ]]; then
+    echo "    open MR: none"
+  else
+    IFS='|' read -r iid detailed pipe mwps <<< "$mr"
+    echo "    open MR: !$iid"
+    echo "      detailed:     $detailed"
+    echo "      pipeline:     $pipe"
+    echo "      auto-merge:   $mwps"
+  fi
+  exit 0
+fi
 
 # ── Preconditions ───────────────────────────────────────────────────────────
 step "1/5 Preconditions"
@@ -116,15 +170,23 @@ ok "pushed"
 # ── MR ──────────────────────────────────────────────────────────────────────
 step "3/5 Find or create MR"
 project_url=$(printf '%s' "$GITLAB_PROJECT" | sed 's|/|%2F|')
-existing=$(glab api "projects/$project_url/merge_requests?state=opened&source_branch=$DEV_BRANCH" \
-           --paginate 2>/dev/null | python3 -c "
+# Drop --paginate: the default first page is enough (we'll rarely have
+# 20+ open MRs from the same source branch). --paginate triggers an
+# infinite wait if the response happens to return a scroll cursor
+# that's slow to advance. Also drop the `m.get('state')` check since
+# the URL filter already restricts to opened.
+existing=$(glab api "projects/$project_url/merge_requests?state=opened&source_branch=$DEV_BRANCH&per_page=5" \
+           2>/dev/null | python3 -c "
 import sys, json
-data = json.load(sys.stdin)
-for m in data:
-    if m.get('source_branch') == '$DEV_BRANCH' and m.get('target_branch') == '$MAIN_BRANCH' and m.get('state') == 'opened':
+try:
+    arr = json.load(sys.stdin)
+except Exception:
+    arr = []
+for m in arr:
+    if m.get('target_branch') == '$MAIN_BRANCH':
         print(m.get('iid'))
         break
-" 2>/dev/null)
+" 2>/dev/null || echo "")
 
 if [[ -n "$existing" ]]; then
   MR_IID="$existing"
@@ -230,4 +292,21 @@ if [[ -n "$GITHUB_REPO" ]]; then
 fi
 
 echo
-ok "Done. main is up to date, $DEV_BRANCH is in sync, GitHub mirror refreshed."
+# ── --release: tag main HEAD with the provided version ────────────────────
+if [[ -n "$RELEASE" ]]; then
+  step "5d/5 Tag $RELEASE on origin/$MAIN_BRANCH"
+  # We're already at origin/main after the reset above; tag the
+  # annotated reference with a short message. User can always amend
+  # the message afterward with `git tag -a $RELEASE -F <file> -f`.
+  tag_msg="$(basename "$GITLAB_PROJECT") $RELEASE — shipped via bin/ship.sh"
+  run git tag -a "$RELEASE" -m "\"$tag_msg\""
+  run git push origin "$RELEASE"
+  ok "tag $RELEASE pushed"
+fi
+
+# ── --notify: macOS notification on completion ────────────────────────────
+if [[ "$NOTIFY" == "1" ]]; then
+  notify_mac "Ship complete — $(basename "$GITLAB_PROJECT")" "MR !$MR_IID merged${RELEASE:+ · tag $RELEASE}"
+fi
+
+ok "Done. main is up to date, $DEV_BRANCH is in sync${GITHUB_REPO:+, GitHub mirror refreshed}${RELEASE:+, tag $RELEASE pushed}."
