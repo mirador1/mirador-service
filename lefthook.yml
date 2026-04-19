@@ -30,6 +30,29 @@
 pre-commit:
   parallel: true
   commands:
+    readme-i18n-sync:
+      # When README.md or README.fr.md changes, the other one must
+      # change too — otherwise the two versions drift silently. Not
+      # a strict translation check (can't automate without running an
+      # LLM), just a "you edited one, remember the other" reminder.
+      # Skippable via LEFTHOOK=0 if the edit is intentionally
+      # one-sided (e.g. fixing a typo in only the French version).
+      glob: "{README.md,README.fr.md}"
+      run: |
+        staged_en=$(git diff --cached --name-only | grep -c "^README\.md$" || true)
+        staged_fr=$(git diff --cached --name-only | grep -c "^README\.fr\.md$" || true)
+        if [[ "$staged_en" -eq 1 && "$staged_fr" -eq 0 ]]; then
+          echo "⚠️  README.md changed but README.fr.md wasn't touched. Drift risk."
+          echo "    Fix: update README.fr.md too, or skip with LEFTHOOK=0."
+          exit 1
+        elif [[ "$staged_fr" -eq 1 && "$staged_en" -eq 0 ]]; then
+          echo "⚠️  README.fr.md changed but README.md wasn't touched. Drift risk."
+          echo "    Fix: update README.md too, or skip with LEFTHOOK=0."
+          exit 1
+        fi
+        echo "OK: README i18n pair in sync."
+      fail_text: "README i18n pair drifted."
+
     gitlab-ci-lint:
       # Validates .gitlab-ci.yml against GitLab's CI lint API before commit.
       # Catches YAML syntax, unknown keywords, invalid rules, wrong stages, etc.

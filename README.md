@@ -1,5 +1,7 @@
 ![Mirador Service](docs/assets/banner.svg)
 
+<sub>**English** · [Français](README.fr.md)</sub>
+
 <!-- Build / release status. GitLab badges first — canonical CI.
      GitHub badges (CodeQL, Scorecard) render only on the GitHub mirror. -->
 [![pipeline](https://gitlab.com/mirador1/mirador-service/badges/main/pipeline.svg)](https://gitlab.com/mirador1/mirador-service/-/pipelines)
