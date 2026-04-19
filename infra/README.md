@@ -5,7 +5,7 @@ Compose stack**. Nothing here deploys to production — production
 infrastructure lives under `deploy/terraform/gcp/` and `deploy/kubernetes/`.
 
 Each sub-directory wraps a single service running in `docker-compose.yml`
-(or `docker-compose.observability.yml`) and contains only the files that
+(or `deploy/compose/observability.yml`) and contains only the files that
 customise that service — init scripts, config overrides, dashboard
 definitions, or TLS certs. The naming mirrors the compose service name
 so the mount paths are obvious at a glance.

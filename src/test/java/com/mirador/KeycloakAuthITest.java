@@ -1,6 +1,7 @@
 package com.mirador;
 
 import dasniko.testcontainers.keycloak.KeycloakContainer;
+import java.time.Duration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -64,7 +65,14 @@ class KeycloakAuthITest extends AbstractIntegrationTest {
             // The env vars mirror the docker-compose.yml settings.
             .withEnv("KC_HTTP_ENABLED", "true")
             .withEnv("KC_HOSTNAME_STRICT", "false")
-            .withEnv("KC_HOSTNAME_STRICT_HTTPS", "false");
+            .withEnv("KC_HOSTNAME_STRICT_HTTPS", "false")
+            // Keycloak 26 Quarkus augmentation + first-time image pull on a
+            // cold CI runner regularly exceeds Testcontainers' default 60 s
+            // wait — pipeline #479 hit a 180 s failure despite Quarkus
+            // reporting "augmentation completed in 28842ms" moments earlier.
+            // 5 min gives slack for both the pull and the HTTP readiness
+            // probe on arm64/amd64 emulation without masking a real hang.
+            .withStartupTimeout(Duration.ofMinutes(5));
 
     /**
      * Override {@code keycloak.issuer-uri} with the Testcontainers-assigned URL.

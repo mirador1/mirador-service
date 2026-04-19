@@ -146,8 +146,13 @@ public class SecurityConfig {
         config.setAllowedOrigins(allowedOrigins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         // Explicit allowlist — wildcard "*" is a security anti-pattern (defense-in-depth).
+        // X-API-Version is the header-based API version selector (ADR-0020);
+        // without it in the allowlist, the browser's CORS preflight on
+        // GET /customers fails silently (status 0 in fetch), which is exactly
+        // the class of bug ADR-0033's Playwright E2E was built to catch — and
+        // did catch it.
         config.setAllowedHeaders(List.of(
-                "Content-Type", "Authorization", "X-API-Key",
+                "Content-Type", "Authorization", "X-API-Key", "X-API-Version",
                 "X-Request-Id", "Idempotency-Key", "Accept", "Cache-Control"));
         config.setAllowCredentials(true);
         // Expose security headers so the Angular Security Demo can read them via HttpClient observe:'response'

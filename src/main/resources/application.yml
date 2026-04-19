@@ -265,7 +265,7 @@ management:
   # Exemplars: links Prometheus metric data points to specific Tempo trace IDs.
   # In Grafana, clicking a metric spike jumps straight to the matching trace.
   # Requires Prometheus to be started with --enable-feature=exemplar-storage
-  # (see docker-compose.observability.yml prometheus command override).
+  # (see deploy/compose/observability.yml prometheus command override).
   # Micrometer auto-configures exemplar sampling when micrometer-tracing is on
   # the classpath and tracing.sampling.probability > 0 — no extra bean needed.
   metrics:

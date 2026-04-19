@@ -18,7 +18,7 @@
 
 Local dev runs the full **LGTM** stack (Grafana + Loki + Tempo + Mimir +
 Pyroscope) bundled in a single `grafana/otel-lgtm` container, started by
-`./run.sh obs` (which uses `docker-compose.observability.yml`).
+`./run.sh obs` (which uses `deploy/compose/observability.yml`).
 
 ```
 Spring Boot app

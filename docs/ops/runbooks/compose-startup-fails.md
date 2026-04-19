@@ -21,7 +21,7 @@ prune -f && docker volume prune -f && docker builder prune -f`.
 3. **Disk full on the Docker volume** — tmpfs runs out after heavy
    JaCoCo + Maven cache + LGTM image builds.
 4. **Image pull timeout** — corporate VPN blocks Docker Hub / ghcr.io.
-5. **docker-compose.yml or docker-compose.observability.yml has a
+5. **docker-compose.yml or deploy/compose/observability.yml has a
    syntax error** from a recent edit.
 
 ## Commands to run
@@ -44,7 +44,7 @@ df -h /                                       # host disk
 
 # 5. docker compose syntax
 docker compose -f docker-compose.yml config --quiet
-docker compose -f docker-compose.observability.yml config --quiet
+docker compose -f deploy/compose/observability.yml config --quiet
 ```
 
 ## Fix that worked last time

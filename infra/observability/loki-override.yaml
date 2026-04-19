@@ -1,6 +1,6 @@
 # =============================================================================
 # Loki override — replaces the baseline config shipped by grafana/otel-lgtm.
-# Mounted read-only at /otel-lgtm/loki-config.yaml in docker-compose.observability.yml.
+# Mounted read-only at /otel-lgtm/loki-config.yaml in deploy/compose/observability.yml.
 #
 # What this file changes vs the otel-lgtm baseline:
 #   - adds bloom_build + bloom_gateway (Loki 3.0+ full-text accelerator)

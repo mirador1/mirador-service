@@ -4,7 +4,7 @@ This directory holds all the configuration files mounted into the local
 observability containers: the **LGTM** all-in-one container (Grafana + Loki +
 Tempo + Mimir), the OpenTelemetry Collector, Prometheus, and a CORS reverse
 proxy for browser-to-Loki calls. Together they form the observability stack
-started by `docker compose -f docker-compose.observability.yml up -d` (or
+started by `docker compose -f deploy/compose/observability.yml up -d` (or
 `./run.sh obs`).
 
 ## Why a dedicated compose file?
