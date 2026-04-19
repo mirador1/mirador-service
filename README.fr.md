@@ -13,6 +13,8 @@
 # Mirador — le mirador d'un système qui tourne
 
 > **Observer. Comprendre. Agir.**
+>
+> _Construit avec les bons outils et les bonnes méthodes._
 
 **Mirador** — *watchtower* en espagnol — est un point d'observation.
 Le projet prend un backend concret de gestion de clients (API Customer)

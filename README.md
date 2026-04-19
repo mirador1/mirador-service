@@ -73,6 +73,8 @@
 # Mirador — the watchtower for a real running system
 
 > **Watch. Understand. Act.**
+>
+> _Built with the right tools and the right methods._
 
 **Mirador** — Spanish for *watchtower* — is a vantage point. The project
 picks a concrete Customer API backend and stands watch over it from every
