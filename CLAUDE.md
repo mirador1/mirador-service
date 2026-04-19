@@ -190,6 +190,11 @@ Loki, Tempo, Grafana are already inside the LGTM container — do NOT add them a
 - [ ] **Root hygiene**: no new file added to repo root that belongs under
       `config/`, `build/`, `deploy/compose/`, `docs/`, or `ci/`. See
       ~/.claude/CLAUDE.md → "Root file hygiene" for the authoritative list.
+- [ ] **Pipelines green**: `glab ci list` on `main` shows `success`
+      for the last run. Any failed job (even `allow_failure: true`)
+      counts as a task. Warnings (bundle budget, deprecations,
+      `allow_failure` shields) are fix-now unless carried by a dated
+      follow-up. See ~/.claude/CLAUDE.md → "Pipelines stay green".
 
 ## Docker Cleanup
 

@@ -490,15 +490,13 @@ integration-test:
   retry:
     max: 1
     when: runner_system_failure
-  # Temporary allow_failure: the runner host OOM-kills the Maven process
-  # mid-KeycloakAuthITest because the sum of Spring Boot + Testcontainers
-  # (Postgres + Kafka + Redis + Keycloak quarkus) exceeds the runner's
-  # memory tier. Properly fixing this requires either (a) raising the
-  # runner memory tier, (b) using `Testcontainers.reuse=true` across test
-  # classes, or (c) tagging Keycloak-heavy ITs and running them on a
-  # weekly schedule only. Tracked as a follow-up — see docs/adr/ for a
-  # future ADR on CI memory budget.
-  allow_failure: true
+  # ADR-0034 option A applied: KeycloakAuthITest is now `@Tag("keycloak-heavy")`
+  # and excluded by default via `<excludedGroups>` in the failsafe-plugin
+  # config in pom.xml. The remaining ITs fit comfortably under the
+  # macbook-local 4 GB Docker Desktop VM, so `allow_failure: true` is
+  # no longer needed — the per-MR signal on integration-test is back.
+  # Keycloak coverage runs in the `integration-test:keycloak` job below
+  # (weekly schedule + manual trigger).
   # No DinD service — Testcontainers uses /var/run/docker.sock mounted by the runner
   script:
     # -Dsurefire.skip=true: unit tests already validated in the previous stage,
@@ -513,6 +511,43 @@ integration-test:
       - target/site/jacoco-it/jacoco.xml  # IT coverage XML — read by sonar-analysis alongside target/site/jacoco/jacoco.xml
       - target/spotbugsXml.xml       # SpotBugs XML — parseable by GitLab Code Quality widget
       - target/reports/failsafe.html # HTML integration test report (browsable in the job artifacts panel)
+    expire_in: 1 week
+
+# ── Keycloak-heavy ITs — weekly schedule (ADR-0034 option A) ─────────────────
+#
+# KeycloakAuthITest (and any other `@Tag("keycloak-heavy")` IT) is excluded
+# from the per-MR `integration-test` job because the Quarkus container
+# busts the macbook-local Docker Desktop VM memory tier. This job opts in
+# via `-Dgroups=keycloak-heavy` and runs only on a weekly schedule (set
+# the GitLab schedule's `KEYCLOAK_NIGHTLY=1` variable) or manual trigger.
+# Coverage still flows into JaCoCo/Sonar via the `target/site/jacoco-it/`
+# artefact when the job runs.
+integration-test:keycloak:
+  stage: integration
+  variables:
+    DOCKER_HOST: ""
+    TESTCONTAINERS_HOST_OVERRIDE: "host.docker.internal"
+  needs:
+    - job: unit-test
+      artifacts: true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $KEYCLOAK_NIGHTLY == "1"
+    - if: $CI_PIPELINE_SOURCE == "web"
+      when: manual
+      allow_failure: true
+  retry:
+    max: 1
+    when: runner_system_failure
+  script:
+    # Opt INTO the keycloak-heavy group (excluded from default failsafe run).
+    - mvn $MAVEN_CLI_OPTS verify -Dsurefire.skip=true -Dgroups=keycloak-heavy
+  artifacts:
+    when: always
+    reports:
+      junit: target/failsafe-reports/*.xml
+    paths:
+      - target/site/jacoco-it/
+      - target/reports/failsafe.html
     expire_in: 1 week
 
 # ── stage: sonar ──────────────────────────────────────────────────────────────

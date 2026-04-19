@@ -3,6 +3,7 @@ package com.mirador;
 import dasniko.testcontainers.keycloak.KeycloakContainer;
 import java.time.Duration;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -48,6 +49,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @AutoConfigureMockMvc
 @Testcontainers
+// Tag-gated to a scheduled CI run (option A from ADR-0034). Spinning
+// up a Keycloak Quarkus container alongside Postgres + Kafka + Redis
+// + the Spring fork peaks at ~4 GB host memory, which the macbook-local
+// 4 GB Docker Desktop VM can't sustain — the OOM-killer fires on
+// Quarkus startup. Failsafe excludes `keycloak-heavy` by default;
+// `mvn verify -Dgroups=keycloak-heavy` (or the
+// `integration-test:keycloak` weekly schedule) opts in.
+@Tag("keycloak-heavy")
 class KeycloakAuthITest extends AbstractIntegrationTest {
 
     /**

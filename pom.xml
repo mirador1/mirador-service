@@ -653,6 +653,15 @@
                     <includes>
                         <include>**/*ITest.java</include>
                     </includes>
+                    <!--
+                      ADR-0034 option A: skip Keycloak-heavy ITs by default
+                      so the macbook-local 4 GB Docker Desktop VM doesn't
+                      OOM (Quarkus container peaks at ~900 MB on top of
+                      Postgres + Kafka + Redis + Spring fork). The weekly
+                      `integration-test:keycloak` CI job opts in via
+                      `-Dgroups=keycloak-heavy`. Local: use the same flag.
+                    -->
+                    <excludedGroups>keycloak-heavy</excludedGroups>
                     <!-- Same fix as surefire above — override deprecated systemProperties from parent POM -->
                     <systemPropertyVariables>
                         <junit.platform.listeners.uid.tracking.enabled>true</junit.platform.listeners.uid.tracking.enabled>
