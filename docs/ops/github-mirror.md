@@ -55,24 +55,52 @@ check belongs on the canonical repo's CI, it stays on GitLab.
 
 ## Sync mechanism
 
-The GitLab CI has a `github-mirror` job that runs on every push to
-`main`. It does `git push --mirror` to the GitHub repo using a
-**deploy key** (SSH keypair) scoped to these two repos only.
+The mirror push happens **locally** via `bin/ship.sh --wait`. The
+developer's authenticated `gh` CLI pushes to GitHub as part of the
+ship workflow. No GitLab CI job is involved — by choice.
 
-- **Public key** on GitHub: repo → Settings → Deploy keys, **write
-  access enabled**.
-- **Private key** on GitLab: Settings → CI/CD → Variables →
-  `GITHUB_MIRROR_SSH_KEY`, **masked**, **protected** (only exposed
-  to jobs running on the protected `main` branch).
+### Why not a CI deploy key
 
-The deploy key beats a Personal Access Token for this use case
-because:
+We tried. GitHub **free organisations disable deploy keys by
+default** (anti-abuse policy — surfaces as "Deploy keys are
+disabled for this repository" on `POST /repos/{owner}/{repo}/keys`).
+Alternatives considered:
 
-- **No expiration** — PATs cap at 12 months and must be rotated; a
-  deploy key stays valid until the public part is revoked.
-- **Scope is one repo per key** — compromise blast radius is clamped.
-- **Not tied to a user identity** — the key can't do anything on
-  the owner's other projects.
+| Option | Cost |
+|---|---|
+| Upgrade org to Team plan | $4/user/month — blows the €2/month project budget |
+| Fine-grained PAT | Works but 12-month expiration + user-bound identity to rotate |
+| Machine user account | An extra GitHub login to maintain |
+| **Local `bin/ship.sh --wait` push** | Zero identity to maintain, mirror runs when a release ships |
+
+The local-push option wins because:
+
+- Mirror doesn't need to be up-to-the-minute — recruiter-facing
+  visibility is measured in hours, not seconds.
+- `ship.sh --wait` already polls until merge; tacking the mirror
+  push on at the same time adds <5 s.
+- No CI credential to rotate, no PAT expiring in 12 months, no
+  deploy key to revoke on staff turnover.
+
+### What to run
+
+```bash
+# Full workflow — commit, MR, wait for merge, sync dev, mirror push
+bin/ship.sh --wait
+
+# Mirror only (catch-up after a manual merge)
+git clone --mirror https://gitlab.com/mirador1/mirador-service.git /tmp/m.git
+(cd /tmp/m.git && git push --mirror https://github.com/mirador1/mirador-service.git)
+rm -rf /tmp/m.git
+```
+
+### When a CI-side mirror would re-earn its place
+
+- Org plan upgrades to Team → deploy keys unlocked, SSH-key pattern
+  comes back (the previous implementation lives in git history).
+- Release cadence jumps to "several per day" → manual push becomes
+  friction, CI wins.
+- Mirror must stay current even when the maintainer is offline.
 
 ## Failure semantics
 
