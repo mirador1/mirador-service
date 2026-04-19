@@ -12,6 +12,7 @@
 
 ## Claude workflow rules (apply to every session)
 
+- **Start every response with the current time** in `HH:MM` format, no timezone suffix. Run `date "+%H:%M"` if uncertain — context-carried times can be stale after scheduled wakeups.
 - **Do not stop** between tasks — chain all pending work without asking "shall I continue?".
 - **Regularly display the pending task list** — after completing a task, show what remains so the user can track progress without opening TASKS.md.
 - **Act directly** — read only what is strictly necessary, then make the change. No long exploration before acting.
@@ -23,6 +24,7 @@
 - **Architectural decisions get an ADR.** Anything that locks in a pattern — new tool, replaced library, contract change — goes in `docs/adr/NNNN-*.md` using the Michael Nygard format. Code style / bug fixes / patch bumps do NOT get an ADR (see `docs/adr/README.md` for the criteria). This prevents the same decisions being relitigated in every new session.
 - **Conventional Commits are mandatory.** Every commit message must start with one of `feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert`, optionally followed by a scope in parens, then `: subject` in lowercase. Enforced by `lefthook.yml` commit-msg hook + `commitlint.config.mjs`. Enables automatic CHANGELOG + semver bump on main via release-please.
 - **Versions-freshness pass — weekly, or at the start of any session that touches dependencies.** Renovate (`renovate.json`) runs the automated weekly sweep and opens MRs. If you add a new dependency manually, check Maven Central / npm for the latest stable BEFORE pinning — don't paste an old version. For properties already in `pom.xml`, `npm outdated` / `mvn versions:display-property-updates` gives the current lag. Security-sensitive libs (`@auth0/*`, `sonar-scanner`, `findsecbugs-plugin`, `dependency-check-maven`, Spring AI) are always worth checking manually. Archived/deprecated packages must be replaced **the same session they're discovered**.
+- **Budget watch — at session start, and after any `bin/demo-up.sh` / live cluster action.** Run `bin/budget.sh status` (current cap + thresholds) and `bin/gcp-cost-audit.sh` (structural idle-cost scan — orphaned PVCs, reserved IPs, NAT, LBs, snapshots). The ephemeral pattern (ADR-0022) targets ≤€2/month idle; drift is the single biggest project-health risk. `bin/gcp-cost-audit.sh --yes` is cron-safe for unattended monthly cleanup. Full doc: `docs/ops/cost-control.md`.
 
 ## Project overview
 

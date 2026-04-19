@@ -11,7 +11,9 @@
 #   - topologySpreadConstraints: spread replicas across ≥2 zones (HA)
 #   - restricted PodSecurity profile: drop ALL capabilities, runAsNonRoot
 #
-# The image tag ${IMAGE_TAG} is substituted by envsubst in the CI deploy job.
+# Image pinned to :main (CI tags every main merge via docker-build). The
+# older `${IMAGE_TAG}` envsubst pattern no longer applies — Argo CD handles
+# re-pulls on new digests automatically (imagePullPolicy: Always).
 # =============================================================================
 apiVersion: apps/v1
 kind: Deployment
@@ -21,7 +23,7 @@ metadata:
   labels:
     app.kubernetes.io/name: mirador
     app.kubernetes.io/component: backend
-    app.kubernetes.io/version: "${IMAGE_TAG}"
+    app.kubernetes.io/version: "main"
 spec:
   replicas: 2
   selector:
@@ -40,7 +42,7 @@ spec:
       labels:
         app.kubernetes.io/name: mirador
         app.kubernetes.io/component: backend
-        app.kubernetes.io/version: "${IMAGE_TAG}"
+        app.kubernetes.io/version: "main"
       annotations:
         # Prometheus scrape annotations — kube-prometheus-stack picks these up automatically
         prometheus.io/scrape: "true"
@@ -75,7 +77,7 @@ spec:
               app.kubernetes.io/component: backend
       containers:
         - name: mirador
-          image: "${IMAGE_REGISTRY}/backend:${IMAGE_TAG}"
+          image: "registry.gitlab.com/mirador1/mirador-service/backend:main"
           imagePullPolicy: Always
           # Container-level security context. Every field here is a CKS
           # audit checkpoint: no privileged, no root, no caps, no writable FS.

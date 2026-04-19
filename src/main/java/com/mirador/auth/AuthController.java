@@ -177,9 +177,15 @@ public class AuthController {
                     .getAuthorities().iterator().next().getAuthority();
             String accessToken = jwtTokenProvider.generateToken(username, role);
             String refreshToken = jwtTokenProvider.generateRefreshToken(username);
+            log.info("audit_token_refresh username={}", username);
             auditService.log(username, "TOKEN_REFRESH", "Refresh token rotated", null);
             return ResponseEntity.ok(Map.of("accessToken", accessToken, "refreshToken", refreshToken));
         } catch (IllegalArgumentException e) {
+            // Log at warn — a refresh failure is not routine but not a server fault.
+            // Reasons include: expired refresh token, replayed (already-deleted) token,
+            // forged token that failed signature validation. The message is curated by
+            // JwtTokenProvider so it is safe to log verbatim.
+            log.warn("audit_token_refresh_failed reason={}", e.getMessage());
             return ResponseEntity.status(401).body(Map.of(KEY_ERROR, e.getMessage()));
         }
     }

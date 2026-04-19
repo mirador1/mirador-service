@@ -39,9 +39,9 @@ resources:
   # demo-up.sh full mode). Experiments replay on cron while their CR
   # exists; delete the CR to stop.
   - chaos
-  # Unleash feature-flag service — Postgres + API + seed SQL. Gates the
-  # ops-mode UI split and holds the /bio kill-switch. ADR referenced in
-  # the unleash/unleash.yaml header.
+  # Unleash feature-flag service — Postgres + API + seed SQL. Holds
+  # kill-switches like mirador.bio.enabled (hide the Bio tab when Ollama
+  # is down). ADR referenced in the unleash/unleash.yaml header.
   - unleash
 
 # NOTE: Postgres is NOT in the base. It lives in `base/postgres/` as a

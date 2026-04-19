@@ -538,15 +538,30 @@ public class CustomerController {
                         log.info("kafka_enrich_reply id={} displayName={}", id, reply.displayName());
                         return new EnrichedCustomerDto(reply.id(), reply.name(), reply.email(), reply.displayName());
                     } catch (InterruptedException e) {
+                        // Usually fires when the HTTP request was cancelled mid-flight
+                        // (browser closed tab, SSE proxy hang-up). Log at warn — not a
+                        // server fault but worth tracking under load.
+                        log.warn("kafka_enrich_interrupted id={} timeoutSec={}", id, enrichTimeoutSeconds);
                         Thread.currentThread().interrupt();
                         throw new IllegalStateException("Interrupted waiting for enrich reply", e);
                     } catch (ExecutionException e) {
                         // KafkaReplyTimeoutException extends KafkaException, NOT java.util.concurrent.TimeoutException,
                         // so we must check the cause explicitly and re-wrap for the exception handler to detect it
                         if (e.getCause() instanceof KafkaReplyTimeoutException) {
+                            // Warn, not error — the client-facing 504 is the right
+                            // behaviour under broker slowness. Upgrade to error only if
+                            // this fires repeatedly (downstream consumer dead?).
+                            log.warn("kafka_enrich_timeout id={} timeoutSec={} topic={}",
+                                    id, enrichTimeoutSeconds, customerRequestTopic);
                             throw new IllegalStateException("kafka-timeout",
                                     new java.util.concurrent.TimeoutException("Kafka reply timed out for id=" + id));
                         }
+                        // Any other ExecutionException is unexpected — log the cause's
+                        // class + message so the root cause is searchable in Loki.
+                        log.error("kafka_enrich_failed id={} causeType={} causeMsg={}",
+                                id,
+                                e.getCause() != null ? e.getCause().getClass().getSimpleName() : "null",
+                                e.getCause() != null ? e.getCause().getMessage() : "null");
                         throw new IllegalStateException("Enrich failed for id=" + id, e.getCause());
                     }
                 }));

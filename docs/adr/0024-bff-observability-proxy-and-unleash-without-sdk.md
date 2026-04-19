@@ -46,9 +46,14 @@ per UI render.
    `FeatureFlagController` polls Unleash's client API
    (`/api/client/features`) on demand with a 30-second in-memory cache.
    No SDK dependency, no background threads, no metric feedback loop
-   back to Unleash. Two flags are read: `mirador.ui.ops-mode` (hide
-   operator panels in the UI) and `mirador.bio.enabled` (kill-switch
-   for the LLM-backed /bio endpoint).
+   back to Unleash.
+   **Note (superseded by ADR-0026)**: this whole `FeatureFlagController`
+   was subsequently removed. The UI now calls `unleash-proxy` directly.
+   The single remaining flag in use is `mirador.bio.enabled` (kill-switch
+   for the LLM-backed /bio endpoint); the initially-planned
+   `mirador.ui.ops-mode` was dropped — the project has a single user
+   (developer), always operator, so a customer-persona gate had no
+   real effect.
 
 ## Consequences
 
@@ -99,8 +104,9 @@ per UI render.
   local docker-compose.
 - Unleash fetch failures return the last-known-good cached flags — a
   30-s-stale flag is better than a crashed UI page.
-- The UI will gate operator panels on `mirador.ui.ops-mode` via a new
-  `FeatureFlagService` (client-side, to be added in mirador-ui repo).
+<!-- Superseded by ADR-0026: the UI gates features via unleash-proxy
+     (client-side), not a Spring Boot BFF. ops-mode gate was dropped;
+     only mirador.bio.enabled kill-switch remains. -->
 
 ## Revisit this when
 

@@ -27,5 +27,6 @@ patches:
     target:
       kind: ConfigMap
       name: mirador-config
-  # Concrete image ref (Argo CD does not substitute env vars — see ADR-0015).
-  - path: image-tags-patch.yaml
+  # image-tags-patch.yaml removed: base/backend/deployment.yaml now pins
+  # `:main` directly (no more ${IMAGE_TAG} envsubst placeholders), so the
+  # patch was a no-op duplicate.

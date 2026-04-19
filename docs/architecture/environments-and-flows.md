@@ -177,7 +177,8 @@ Kind and Prod use the same call shapes — only the port changes (+10000 vs +200
 | **Obs → Loki (LogQL)** | `:3100/loki/api/v1/query_range` | `:13100/…` | `:23100/…` |
 | **Pipelines** | `:3333/gitlab/*` (local docker-api.mjs proxy) | idem | idem |
 | **Chaos dashboard** | — (not in compose) | `<iframe src=":12333">` | `<iframe src=":22333">` |
-| **Feature flags** | — (not in compose) | `<a href=":14242">` | `<a href=":24242">` |
+| **Feature flags** (UI admin link) | — | `<a href=":14242">` | `<a href=":24242">` |
+| **Feature flags** (browser reads flags) | — | `GET :14243/proxy?appName=mirador-ui` | `GET :24243/proxy?appName=mirador-ui` |
 | **Activity / Audit** | `/audit` on `:8080` | `/audit` on `:18080` | `/audit` on `:28080` |
 | **Quality** | `/actuator/quality :8080` + `sonar:9000` + `maven-site:8084` + `compodoc:8085` | `/actuator/quality :18080` only | `/actuator/quality :28080` only |
 

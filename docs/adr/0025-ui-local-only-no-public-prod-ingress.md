@@ -81,6 +81,7 @@ comparisons).
 | Pyroscope            | `4040`   | `14040`       | `24040`       |
 | Keycloak             | `9090`   | `19090`       | `29090`       |
 | Unleash              | –        | `14242`       | `24242`       |
+| Unleash front-proxy  | –        | `14243`       | `24243`       |
 | Argo CD UI           | –        | `18081`       | `28081`       |
 | Chaos Mesh dashboard | –        | `12333`       | `22333`       |
 
@@ -181,8 +182,7 @@ optional buttons on `@if (env.<tool>Url())`.
 
 - A recruiter explicitly asks "do you have a URL?" often enough to
   outweigh the security concern. Re-introduce Cloudflare Tunnel for
-  the UI only, with a read-only `mirador.ui.ops-mode=false` Unleash
-  flag hiding every ops panel.
+  the UI only, behind a strict read-only auth gate.
 - The project attracts more than one simultaneous dev. `kubectl
   port-forward` does not scale to shared prod access — move to a
   bastion or IAP at that point.
