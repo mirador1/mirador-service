@@ -170,15 +170,23 @@ ok "pushed"
 # ── MR ──────────────────────────────────────────────────────────────────────
 step "3/5 Find or create MR"
 project_url=$(printf '%s' "$GITLAB_PROJECT" | sed 's|/|%2F|')
-existing=$(glab api "projects/$project_url/merge_requests?state=opened&source_branch=$DEV_BRANCH" \
-           --paginate 2>/dev/null | python3 -c "
+# Drop --paginate: the default first page is enough (we'll rarely have
+# 20+ open MRs from the same source branch). --paginate triggers an
+# infinite wait if the response happens to return a scroll cursor
+# that's slow to advance. Also drop the `m.get('state')` check since
+# the URL filter already restricts to opened.
+existing=$(glab api "projects/$project_url/merge_requests?state=opened&source_branch=$DEV_BRANCH&per_page=5" \
+           2>/dev/null | python3 -c "
 import sys, json
-data = json.load(sys.stdin)
-for m in data:
-    if m.get('source_branch') == '$DEV_BRANCH' and m.get('target_branch') == '$MAIN_BRANCH' and m.get('state') == 'opened':
+try:
+    arr = json.load(sys.stdin)
+except Exception:
+    arr = []
+for m in arr:
+    if m.get('target_branch') == '$MAIN_BRANCH':
         print(m.get('iid'))
         break
-" 2>/dev/null)
+" 2>/dev/null || echo "")
 
 if [[ -n "$existing" ]]; then
   MR_IID="$existing"
