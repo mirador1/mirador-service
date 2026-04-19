@@ -1,123 +1,113 @@
-# GitHub mirror — make the project visible where recruiters look
+# GitHub mirror — why it exists and what it does
 
-Most recruiters browse GitHub, not GitLab. Mirroring this project
-read-only to GitHub closes that visibility gap at essentially zero
-infrastructure cost. The canonical repo stays on GitLab (where the CI
-+ Container Registry + merge-request workflow live); GitHub is a
-passive reflection.
+## Why there is a GitHub mirror at all
 
-## Setup (one-time, ~10 min)
+The canonical repo is on **GitLab** (`gitlab.com/mirador1/mirador-service`
+and `.../mirador-ui`). That's where the CI pipeline, the merge-request
+workflow, the Container Registry, Renovate bot and release-please live.
 
-### 1. Create a public empty GitHub repo
+Most recruiters browse **GitHub**, not GitLab. A project invisible on
+GitHub is missing an audience at effectively zero cost to reach.
 
-```
-https://github.com/new
-  → name: mirador-service
-  → visibility: Public
-  → do NOT initialise with README / LICENSE / .gitignore
-```
+The fix: a read-only GitHub **mirror** at
+[github.com/Beennnn/mirador-service](https://github.com/Beennnn/mirador-service)
+and [github.com/Beennnn/mirador-ui](https://github.com/Beennnn/mirador-ui).
+It reflects `main` + tags on every push. **It is not a fork** — GitHub
+cannot host MRs against it; contributors are told to open MRs on
+GitLab.
 
-Repeat for `mirador-ui`.
+## Why there is a GitHub CI at all (if GitLab already has one)
 
-### 2. Generate a fine-grained PAT
+GitLab CI already runs the full test chain (Testcontainers, kind-in-CI,
+Sonar, SBOM, cosign, PIT, OWASP Dep-Check, Semgrep, Trivy, Grype, etc.).
+Duplicating that on GitHub would be:
 
-`https://github.com/settings/personal-access-tokens/new`
+- **Redundant**: same tests run twice, same results produced twice.
+- **Expensive in quota**: GitHub Actions free tier is 2 000 min/month;
+  a full CI pass would burn it in weeks.
+- **Fragile**: two CIs drifting over time = "it's green on GitLab but
+  red on GitHub, which one do I trust?".
 
-- **Resource owner**: your account
-- **Repository access**: "Only select repositories" → `mirador-service`
-  and `mirador-ui`
-- **Permissions** → `Repository permissions` → **Contents: Read and
-  write**. Nothing else.
-- **Expiration**: 12 months. Renovate-style annual rotation.
+The GitHub workflows are deliberately **narrow**. They do ONLY what
+GitHub provides natively that GitLab can't match:
 
-Save the token as a **masked protected** CI/CD variable in each GitLab
-project:
+| Workflow | What it runs | Why it's here, not on GitLab |
+|---|---|---|
+| `codeql.yml` | GitHub's native SAST. Java for the service, JavaScript/TypeScript for the UI. | CodeQL lives behind GitHub's query engine; it's not trivially runnable outside GitHub Actions. Complements Semgrep (different rule set, different false-negative profile). Badge is broadly recognised by reviewers. |
+| `scorecard.yml` | OSSF Scorecard — 20-point check covering branch protection, signed commits, SBOM, CodeQL, Dependabot, fuzzing, pinned dependencies, etc. | The data source is the GitHub repo (branch rules, workflow files). A GitLab run would produce a meaningless score because it can't see GitHub-specific settings. Weekly schedule. |
 
-```
-GitLab → Settings → CI/CD → Variables
-  key:    GITHUB_MIRROR_TOKEN
-  value:  <the PAT>
-  type:   Variable
-  flags:  [✓] Protected  [✓] Masked  [✗] Expand
-  scope:  main
-```
+**That's all.** No unit tests, no Docker build, no Maven, no npm. If a
+check belongs on the canonical repo's CI, it stays on GitLab.
 
-Protected means the variable is only exposed to jobs running on
-protected branches (main). Masked redacts it from job logs.
+## What the GitHub repo does NOT do
 
-### 3. Add the CI job
+- **Merge pull requests.** The GitHub mirror accepts zero contribution
+  PRs. The repo description points contributors back to GitLab.
+- **Publish Docker images.** Artifact Registry on GCP is the canonical
+  registry (see ADR-0016 references in mirador-service). `ghcr.io`
+  could be a future alternative but isn't on the roadmap.
+- **Release notes.** `release-please` on GitLab produces the
+  CHANGELOG and tags. GitHub Releases can be populated post-hoc if we
+  ever need a GitHub-native download page, but it's not automatic.
+- **Dependency updates.** Renovate on GitLab handles this. Dependabot
+  on GitHub is **disabled** (see `.github/dependabot.yml` with
+  `enabled: false`) to avoid two bots opening conflicting bumps.
 
-Append to `.gitlab-ci.yml` at the bottom (one stage, one job):
+## Sync mechanism
 
-```yaml
-# ── stage: mirror ────────────────────────────────────────────────────
-# Read-only reflection of the main branch to GitHub. Runs only on main
-# push after the standard test chain. allow_failure:true because a
-# GitHub outage must not block the GitLab CI pipeline.
-stages:
-  - mirror
+The GitLab CI has a `github-mirror` job that runs on every push to
+`main`. It does `git push --mirror` to the GitHub repo using a
+**deploy key** (SSH keypair) scoped to these two repos only.
 
-github-mirror:
-  stage: mirror
-  image: alpine/git:2.45.2
-  tags:
-    - macbook-local
-  rules:
-    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $GITHUB_MIRROR_TOKEN'
-  needs: []   # independent of the test chain
-  script:
-    # Clone in --mirror mode so the push replicates refs + tags + branches
-    - git clone --mirror "$CI_REPOSITORY_URL" repo.git
-    - cd repo.git
-    - git remote set-url --push origin "https://oauth2:${GITHUB_MIRROR_TOKEN}@github.com/$GITHUB_OWNER/$CI_PROJECT_NAME.git"
-    - git push --mirror
-  variables:
-    # Override if your GitHub org/user differs from the default
-    GITHUB_OWNER: benoit-besson
-  allow_failure: true
-  timeout: 2 minutes
-```
+- **Public key** on GitHub: repo → Settings → Deploy keys, **write
+  access enabled**.
+- **Private key** on GitLab: Settings → CI/CD → Variables →
+  `GITHUB_MIRROR_SSH_KEY`, **masked**, **protected** (only exposed
+  to jobs running on the protected `main` branch).
 
-### 4. Rotate the PAT yearly
+The deploy key beats a Personal Access Token for this use case
+because:
 
-The 12-month expiration forces a deliberate refresh. When the mirror
-job starts failing with `403 Password authentication is not
-supported`, regenerate the PAT and replace the GitLab variable.
+- **No expiration** — PATs cap at 12 months and must be rotated; a
+  deploy key stays valid until the public part is revoked.
+- **Scope is one repo per key** — compromise blast radius is clamped.
+- **Not tied to a user identity** — the key can't do anything on
+  the owner's other projects.
 
-## Why not `github.com/<owner>/mirror/fork`?
+## Failure semantics
 
-GitHub forks are private to a source repo you own; we can't fork from
-a GitLab source. The only way to mirror cross-platform is a push from
-the canonical repo.
+- **GitHub outage** during a push: the `github-mirror` job has
+  `allow_failure: true`. GitLab CI still reports green even if GitHub
+  is unreachable, because the canonical repo is GitLab.
+- **Key rotated but not yet in GitLab**: same — `allow_failure: true`
+  means the pipeline proceeds, `mirador-doctor` or a manual
+  `git ls-remote` check surfaces the drift.
+- **GitHub CI failing** (e.g. CodeQL false positive): doesn't affect
+  the GitLab pipeline. Fix is opened on GitLab, lands, then the next
+  mirror push propagates the fix to GitHub.
 
-## Why not GitHub Actions → GitLab pull?
-
-Works but inverts the direction: CI state lives on the GitLab side,
-so the push direction aligns better. Pull from GitHub Actions would
-also need a GitLab PAT in a GitHub secret, flipping the trust
-boundary.
-
-## Verify it's working
+## Verify the mirror is in sync
 
 ```bash
-# on GitHub
-open https://github.com/benoit-besson/mirador-service
-open https://github.com/benoit-besson/mirador-ui
-
-# compare HEAD SHAs
 gitlab=$(git ls-remote https://gitlab.com/mirador1/mirador-service main | awk '{print $1}')
-github=$(git ls-remote https://github.com/benoit-besson/mirador-service main | awk '{print $1}')
-[ "$gitlab" = "$github" ] && echo "✅ in sync" || echo "❌ out of sync"
+github=$(git ls-remote https://github.com/Beennnn/mirador-service main | awk '{print $1}')
+[ "$gitlab" = "$github" ] && echo "✅ in sync" || echo "❌ drift: GitLab=$gitlab GitHub=$github"
 ```
 
-## Security notes
+This is one of the checks in `bin/mirador-doctor` (extend when a drift
+is ever observed).
 
-- The PAT has **write access** to the GitHub mirror only. It cannot
-  touch other repos, cannot create new repos, cannot delete.
-- If the token leaks, revoke it at
-  `https://github.com/settings/personal-access-tokens` and rotate.
-- Treat the GitHub mirror as **untrusted display-only** — never
-  merge PRs opened against it; direct contributors to GitLab.
-- Add a `NOTICE` line to the GitHub repo description so visitors
-  know where to contribute: "Read-only mirror of
-  gitlab.com/mirador1 — open MRs there".
+## If you ever need to disable the mirror
+
+```bash
+# Disable the CI job (temporary):
+glab variable delete GITHUB_MIRROR_SSH_KEY --scope=main
+
+# Destroy the GitHub repos (permanent, keeps the GitLab source):
+gh repo delete Beennnn/mirador-service --yes
+gh repo delete Beennnn/mirador-ui --yes
+```
+
+The disable path is deliberately cheap. If the GitHub mirror stops
+earning its keep, removing it costs 30 seconds and loses nothing of
+value.

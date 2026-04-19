@@ -1,0 +1,79 @@
+# =============================================================================
+# CodeQL — GitHub's native SAST, Java flavour.
+#
+# Why this exists on GitHub but not GitLab: CodeQL's query engine is
+# embedded in GitHub Actions. Running it outside GitHub is possible
+# with the standalone CLI but adds maintenance for marginal gain when
+# the repo is already public on GitHub. See docs/ops/github-mirror.md
+# for the full rationale.
+#
+# What this workflow does NOT do: unit tests, integration tests, Docker
+# build, deploy. All of that is on GitLab CI (gitlab.com/mirador1/
+# mirador-service). This file stays scoped to SAST only to avoid
+# drifting into a duplicate test pipeline.
+# =============================================================================
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+    # Only rerun when Java source or the build config changes. Docs-only
+    # pushes don't need a security rescan.
+    paths:
+      - '**/*.java'
+      - 'pom.xml'
+      - '.github/workflows/codeql.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - '**/*.java'
+      - 'pom.xml'
+  schedule:
+    # Weekly rescan — catches CVEs in the rule set that weren't there
+    # when the last push happened. Monday 06:00 UTC = 07:00 CET, runs
+    # before any real user opens the repo.
+    - cron: '0 6 * * 1'
+  # Manual trigger — useful when tuning query suite.
+  workflow_dispatch: {}
+
+permissions:
+  # Least-privilege. `security-events: write` is what lets CodeQL
+  # publish the SARIF to the Security tab.
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    name: CodeQL Java
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          # CodeQL supports Java 8–21 out of the box. For Java 25 we
+          # tell the setup action to install it, CodeQL compiles
+          # source manually (extraction mode: source-only) rather than
+          # running the build.
+          distribution: temurin
+          java-version: '21'
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: java
+          # Extended query suite — includes security-extended rules.
+          # Security-and-quality also covers code-quality patterns
+          # already caught by Sonar, so we stay on security-extended
+          # to avoid double-reporting.
+          queries: security-extended
+          build-mode: none
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:java"
