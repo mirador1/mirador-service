@@ -111,6 +111,7 @@ services:
     ports:
       - "3100:3100"    # Loki CORS proxy
       - "2375:2375"    # Docker API CORS proxy
+      - "4319:4319"    # OTLP HTTP CORS proxy (browser telemetry — ADR-0009)
     volumes:
       - ./infra/observability/cors-proxy.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:

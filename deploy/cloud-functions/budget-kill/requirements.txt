@@ -1,0 +1,5 @@
+# Cloud Functions Python runtime (2nd gen) pulls these at deploy time.
+# Pin to minor so a function deploy can't pick up a breaking CGAPI change
+# silently. google-cloud-container 2.x targets the v1 Kubernetes Engine API
+# which is what `ClusterManagerClient.delete_cluster` uses.
+google-cloud-container>=2.52,<3.0

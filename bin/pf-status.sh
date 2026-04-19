@@ -16,14 +16,16 @@ declare -A KIND_PORT=(
   [backend]=18080 [postgres]=15432 [redis]=16379 [kafka]=19092
   [grafana]=13000 [tempo]=13200    [loki]=13100  [mimir]=19009
   [pyroscope]=14040 [keycloak]=19090
-  [unleash]=14242 [argocd]=18081   [chaos-mesh]=12333
+  [unleash]=14242 [unleash-proxy]=14243
+  [argocd]=18081 [chaos-mesh]=12333
 )
 
 declare -A PROD_PORT=(
   [backend]=28080 [postgres]=25432 [redis]=26379 [kafka]=29092
   [grafana]=23000 [tempo]=23200    [loki]=23100  [mimir]=29009
   [pyroscope]=24040 [keycloak]=29090
-  [unleash]=24242 [argocd]=28081   [chaos-mesh]=22333
+  [unleash]=24242 [unleash-proxy]=24243
+  [argocd]=28081 [chaos-mesh]=22333
 )
 
 declare -A HEALTH_PATH=(

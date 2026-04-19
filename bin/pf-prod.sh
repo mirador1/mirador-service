@@ -24,6 +24,7 @@
 #   Pyroscope            24040
 #   Keycloak             29090
 #   Unleash              24242
+#   Unleash front-proxy  24243
 #   Argo CD UI           28081   (port-forward to argocd-server:443, https)
 #   Chaos Mesh dashboard 22333
 #
@@ -65,6 +66,7 @@ TUNNELS=(
   "pyroscope     | infra     | svc/pyroscope                 | 24040:4040"
   "keycloak      | infra     | svc/keycloak                  | 29090:8080"
   "unleash       | infra     | svc/unleash                   | 24242:4242"
+  "unleash-proxy | infra     | svc/unleash-proxy             | 24243:3000"
   "argocd        | argocd    | svc/argocd-server             | 28081:443"
   "chaos-mesh    | chaos-mesh| svc/chaos-dashboard           | 22333:2333"
 )

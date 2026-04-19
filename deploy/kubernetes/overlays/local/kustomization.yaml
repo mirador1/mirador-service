@@ -18,9 +18,53 @@ kind: Kustomization
 resources:
   - ../../base
   - ../../base/postgres
+  # Plain Secrets that replace the GSM-backed ExternalSecrets on kind,
+  # where ESO has no path to GCP Secret Manager. See local-secrets.yaml
+  # for the security rationale (demo-only values).
+  - local-secrets.yaml
 
 patches:
   - path: images-pullpolicy-patch.yaml
+  # ESO never syncs on kind (no Workload Identity Federation path to
+  # GCP Secret Manager). Delete the ExternalSecret + SecretStore CRs
+  # so they don't hang in Error state, so ESO doesn't fight us over
+  # Secret ownership, and so pods that `envFrom: secretRef: mirador-
+  # secrets` find the plain Secret we provide in local-secrets.yaml.
+  - patch: |-
+      $patch: delete
+      apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      metadata:
+        name: mirador-secrets
+        namespace: app
+  - patch: |-
+      $patch: delete
+      apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      metadata:
+        name: mirador-secrets
+        namespace: infra
+  - patch: |-
+      $patch: delete
+      apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      metadata:
+        name: keycloak-secrets
+        namespace: infra
+  - patch: |-
+      $patch: delete
+      apiVersion: external-secrets.io/v1
+      kind: SecretStore
+      metadata:
+        name: gcp-secret-manager
+        namespace: app
+  - patch: |-
+      $patch: delete
+      apiVersion: external-secrets.io/v1
+      kind: SecretStore
+      metadata:
+        name: gcp-secret-manager
+        namespace: infra
 
 # No common labels / namespace mutation here — base resources already have
 # the correct namespace (app / infra / observability) baked in.

@@ -1,14 +1,16 @@
 # =============================================================================
 # Unleash — open-source feature-flag service for the demo.
 #
-# Why feature flags at all in a portfolio? Three reasons:
-#   1. Decouple deploy from release — push code to prod dark, flip the flag
-#      when ready. Pairs naturally with the Argo Rollouts canary.
-#   2. Kill-switch for buggy code — flip the flag off in seconds instead of
-#      redeploying (which takes 3-5 min even with canary).
-#   3. "Operator vs customer" UI split (see below) — one Unleash flag
-#      `mirador.ui.ops-mode` gates all the operator pages (Chaos, Database,
-#      Pipelines). Off by default → customer view. Flip on → full dashboard.
+# Why feature flags at all in a portfolio? Two reasons kept after the
+# initial scoping exercise (2026-04-18):
+#   1. Decouple deploy from release — push code to prod dark, flip the
+#      flag when ready. Pairs naturally with the Argo Rollouts canary.
+#   2. Kill-switch for flaky downstream deps — e.g. `mirador.bio.enabled`
+#      hides the Bio tab when Ollama is unhealthy. Flip off in seconds
+#      instead of redeploying.
+# The earlier "ops-mode persona split" idea was dropped — the project
+# has a single user (the developer / recruiter), always operator,
+# so the feature would have no real effect.
 #
 # Architecture:
 #   mirador-ui → Unleash Proxy SDK (browser) → Unleash backend → Postgres
@@ -17,8 +19,9 @@
 # front-end SDK which authenticates with a client-token (read-only). Admins
 # use the web UI at unleash.mirador1.duckdns.org/.
 #
-# Seed data (default admin user + the ops-mode flag) lives in
-# `seed.sql` (separate ConfigMap), executed on first Postgres boot.
+# Seed data for the historical SQL-based bootstrap lives in `seed.yaml`
+# — kept in git as reference but no longer wired (Unleash 7.x uses the
+# INIT_*_API_TOKENS env-var pattern instead of SQL seeding).
 # =============================================================================
 apiVersion: v1
 kind: Service
@@ -169,12 +172,26 @@ spec:
               value: "false"
             # IMPORT_FILE was removed in Unleash 7.x in favour of a JSON
             # state export format that requires live flag state first.
-            # For the demo we boot clean and let the Admin UI create the
-            # two flags on first login (mirador.ui.ops-mode / bio.enabled).
-            # The seed.yaml ConfigMap kept in git for reference when moving
-            # to an OSS admin-migrator script later.
+            # Flags are created via the Admin UI on first login. Today the
+            # project only uses one: `mirador.bio.enabled` (kill-switch for
+            # the Ollama-backed /bio endpoint).
             - name: AUTH_TYPE
               value: demo
+            # Bootstrap tokens — created on first boot. Format:
+            # <project>:<environment>.<secret>. "default" is the built-in
+            # project, "development" the built-in environment.
+            #   * CLIENT token: what unleash-proxy presents to Unleash's
+            #     /api/client/features endpoint.
+            #   * FRONTEND token: what the browser (via unleash-proxy) uses.
+            #     Not strictly needed here (the proxy handles the frontend
+            #     side) but Unleash refuses to boot without it in 7.x if
+            #     INIT_CLIENT_API_TOKENS is set. Harmless.
+            # These placeholder tokens are fine for a demo cluster; in a
+            # real deployment they'd come from ESO → GSM with a real secret.
+            - name: INIT_CLIENT_API_TOKENS
+              value: "default:development.mirador-unleash-client-token"
+            - name: INIT_FRONTEND_API_TOKENS
+              value: "default:development.mirador-unleash-frontend-token"
           resources:
             requests:
               cpu: 100m
@@ -193,4 +210,102 @@ spec:
               path: /health
               port: 4242
             initialDelaySeconds: 60
+            periodSeconds: 30
+
+---
+# ── Unleash front-end proxy — ADR-0026 ──────────────────────────────────
+# The browser never calls the Unleash admin API directly. This sidecar
+# (official `unleashorg/unleash-proxy` image) exposes a narrow read-only
+# API (/proxy) that the browser reaches with a front-end client token.
+# The proxy itself talks to Unleash via a server-side admin token.
+#
+# Tokens are hardcoded demo values ("default:development:…") consistent
+# with the AUTH_TYPE=demo setting of the parent Unleash server. In a real
+# prod deployment the tokens would come from ESO/GSM.
+apiVersion: v1
+kind: Service
+metadata:
+  name: unleash-proxy
+  namespace: infra
+  labels:
+    app.kubernetes.io/name: unleash
+    app.kubernetes.io/component: proxy
+spec:
+  selector:
+    app.kubernetes.io/name: unleash
+    app.kubernetes.io/component: proxy
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: unleash-proxy
+  namespace: infra
+  labels:
+    app.kubernetes.io/name: unleash
+    app.kubernetes.io/component: proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: unleash
+      app.kubernetes.io/component: proxy
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: unleash
+        app.kubernetes.io/component: proxy
+    spec:
+      initContainers:
+        # Wait for Unleash server to be ready before starting the proxy.
+        - name: wait-for-unleash
+          image: curlimages/curl:8.11.1
+          command:
+            - sh
+            - -c
+            - |
+              until curl -sf http://unleash:4242/health; do
+                echo "waiting for unleash server…"; sleep 2
+              done
+      containers:
+        - name: unleash-proxy
+          image: unleashorg/unleash-proxy:1.4.17
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: UNLEASH_URL
+              value: http://unleash:4242/api/
+            # Server-side API token used by the proxy to poll Unleash. The
+            # secret matches INIT_CLIENT_API_TOKENS on the unleash server
+            # (same file). Token format: <project>:<environment>.<secret>.
+            - name: UNLEASH_API_TOKEN
+              value: "default:development.mirador-unleash-client-token"
+            # Front-end tokens — what the browser sends in X-API-Token.
+            # Multiple allowed, comma-separated. One is enough for this demo.
+            - name: UNLEASH_PROXY_SECRETS
+              value: "mirador-ui-proxy-secret"
+            - name: UNLEASH_PROXY_PORT
+              value: "3000"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          readinessProbe:
+            httpGet:
+              path: /proxy/health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /proxy/health
+              port: 3000
+            initialDelaySeconds: 30
             periodSeconds: 30

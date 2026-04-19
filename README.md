@@ -1,6 +1,63 @@
 ![Mirador Service](docs/assets/banner.svg)
 
-![Java 25](https://img.shields.io/badge/Java-25-ED8B00?logo=openjdk&logoColor=white) ![Spring Boot 4](https://img.shields.io/badge/Spring_Boot-4-6DB33F?logo=springio&logoColor=white) ![PostgreSQL 17](https://img.shields.io/badge/PostgreSQL-17-4169E1?logo=postgresql&logoColor=white) ![Apache Kafka](https://img.shields.io/badge/Apache_Kafka-black?logo=apachekafka&logoColor=white) ![Redis](https://img.shields.io/badge/Redis-DC382D?logo=redis&logoColor=white) ![Angular 21](https://img.shields.io/badge/Angular-21-DD0031?logo=angular&logoColor=white) ![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white) ![GitLab CI](https://img.shields.io/badge/GitLab_CI-FC6D26?logo=gitlab&logoColor=white) ![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-7F52FF?logo=opentelemetry&logoColor=white)
+<!-- Tech badges — grouped by concern so the README reflects the ADR story,
+     not just a technology dump. Each group corresponds to an ADR or a
+     docs/architecture/*.md page. Bumping the list here should mirror
+     docs/reference/technologies.md. -->
+
+**Runtime**
+![Java 25](https://img.shields.io/badge/Java-25-ED8B00?logo=openjdk&logoColor=white)
+![Spring Boot 4](https://img.shields.io/badge/Spring_Boot-4-6DB33F?logo=springio&logoColor=white)
+![PostgreSQL 17](https://img.shields.io/badge/PostgreSQL-17-4169E1?logo=postgresql&logoColor=white)
+![Apache Kafka](https://img.shields.io/badge/Apache_Kafka-KRaft-231F20?logo=apachekafka&logoColor=white)
+![Redis 7](https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white)
+![Angular 21](https://img.shields.io/badge/Angular-21_zoneless-DD0031?logo=angular&logoColor=white)
+
+**Platform**
+![Docker](https://img.shields.io/badge/Docker-compose_+_buildx-2496ED?logo=docker&logoColor=white)
+![Kubernetes](https://img.shields.io/badge/Kubernetes-GKE_Autopilot_+_kind-326CE5?logo=kubernetes&logoColor=white)
+![Terraform](https://img.shields.io/badge/Terraform-GKE_+_GSM-844FBA?logo=terraform&logoColor=white)
+![Argo CD](https://img.shields.io/badge/Argo_CD-GitOps-EF7B4D?logo=argo&logoColor=white)
+![Argo Rollouts](https://img.shields.io/badge/Argo_Rollouts-canary-EF7B4D?logo=argo&logoColor=white)
+![External Secrets](https://img.shields.io/badge/External_Secrets-GSM-326CE5?logo=kubernetes&logoColor=white)
+![cert-manager](https://img.shields.io/badge/cert--manager-Let's_Encrypt-326CE5?logo=kubernetes&logoColor=white)
+![Unleash](https://img.shields.io/badge/Unleash-feature_flags-000000)
+
+**Observability**
+![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-traces_+_logs_+_metrics-7F52FF?logo=opentelemetry&logoColor=white)
+![Grafana LGTM](https://img.shields.io/badge/Grafana-LGTM-F46800?logo=grafana&logoColor=white)
+![Tempo](https://img.shields.io/badge/Tempo-traces-F46800?logo=grafana&logoColor=white)
+![Loki](https://img.shields.io/badge/Loki-logs-F46800?logo=grafana&logoColor=white)
+![Mimir](https://img.shields.io/badge/Mimir-Prom_API-F46800?logo=grafana&logoColor=white)
+![Pyroscope](https://img.shields.io/badge/Pyroscope-continuous_profiling-F46800?logo=grafana&logoColor=white)
+
+**Security & supply chain**
+![Auth0 + Keycloak](https://img.shields.io/badge/Auth0_+_Keycloak-OIDC-EB5424?logo=auth0&logoColor=white)
+![Resilience4j](https://img.shields.io/badge/Resilience4j-CB_+_retry_+_bulkhead-1B5E20)
+![Bucket4j](https://img.shields.io/badge/Bucket4j-rate_limit-4A90E2)
+![Kyverno](https://img.shields.io/badge/Kyverno-policies-326CE5?logo=kubernetes&logoColor=white)
+![cosign + SBOM](https://img.shields.io/badge/cosign_+_SBOM-supply_chain-2D7FF9)
+![Trivy / Grype / Syft](https://img.shields.io/badge/Trivy_Grype_Syft-image_scan-1904DA?logo=aquasecurity&logoColor=white)
+![Semgrep](https://img.shields.io/badge/Semgrep-SAST-1E1E2E?logo=semgrep&logoColor=white)
+![OWASP Dep-Check](https://img.shields.io/badge/OWASP_Dep--Check-CVE_scan-000000?logo=owasp&logoColor=white)
+
+**Quality**
+![SonarCloud](https://img.shields.io/badge/SonarCloud-static_analysis-F3702A?logo=sonarcloud&logoColor=white)
+![PIT mutation](https://img.shields.io/badge/PIT-mutation_tests-4CAF50)
+![JaCoCo](https://img.shields.io/badge/JaCoCo-unit_+_IT_coverage-8CBF26)
+![Testcontainers](https://img.shields.io/badge/Testcontainers-k8s_+_JVM-2496ED?logo=docker&logoColor=white)
+![Vitest](https://img.shields.io/badge/Vitest-UI_unit-6E9F18?logo=vitest&logoColor=white)
+![Playwright](https://img.shields.io/badge/Playwright-E2E_kind--in--CI-2EAD33?logo=playwright&logoColor=white)
+![k6](https://img.shields.io/badge/k6-load_tests-7D64FF?logo=k6&logoColor=white)
+![Chaos Mesh](https://img.shields.io/badge/Chaos_Mesh-NetworkChaos-FF6B35?logo=kubernetes&logoColor=white)
+
+**CI / release**
+![GitLab CI](https://img.shields.io/badge/GitLab_CI-local_runner-FC6D26?logo=gitlab&logoColor=white)
+![Renovate](https://img.shields.io/badge/Renovate-bump_bot-1A1F6C?logo=renovatebot&logoColor=white)
+![release-please](https://img.shields.io/badge/release--please-CHANGELOG_+_semver-4285F4)
+![lefthook](https://img.shields.io/badge/lefthook-pre--push_gates-000000)
+![commitlint](https://img.shields.io/badge/Conventional_Commits-enforced-FE5196)
+![gitleaks](https://img.shields.io/badge/gitleaks-secret_scan-FD7014)
 
 # Mirador — the watchtower for a real running system
 
