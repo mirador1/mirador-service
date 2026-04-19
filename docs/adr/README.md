@@ -21,7 +21,7 @@ navigational, no file layout change.
 
 ## Status snapshot
 
-- **Accepted**: 33
+- **Accepted**: 34
 - **Superseded**: 1 (ADR-0003 → ADR-0013)
 - **Deprecated**: 0
 
@@ -76,6 +76,7 @@ monotonic across supersessions.
 | 0032 | Accepted | [Community standards + hierarchical ADR index](0032-community-standards-and-hierarchical-adr-index.md) |
 | 0033 | Accepted | [Playwright E2E in kind-in-CI](0033-playwright-e2e-in-kind-in-ci.md) |
 | 0034 | Accepted | [CI memory budget + Testcontainers-heavy ITs](0034-ci-memory-budget-testcontainers.md) |
+| 0035 | Accepted | [Defer Pact + Biome adoption](0035-defer-pact-and-biome.md) |
 
 ## Hierarchical index (by theme)
 
@@ -112,6 +113,7 @@ authoritative.
 - [ADR-0031](0031-version-adoption-policy.md) — Version adoption policy
 - [ADR-0033](0033-playwright-e2e-in-kind-in-ci.md) — Playwright E2E in kind-in-CI
 - [ADR-0034](0034-ci-memory-budget-testcontainers.md) — CI memory budget + Testcontainers-heavy ITs
+- [ADR-0035](0035-defer-pact-and-biome.md) — Defer Pact + Biome adoption (deferred trigger conditions)
 
 ### ☸️ Kubernetes & deployment
 

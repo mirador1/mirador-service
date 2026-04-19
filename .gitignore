@@ -12,7 +12,13 @@ target/
 !.idea/compiler.xml
 !.idea/encodings.xml
 !.idea/misc.xml
-.vscode/
+.vscode/*
+# Allow committing the team's shared launch + tasks configs (proposal #13).
+# Use `.vscode/*` (not `.vscode/`) so git can recurse INTO the dir and
+# the negations below take effect. Personal overrides go under
+# `.vscode/user/` which stays ignored via the wildcard.
+!.vscode/launch.json
+!.vscode/tasks.json
 *.iml
 **/.DS_Store
 .env

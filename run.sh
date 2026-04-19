@@ -135,8 +135,11 @@ case "$1" in
   all)
     ensure_docker
     echo "Starting everything..."
-    # Start infra services only (not the app container — we run locally via Maven)
-    docker compose up -d db kafka redis ollama keycloak cloudbeaver kafka-ui redisinsight
+    # Start infra services + the optional dev tools — we use `--profile full`
+    # so ollama/keycloak/cloudbeaver/kafka-ui/redisinsight/redis-commander
+    # are pulled in (they live in the `full` profile in docker-compose.yml so
+    # `docker compose up` defaults to a fast minimal stack — db+kafka+redis).
+    docker compose --profile full up -d db kafka redis ollama keycloak cloudbeaver kafka-ui redisinsight redis-commander
     # Start observability stack
     docker compose -f deploy/compose/observability.yml up -d
     # Wait for DB to be healthy before starting the app
