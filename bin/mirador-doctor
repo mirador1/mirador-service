@@ -1,0 +1,182 @@
+#!/usr/bin/env bash
+# =============================================================================
+# bin/mirador-doctor — single command that answers "tout va bien ?"
+#
+# Runs every cheap health check in one sweep. Designed to be the first thing
+# you run after opening the project in the morning or resuming work after a
+# break. Every check has 3 possible outcomes:
+#
+#   ✅ green   — actionable: keep going
+#   ⚠️  amber   — actionable: you probably want to fix this before pushing
+#   ❌ red     — actionable: something is definitely wrong
+#
+# Each section is < 3 s by design. Anything slower gets delegated (e.g.
+# "run bin/gcp-cost-audit.sh for the full cost picture").
+#
+# Usage:
+#   bin/mirador-doctor
+#   bin/mirador-doctor --no-cost    # skip GCP calls (offline mode)
+# =============================================================================
+
+set -u
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+WITH_COST=1
+for arg in "$@"; do
+  [[ "$arg" == "--no-cost" ]] && WITH_COST=0
+done
+
+# ── Color helpers — no tput dependency, works even over `tee` ──────────────
+G='\033[32m'; Y='\033[33m'; R='\033[31m'; B='\033[34m'; N='\033[0m'
+ok()   { printf "  ${G}✅${N} %s\n" "$1"; }
+warn() { printf "  ${Y}⚠️ ${N} %s\n" "$1"; }
+bad()  { printf "  ${R}❌${N} %s\n" "$1"; }
+info() { printf "  ${B}ℹ️ ${N} %s\n" "$1"; }
+
+cd "$REPO_ROOT"
+
+echo "🏥  mirador-doctor — $(date +'%H:%M:%S')"
+echo "    repo: $REPO_ROOT"
+echo
+
+# ── 1. Git — clean tree + up-to-date with origin ───────────────────────────
+printf "${B}1/7${N} Git state\n"
+branch=$(git branch --show-current 2>/dev/null)
+[[ -z "$branch" ]] && branch="(detached)"
+if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
+  warn "working tree dirty on $branch — commit or stash before pushing"
+else
+  ok "working tree clean on $branch"
+fi
+# Refresh origin in the background if online
+git fetch --all --quiet 2>/dev/null &
+FETCH_PID=$!
+wait $FETCH_PID 2>/dev/null
+if git rev-parse --verify "origin/$branch" >/dev/null 2>&1; then
+  ahead=$(git rev-list --count "origin/$branch..HEAD" 2>/dev/null || echo 0)
+  behind=$(git rev-list --count "HEAD..origin/$branch" 2>/dev/null || echo 0)
+  if [[ "$behind" -gt 0 ]]; then
+    warn "behind origin/$branch by $behind commit(s) — git pull --rebase before editing"
+  elif [[ "$ahead" -gt 0 ]]; then
+    info "ahead of origin/$branch by $ahead commit(s) — not pushed yet"
+  else
+    ok "in sync with origin/$branch"
+  fi
+fi
+echo
+
+# ── 2. Arch — Apple Silicon vs amd64 target ────────────────────────────────
+printf "${B}2/7${N} Local architecture\n"
+arch=$(uname -m)
+case "$arch" in
+  arm64|aarch64) info "$arch — building for GKE amd64 requires --platform linux/amd64" ;;
+  x86_64|amd64)  ok "$arch — native amd64 build" ;;
+  *) warn "unknown arch $arch" ;;
+esac
+echo
+
+# ── 3. Docker daemon ───────────────────────────────────────────────────────
+printf "${B}3/7${N} Docker daemon\n"
+if docker ps >/dev/null 2>&1; then
+  running=$(docker ps -q 2>/dev/null | wc -l | tr -d ' ')
+  ok "Docker up — $running container(s) running"
+  # Runner specifically
+  if docker ps --filter "name=gitlab-runner" --format "{{.Status}}" 2>/dev/null | grep -q Up; then
+    ok "gitlab-runner container up"
+  else
+    warn "gitlab-runner container NOT running — CI jobs will pend"
+  fi
+else
+  bad "Docker daemon unreachable — start Docker Desktop"
+fi
+echo
+
+# ── 4. Kubernetes contexts (reachable?) ────────────────────────────────────
+printf "${B}4/7${N} Kubernetes contexts\n"
+current=$(kubectl config current-context 2>/dev/null)
+info "current context: ${current:-<none>}"
+# Quick reachability probe on each known context — 2 s timeout
+for ctx in kind-mirador-local \
+           "$(kubectl config get-contexts --no-headers --output=name 2>/dev/null | grep '^gke_' | head -1)"; do
+  [[ -z "$ctx" ]] && continue
+  if kubectl --context="$ctx" --request-timeout=2s get --raw /healthz >/dev/null 2>&1; then
+    ok "$ctx reachable"
+  else
+    warn "$ctx not reachable (cluster down or tunnel off)"
+  fi
+done
+echo
+
+# ── 5. GCP project + budget ────────────────────────────────────────────────
+if [[ "$WITH_COST" == "1" ]]; then
+  printf "${B}5/7${N} GCP cost posture\n"
+  project=$(gcloud config get-value project 2>/dev/null)
+  if [[ -z "$project" ]]; then
+    warn "no gcloud project set — skip"
+  else
+    info "project: $project"
+    # Cluster up?
+    up=$(gcloud container clusters list --project="$project" --format="value(name)" 2>/dev/null | head -1)
+    if [[ -z "$up" ]]; then
+      ok "no GKE cluster up — idle €0/h"
+    else
+      info "GKE cluster up: $up (€~0.20/h billable)"
+    fi
+    # Orphaned PVCs
+    orphan=$(gcloud compute disks list --project="$project" \
+             --filter="-users:* AND name:pvc-*" \
+             --format="value(sizeGb)" 2>/dev/null | awk 'BEGIN{s=0} {s+=$1} END{print s}')
+    if [[ "${orphan:-0}" -eq 0 ]]; then
+      ok "no orphaned PVCs"
+    else
+      warn "${orphan} GB of orphaned PVCs — run: bin/gcp-cost-audit.sh --delete"
+    fi
+    # Budget alert exists?
+    if gcloud billing budgets describe cb08b055-d30e-4830-a18a-94bed797f116 \
+         --billing-account=019384-EA1A6A-9D635C >/dev/null 2>&1; then
+      ok "€10 budget alert armed"
+    else
+      bad "budget alert missing — run: bin/budget.sh recreate"
+    fi
+  fi
+  echo
+else
+  info "GCP cost check skipped (--no-cost)"
+  echo
+fi
+
+# ── 6. Pipeline status (MR in flight?) ─────────────────────────────────────
+printf "${B}6/7${N} CI pipelines\n"
+if command -v glab >/dev/null 2>&1; then
+  latest=$(glab pipeline list --per-page 1 2>/dev/null | awk 'NR==4 {print $1, $2}' | tr -d '()')
+  if [[ -n "$latest" ]]; then
+    state="${latest%% *}"
+    iid="${latest##* }"
+    case "$state" in
+      success) ok "latest pipeline $iid: success" ;;
+      running|pending) info "latest pipeline $iid: $state (in flight)" ;;
+      failed) bad "latest pipeline $iid: failed — glab ci trace <job-id>" ;;
+      *) info "latest pipeline $iid: $state" ;;
+    esac
+  else
+    info "no pipelines to report (or glab not authenticated)"
+  fi
+else
+  info "glab CLI not installed — skip"
+fi
+echo
+
+# ── 7. Dependency freshness (cheap — just read outdated summary) ────────────
+printf "${B}7/7${N} Dependency freshness\n"
+if [[ -f pom.xml ]]; then
+  # Very cheap check — just count @Deprecated in source (proxy for drift warnings)
+  if command -v mvn >/dev/null 2>&1; then
+    info "run 'mvn versions:display-property-updates -q' for full report"
+  fi
+fi
+if [[ -f ../mirador-ui/package.json ]]; then
+  info "run 'npm outdated' in mirador-ui for the UI side"
+fi
+echo
+
+echo "Done. Any ⚠️/❌ above is worth addressing before deeper work."

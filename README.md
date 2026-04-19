@@ -95,9 +95,9 @@ around the technologies themselves.
 ## Table of contents
 
 - [Why this, not that — the arbitrages](#why-this-not-that--the-arbitrages)
-- [What I would simplify first](#what-i-would-simplify-first)
-- [Where AI helped and where it didn't](#where-ai-helped-and-where-it-didnt)
-- [The things that are not perfect](#the-things-that-are-not-perfect)
+- [Simplification levers](#simplification-levers)
+- [AI-assisted integration — where it contributed, where it didn't](#ai-assisted-integration--where-it-contributed-where-it-didnt)
+- [Known limitations](#known-limitations)
 - [Architecture — dev (Docker Compose)](#architecture)
 - [Architecture — production (Kubernetes)](#architecture--production-kubernetes)
 - [Quick start](#quick-start)
@@ -129,16 +129,18 @@ with context + alternatives + consequences lives under
 | **CI runner** | Local MacBook Autopilot (m1) | **SaaS minutes** — runs out of the 400-free-minutes tier in two days. **Self-hosted on GKE** — chicken-and-egg if the CI builds the cluster (see [ADR-0004](docs/adr/0004-local-ci-runner.md)). |
 | **Cluster cost** | Ephemeral Autopilot (up only during demos) | **GKE Standard 1 × e2-small always-on** — €30/month vs €2/month for a cluster that doesn't serve traffic 99 % of the time (see [ADR-0022](docs/adr/0022-ephemeral-demo-cluster.md)). |
 
-**What this list is designed to show**: arbitrages, not recitation.
-If I can't articulate why a technology was *rejected*, that technology
-doesn't deserve to be in the repo.
+Guiding principle: if a technology was picked, it should be possible to
+articulate why a specific alternative was *rejected*. A rejection
+reason that doesn't exist is a warning that the choice wasn't made
+deliberately.
 
 ---
 
-## What I would simplify first
+## Simplification levers
 
-If a manager said "this is too complex, rip something out", here's the
-order I would cut things, in descending priority:
+If the stack had to shrink without losing the core demonstration,
+here is the order items would come out, from lowest cost (biggest win
+per LOC removed) to highest:
 
 1. **Keycloak.** The built-in JWT auth covers the demo scenario. Keycloak
    exists only to exercise the OIDC-via-JWKS path — valuable to show the
@@ -163,83 +165,75 @@ order I would cut things, in descending priority:
    `aks` are mostly the same manifest with a different TLS + storage
    class patch. For a real single-cloud deployment I would keep one.
 
-What I would **not** cut, even under pressure:
-- Observability (OTel, structured logs) — without it, production
-  incidents become detective work.
-- The CI supply-chain tooling (SBOM, Grype, cosign) — it runs in ~30 s
+Kept regardless of pressure, with the reason each earns its place:
+- Observability (OTel, structured logs) — without it every production
+  incident becomes detective work from log timestamps.
+- The CI supply-chain tooling (SBOM, Grype, cosign) — ~30 s runtime
   and catches real CVEs; removing it removes an invariant.
-- The ADR set — 23 commits of "why we did this" is cheap insurance
-  against the same decision being reopened in two years.
+- The ADR set — a decision log that costs nothing to maintain and
+  prevents the same trade-offs being relitigated later.
 
 ---
 
-## Where AI helped and where it didn't
+## AI-assisted integration — where it contributed, where it didn't
 
-This project was built in close collaboration with a reasoning LLM.
-The split matters more than pretending it didn't happen — a manager
-reading this repo needs to know where my fingerprints are and where
-the assistant's are.
+The project was built in close collaboration with a reasoning LLM. The
+split between what came from the model and what came from a human
+review is worth being explicit about, because it changes how each
+part should be read.
 
-**How I use AI in this project, in one sentence**:
+**Division of labour, in one sentence**:
 
-> The assistant proposes best practices; I choose which ones apply,
-> and the ADRs are the audit trail of those choices.
+> The assistant enumerates options; the arbitrage — which option fits
+> this specific context and which get rejected — is a human call, and
+> the ADRs under [`docs/adr/`](docs/adr/) are its audit trail.
 
-That sentence is the honest positioning. The technology proposals come
-from a system that has read thousands of platform-engineering
-post-mortems and can enumerate options faster than any human. The
-**arbitrage** — what fits *this* context, what to reject, where the
-trade-off lands — is where my judgement shows up, and where the ADRs
-under [`docs/adr/`](docs/adr/) prove it was a decision rather than
-a reflex.
+The technology proposals come from a system that has read a large
+corpus of platform-engineering post-mortems and can enumerate options
+faster than a human. Enumeration is cheap. Choosing is not.
 
-**Where AI accelerated the work (high leverage, easy to verify)**:
-- Writing ADRs from a bullet-point briefing — the assistant produces a
-  consistent structure (context / decision / alternatives / consequences /
-  references) that would have taken me hours to write in the same voice.
-- Generating boilerplate YAML (NetworkPolicies, Ingresses, SecretStore
-  CRs) from a one-line description of the intent. I still review every
-  line.
-- Refactoring a class to match a new pattern (JSpecify annotations,
-  underscore pattern for unused catches, pattern matching for switch).
-  Mechanical work the assistant does well.
-- Drafting commit messages and MR descriptions — freeing attention for
-  the actual diff.
+**Areas where AI provided high leverage with low verification cost**:
+- ADRs drafted from a bullet-point briefing — consistent
+  context/decision/alternatives/consequences structure produced in
+  minutes.
+- Boilerplate YAML (NetworkPolicies, Ingresses, SecretStore CRs) from
+  a one-line intent description, then line-by-line review.
+- Class refactors matching a new pattern (JSpecify annotations, the
+  underscore pattern for unused catches, pattern matching for switch)
+  — mechanical work with clear acceptance criteria.
+- Commit messages and MR descriptions drafted from the diff.
 
-**Where AI was wrong and I had to overrule it**:
-- **The cost estimates in ADR-0021.** The first version said "€0–3/mo"
-  for the cluster. I had to measure the actual Autopilot pod-hour
-  billing to discover it was ~€190/mo, which then triggered ADR-0022
-  (ephemeral cluster).
-- **The Spring AI shim deletion.** The assistant was confident that
-  1.1 GA no longer needed the SB3-package compatibility classes. CI
-  disagreed — those shims are still load-bearing.
-- **The NetworkPolicy for DNS.** The assistant authored an allow-dns
-  rule pointing at the `kube-system` namespace; it works everywhere
-  except GKE Autopilot, which routes through NodeLocal DNS Cache at
-  `169.254.20.10`. Debugging that required looking at a pod's
-  `/etc/resolv.conf`.
+**Areas where the first LLM output was wrong and had to be corrected**:
+- Cost estimate in ADR-0021. The initial "€0–3/month" for the GKE
+  Autopilot cluster was off by two orders of magnitude once the
+  actual pod-hour billing was measured (~€190/month), which led to
+  ADR-0022 (ephemeral cluster pattern, ~€2/month actual).
+- Spring AI shim removal. An early suggestion that Spring AI 1.1 GA
+  no longer needed the SB3-package compatibility classes turned out
+  to be wrong in CI — the shims remain load-bearing.
+- NetworkPolicy for DNS. The first draft allowed `kube-system` egress;
+  GKE Autopilot routes DNS through NodeLocal DNS Cache at
+  `169.254.20.10`, which required reading `/etc/resolv.conf` on an
+  actual pod to discover.
 
-**What I own alone (the assistant contributes but I decide)**:
-- The scope. Every "we should add X" prompt goes through a ranking of
-  "does this solve a problem the demo exercises?" (see ADR-0021 +
-  ADR-0022's editorial rule).
-- The arbitrages in the table above. The assistant can list
-  alternatives; picking the winner and writing why the losers lost is
-  a judgement call.
-- The things left out — the nice-to-have items in ADR-0022's
-  deferred section are where I draw the line, not the assistant.
-
-If you want to test this: ask me to defend any of the ADRs without the
-repo in front of me. The answer won't sound like a prompt response.
+**Decisions that remained human, with the assistant providing inputs**:
+- Scope. Every "add X" proposal was filtered against "does this solve
+  a concrete problem the demo exercises?" (ADR-0021 + ADR-0022
+  editorial rule).
+- Arbitrages in the table above. The assistant can list alternatives;
+  selecting one and documenting why the others lost is a judgement
+  call that belongs in the ADRs.
+- Items deliberately left out — the nice-to-have section of ADR-0022
+  records what was considered and rejected.
 
 ---
 
-## The things that are not perfect
+## Known limitations
 
-Every "demo" claim in this repo comes with a caveat the live session
-will surface anyway. Listing them here is cheaper than being caught by
-them.
+The items below are caveats that a live session will surface anyway.
+Documenting them up front is cheaper than discovering them mid-demo,
+and also clarifies which limitations are deliberate trade-offs
+(linked to an ADR) rather than unintentional gaps.
 
 - **Cold start is slow** — a fresh `bin/demo-up.sh` takes ~8 min
   (cluster provisioning 5 min + operator installs 2 min + app sync

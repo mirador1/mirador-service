@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  LaunchAgent — run bin/gcp-cost-audit.sh once a month at 02:00 on the 1st.
+  Safer than a GitLab scheduled pipeline for two reasons:
+
+  1. Survives gitlab.com outages / runner tokens rotation / account closure.
+  2. Runs on the same Mac that owns the gcloud credentials — no service
+     account or encrypted token to provision.
+
+  Install:
+    cp deploy/launchd/com.mirador.gcp-cost-audit.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.mirador.gcp-cost-audit.plist
+
+  Verify it fires:
+    launchctl list | grep mirador.gcp-cost-audit
+    tail -f ~/Library/Logs/mirador-gcp-cost-audit.log
+
+  Uninstall:
+    launchctl unload ~/Library/LaunchAgents/com.mirador.gcp-cost-audit.plist
+    rm ~/Library/LaunchAgents/com.mirador.gcp-cost-audit.plist
+
+  Why 02:00 on the 1st: the billing report settles ~24h after month-end.
+  Scheduling on the 1st at 02:00 catches any silent drift from the
+  previous month before the next demo cycle starts.
+-->
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.mirador.gcp-cost-audit</string>
+
+    <!-- ProgramArguments: absolute path to the script. Fill in the
+         correct checkout path when installing — this file is a template. -->
+    <key>ProgramArguments</key>
+    <array>
+      <string>/Users/benoitbesson/dev/workspace-modern/mirador-service/bin/gcp-cost-audit.sh</string>
+      <string>--yes</string>
+    </array>
+
+    <!-- StartCalendarInterval: cron-like. Day=1 of the month, Hour=2. -->
+    <key>StartCalendarInterval</key>
+    <dict>
+      <key>Day</key>
+      <integer>1</integer>
+      <key>Hour</key>
+      <integer>2</integer>
+      <key>Minute</key>
+      <integer>0</integer>
+    </dict>
+
+    <!-- Run-at-load: false. We don't want an audit to fire just because
+         we reinstalled the plist. It fires only on the scheduled time. -->
+    <key>RunAtLoad</key>
+    <false/>
+
+    <!-- Mac-wakeup strategy. If the laptop is asleep at 02:00, LaunchAgent
+         doesn't wake it — the audit runs at the next login. Acceptable:
+         we don't need exact-on-the-minute, just "once a month". -->
+
+    <!-- Logs: append per-run stdout + stderr to a single file in ~/Library/Logs.
+         Rotates implicitly because gcp-cost-audit output is ~30 lines/run. -->
+    <key>StandardOutPath</key>
+    <string>/Users/benoitbesson/Library/Logs/mirador-gcp-cost-audit.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/benoitbesson/Library/Logs/mirador-gcp-cost-audit.log</string>
+
+    <!-- PATH inheritance. LaunchAgents start with a minimal PATH that
+         excludes gcloud, Homebrew, etc. Reset it here so the audit script
+         can find its tools. -->
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>PATH</key>
+      <string>/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/share/google-cloud-sdk/bin</string>
+      <key>HOME</key>
+      <string>/Users/benoitbesson</string>
+    </dict>
+  </dict>
+</plist>
