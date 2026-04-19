@@ -96,7 +96,12 @@ kubectl cluster-info
 # Pinning CRD versions — we validate shape, not upstream stability. If
 # the CRD schema changes upstream, we find out via a controlled bump.
 CHAOS_MESH_VERSION="${CHAOS_MESH_VERSION:-2.7.2}"
-ESO_VERSION="${ESO_VERSION:-0.10.6}"
+# ESO v1 API (external-secrets.io/v1) first shipped in v1.0.0 (Jan 2025).
+# The overlays use `apiVersion: external-secrets.io/v1` so anything older
+# fails with "no matches for kind ExternalSecret in version v1". Stay on
+# the 1.x major (v1.3.2 = latest 2026-04 stable). Bumping across majors
+# requires checking the schema (webhook annotations, CR fields).
+ESO_VERSION="${ESO_VERSION:-1.3.2}"
 
 echo "📦  Installing third-party CRDs (chaos-mesh $CHAOS_MESH_VERSION, ESO $ESO_VERSION)…"
 kubectl apply --server-side=true -f \
