@@ -1010,12 +1010,15 @@ hadolint:
 # the image is available.
 sbom:syft:
   stage: package
+  # Switched from anchore/syft to aquasec/trivy for SBOM generation: the
+  # syft Go binary deterministically panics with `runtime: lfstack.push
+  # invalid packing` when run under QEMU emulation (amd64 binary on arm64
+  # macbook-local runner). Two retries didn't absorb it because the crash
+  # is deterministic, not flaky. Trivy is already pulled for `trivy:scan`
+  # so we save one image download. Job name kept as `sbom:syft` so
+  # downstream jobs (`needs:`) and watchers don't break.
   image:
-    # -debug variant ships /bin/sh (busybox) + the syft binary, but syft
-    # lives at /syft and isn't in PATH. We set PATH explicitly in the
-    # script so `syft …` resolves. (Upstream's non-debug tag is fully
-    # distroless and GitLab's script wrapper can't run without sh.)
-    name: anchore/syft:v1.18.1-debug
+    name: aquasec/trivy:0.69.3
     entrypoint: [""]
   tags:
     - macbook-local
@@ -1026,22 +1029,13 @@ sbom:syft:
       when: never
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_COMMIT_TAG
-  # Go runtime occasionally panics with `lfstack.push invalid packing` when
-  # syft's multi-arch amd64 binary runs under QEMU emulation on the arm64
-  # macbook-local runner (see pipeline #474). Two retries absorb this
-  # transient flake without hiding real failures.
   retry:
-    max: 2
+    max: 1
     when: runner_system_failure
   script:
-    - |
-      export PATH="/:$PATH"
-      syft "registry:$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA" \
-        --registry-username "$CI_REGISTRY_USER" \
-        --registry-password "$CI_REGISTRY_PASSWORD" \
-        -o cyclonedx-json=bom.cdx.json \
-        -o spdx-json=bom.spdx.json \
-        -o table
+    - trivy registry login "$CI_REGISTRY" --username "$CI_REGISTRY_USER" --password "$CI_REGISTRY_PASSWORD"
+    - trivy image --format cyclonedx --output bom.cdx.json "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA"
+    - trivy image --format spdx-json --output bom.spdx.json "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA"
   artifacts:
     when: always
     expire_in: 90 days
