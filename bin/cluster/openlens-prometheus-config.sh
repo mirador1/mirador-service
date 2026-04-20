@@ -79,14 +79,18 @@ if [[ "$FORCE_MODE" == "lgtm" ]]; then
   NS="infra"; SVC="lgtm"; PORT=9009; PROVIDER="lens"; LABEL="lgtm Mimir (forced)"
 elif [[ "$FORCE_MODE" == "kubeprom" ]]; then
   NS="monitoring"; SVC="prometheus-stack-kube-prom-prometheus"; PORT=9090
-  PROVIDER="prometheus"; LABEL="kube-prometheus-stack (forced)"
+  PROVIDER="operator"; LABEL="kube-prometheus-stack (forced)"
 else
   # Auto-detect: try kube-prom first, fall back to lgtm.
   if kubectl --context "$CONTEXT" get svc -n monitoring prometheus-stack-kube-prom-prometheus >/dev/null 2>&1; then
     NS="monitoring"; SVC="prometheus-stack-kube-prom-prometheus"; PORT=9090
-    # OpenLens ships a built-in `prometheus` provider that knows the
-    # community Prometheus query layout (no `/prometheus` prefix needed).
-    PROVIDER="prometheus"; LABEL="kube-prometheus-stack (auto-detected)"
+    # `operator` provider preset matches kube-prometheus-stack's metric
+    # layout (kube-state-metrics + node-exporter + cadvisor names).
+    # Verified empirically (2026-04-21): the generic `prometheus`
+    # provider returned `metadata.prometheus.success: false` even with
+    # the right service URL — OpenLens runs detection queries that ONLY
+    # the operator preset's PromQL knows how to satisfy.
+    PROVIDER="operator"; LABEL="kube-prometheus-stack (auto-detected)"
   else
     NS="infra"; SVC="lgtm"; PORT=9009; PROVIDER="lens"
     LABEL="lgtm Mimir (no kube-prom-stack found)"
