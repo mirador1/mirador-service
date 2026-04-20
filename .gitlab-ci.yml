@@ -1535,9 +1535,12 @@ mutation-test:
   script:
     # `pitest:mutationCoverage` is a separate goal, NOT part of `verify`.
     # See ADR-0034 — Keycloak ITs are tag-gated and excluded here too.
-    - mvn $MAVEN_CLI_OPTS test-compile pitest:mutationCoverage \
-        -DexcludedGroups=keycloak-heavy \
-        -Dpit.threads=$PIT_THREADS
+    # IMPORTANT: keep this on one line. Backslash-newline continuations
+    # in GitLab CI YAML script entries are NOT interpreted by the shell —
+    # they're passed verbatim, which means Maven sees `\` as a separate
+    # arg and the next ` -D…` as an unknown phase. Pipeline #500 died
+    # this way before we collapsed the line.
+    - mvn $MAVEN_CLI_OPTS test-compile pitest:mutationCoverage -DexcludedGroups=keycloak-heavy -Dpit.threads=$PIT_THREADS
   artifacts:
     when: always
     paths:
@@ -1816,7 +1819,12 @@ terraform-apply:
 # < 1 % errors. See scripts/load-test/README.md for thresholds.
 smoke-test:
   stage: deploy
-  image: grafana/k6:1.4.0
+  # Override entrypoint: grafana/k6 ships with `k6` as ENTRYPOINT, so the
+  # GitLab runner's bash wrapper fails with `unknown command "sh" for "k6"`
+  # before the script even runs. Same pattern we hit with cosign earlier.
+  image:
+    name: grafana/k6:1.4.0
+    entrypoint: [""]
   tags:
     - macbook-local
   rules:

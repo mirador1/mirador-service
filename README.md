@@ -616,7 +616,6 @@ Non-obvious choices are justified in Michael-Nygard–style ADRs under
 | [`infra/keycloak/`](infra/keycloak/README.md) | Realm imports for dev and prod |
 | [`infra/nginx/`](infra/nginx/README.md) | Compodoc + Maven-site reverse proxies |
 | [`infra/observability/`](infra/observability/README.md) | LGTM stack + OTel collector + CORS proxy |
-| [`infra/pgadmin/`](infra/pgadmin/README.md) | Pre-registered Postgres server for zero-click admin |
 | [`infra/postgres/`](infra/postgres/README.md) | One-shot SQL init scripts (SonarQube DB, etc.) |
 | [`deploy/`](deploy/README.md) | Production deployment artefacts (Terraform + Kubernetes) |
 | [`deploy/kubernetes/`](deploy/kubernetes/README.md) | K8s manifests per target (backend/frontend/stateful/gke/local) |
@@ -636,7 +635,8 @@ Non-obvious choices are justified in Michael-Nygard–style ADRs under
 
 ### Task tracking
 
-- [`TASKS.md`](TASKS.md) — pending work backlog (source of truth across sessions).
+- `TASKS.md` — pending work backlog when present (source of truth across
+  sessions); deleted when empty per `CLAUDE.md` rule.
 - [`CLAUDE.md`](CLAUDE.md) — project-specific instructions for Claude Code sessions.
 
 ---
