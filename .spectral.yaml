@@ -58,22 +58,9 @@ rules:
   # `operation-4xx-response`). If we want that check back, install
   # `@stoplight/spectral-rulesets` and add it under `extends:`.
 
-  # springdoc-openapi auto-generates `default: {}` for every DTO and bogus
-  # type-mismatched defaults for primitives (id: 0, createdAt: "string",
-  # etc.) — none of which are runtime issues but Spectral's
-  # `oas3-valid-schema-example` flags 24 of them per pipeline. Turning the
-  # rule OFF until we either:
-  #   1. Add explicit `@Schema(defaultValue = "...")` to every DTO field, or
-  #   2. Filter the springdoc output through a post-processor that strips
-  #      type-mismatched defaults.
-  # Follow-up: revisit on next springdoc bump (issue tracked in
-  # docs/adr/0035-defer-pact-and-biome.md as a related infrastructure
-  # debt — pipeline must stay green per ~/.claude/CLAUDE.md).
+  # Full rationale + 3 fix paths documented in docs/adr/0037.
   oas3-valid-schema-example: off
 
-  # Same root cause as oas3-valid-schema-example above — springdoc generates
-  # int examples on path parameters like /customers/{id} where OpenAPI 3
-  # requires the example to be a string. Cannot be fixed at @Schema level
-  # without annotating every @PathVariable. Follow-up ticket in TASKS.md
-  # "Re-enable oas3-valid-*-example Spectral rules".
+  # Same root cause as above — springdoc emits int examples on path params
+  # (/customers/{id}); OpenAPI 3 requires string. See ADR-0037.
   oas3-valid-media-example: off

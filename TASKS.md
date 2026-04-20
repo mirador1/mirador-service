@@ -19,11 +19,17 @@ adding/starting/finishing a task. Delete when empty (per CLAUDE.md).
 
 ## 🟡 Improvements
 
-### Re-enable `oas3-valid-schema-example` Spectral rule
+### Re-enable `oas3-valid-*-example` Spectral rules
 
-Currently OFF in `.spectral.yaml` because springdoc auto-generates 24
-type-mismatched defaults (id: 0 in non-integer schemas, etc.). Two fix
-paths documented in the file. Revisit on next springdoc version bump.
+See ADR-0037 for rationale + 3 fix paths (A: per-DTO @Schema, B: OpenApiCustomizer bean, C: wait for springdoc). Revisit on next springdoc bump.
+
+### UI npm audit — 5 CVEs in @compodoc/compodoc (1 HIGH picomatch)
+
+Dev-only dependency (Angular API doc generator, not shipped to browser).
+Fix requires breaking upgrade to `@compodoc/compodoc@1.1.16`. Low
+real-world impact — log for next session to decide whether to pin +
+upgrade, or drop compodoc if it's no longer valuable. Check again when
+next major compodoc release lands.
 
 ### Reduce `allow_failure: true` shields
 
