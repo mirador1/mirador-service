@@ -19,6 +19,29 @@ adding/starting/finishing a task. Delete when empty (per CLAUDE.md).
 
 ## 🟡 Improvements
 
+### SonarCloud Quality Gate — remaining drivers after 2026-04-20-2315 fix
+
+The session 2026-04-20-2315 merged `fix(sonar): 4 BLOCKER
+missing-assertion + 1 CRITICAL complexity` (svc MR !104, commit
+16ca5d9 → squash on main) and the symmetric UI fix (UI !62, commit
+9287def). That clears **all** open BLOCKER/CRITICAL issues on both
+projects. Gate ERROR persists because of:
+
+- **svc `new_security_rating = 3`** — 1 MAJOR `githubactions:S8234`
+  on `.github/workflows/scorecard.yml:28` (`permissions: read-all`).
+  Fix: narrow to the specific scopes OSSF scorecard needs
+  (`contents: read`, `id-token: write`, probably `pull-requests: read`).
+- **svc `new_coverage = 47.3%`** < 80% — new code added this period
+  without matching tests. Hotspots: `CustomerController` (classify
+  helper + enrich path), and the authz paths added in the Auth0 JWT
+  validation ITest session.
+- **svc `new_security_hotspots_reviewed = 0%`** — hotspots on new code
+  need the Sonar "Review" click (mark as "safe" with justification).
+- **UI `new_coverage = 0%`** + **UI `new_security_hotspots_reviewed = 0%`**
+  — same shape.
+
+Each is an independent task; keep one MR per driver.
+
 ### Re-enable `oas3-valid-*-example` Spectral rules
 
 See ADR-0037 for rationale + 3 fix paths (A: per-DTO @Schema, B: OpenApiCustomizer bean, C: wait for springdoc). Revisit on next springdoc bump.

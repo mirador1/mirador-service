@@ -3,9 +3,13 @@
 #
 # Uses the official `grafana/otel-lgtm` image that bundles all four products
 # plus an OTel Collector preconfigured to route:
-#   - traces → Tempo (port 3200)
-#   - logs   → Loki  (port 3100)
-#   - metrics → Mimir (port 9009)
+#   - traces → Tempo (service 3200 → container 3200)
+#   - logs   → Loki  (service 3100 → container 3100)
+#   - metrics → Mimir (service 9009 → container 9090 — the image's internal
+#              Mimir listens on the default Prometheus port 9090. The service
+#              keeps port 9009 because many existing refs use it (canary
+#              analysis-template, networkpolicies). targetPort: 9090 aligns
+#              with reality.)
 #   - OTLP ingest on 4317 (gRPC) and 4318 (HTTP)
 #
 # Grafana is wired to all three datasources on boot — open http://.../ and
@@ -42,7 +46,10 @@ spec:
       targetPort: 3200
     - name: mimir
       port: 9009
-      targetPort: 9009
+      # The grafana/otel-lgtm image runs Mimir on 9090 internally (default
+      # Prometheus port). Without this targetPort override, the service
+      # routed to 9009 on the pod which isn't bound → ECONNREFUSED.
+      targetPort: 9090
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -61,6 +68,9 @@ spec:
       labels:
         app.kubernetes.io/name: lgtm
     spec:
+      # ServiceAccount granting kubeletstats + k8s_cluster RBAC
+      # (defined in lgtm-k8s-receivers.yaml). See ADR-0038.
+      serviceAccountName: lgtm-collector
       containers:
         - name: lgtm
           image: grafana/otel-lgtm:0.25.0
@@ -81,6 +91,14 @@ spec:
             # Default dashboard landing page.
             - name: GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH
               value: /otel-lgtm/grafana/conf/provisioning/dashboards/home.json
+            # Node name for kubeletstats receiver endpoint templating
+            # (`${env:K8S_NODE_NAME}:10250`). Downward API — doesn't
+            # change per-pod, just makes the current node's kubelet
+            # reachable from this Pod.
+            - name: K8S_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
           resources:
             requests:
               cpu: 250m
@@ -118,9 +136,19 @@ spec:
               mountPath: /var/lib/grafana/dashboards/mirador/canary.json
               subPath: canary.json
               readOnly: true
+            # OTel Collector config override — adds kubeletstats +
+            # k8s_cluster receivers so lgtm's Mimir gets cluster-wide
+            # metrics without needing kube-prometheus-stack. ADR-0038.
+            - name: otelcol-config
+              mountPath: /otel-lgtm/otelcol-config.yaml
+              subPath: otelcol-config.yaml
+              readOnly: true
       volumes:
         - name: data
           emptyDir: {}
         - name: grafana-dashboards
           configMap:
             name: grafana-dashboards
+        - name: otelcol-config
+          configMap:
+            name: lgtm-otelcol-config

@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 /**
  * Unit tests for {@link SseEmitterRegistry}. Cover the registration/completion
@@ -32,13 +33,15 @@ class SseEmitterRegistryTest {
         // which must detach the emitter from the internal list.
         emitter.complete();
         // If the removal worked, a subsequent ping is a no-op (empty list).
-        registry.ping();   // must not throw
+        // Explicit assertion satisfies Sonar java:S2699 — "must not throw" is the
+        // contract being verified.
+        assertThatCode(registry::ping).doesNotThrowAnyException();
     }
 
     @Test
     void ping_isNoOp_whenNoEmittersAreRegistered() {
         // Short-circuit branch: empty list skips the send loop.
-        registry.ping();   // must not throw
+        assertThatCode(registry::ping).doesNotThrowAnyException();
     }
 
     @Test
@@ -51,7 +54,7 @@ class SseEmitterRegistryTest {
         // If the emitter wasn't removed after the failure, the next send would throw again
         // because the same broken emitter is still in the list. The assertion is that this
         // second send is safe — the registry has pruned the faulty emitter.
-        registry.send("event", "{}");
+        assertThatCode(() -> registry.send("event", "{}")).doesNotThrowAnyException();
     }
 
     @Test

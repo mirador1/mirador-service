@@ -545,26 +545,43 @@ public class CustomerController {
                         Thread.currentThread().interrupt();
                         throw new IllegalStateException("Interrupted waiting for enrich reply", e);
                     } catch (ExecutionException e) {
-                        // KafkaReplyTimeoutException extends KafkaException, NOT java.util.concurrent.TimeoutException,
-                        // so we must check the cause explicitly and re-wrap for the exception handler to detect it
-                        if (e.getCause() instanceof KafkaReplyTimeoutException) {
-                            // Warn, not error — the client-facing 504 is the right
-                            // behaviour under broker slowness. Upgrade to error only if
-                            // this fires repeatedly (downstream consumer dead?).
-                            log.warn("kafka_enrich_timeout id={} timeoutSec={} topic={}",
-                                    id, enrichTimeoutSeconds, customerRequestTopic);
-                            throw new IllegalStateException("kafka-timeout",
-                                    new java.util.concurrent.TimeoutException("Kafka reply timed out for id=" + id));
-                        }
-                        // Any other ExecutionException is unexpected — log the cause's
-                        // class + message so the root cause is searchable in Loki.
-                        log.error("kafka_enrich_failed id={} causeType={} causeMsg={}",
-                                id,
-                                e.getCause() != null ? e.getCause().getClass().getSimpleName() : "null",
-                                e.getCause() != null ? e.getCause().getMessage() : "null");
-                        throw new IllegalStateException("Enrich failed for id=" + id, e.getCause());
+                        // Delegate cause-classification + logging to the helper below
+                        // to keep `enrich()` under Sonar's cognitive-complexity budget
+                        // (java:S3776, was 18 — threshold 15).
+                        throw classifyEnrichExecutionException(id, e);
                     }
                 }));
+    }
+
+    /**
+     * Classifies a Kafka {@link ExecutionException} surfaced from the request-reply blocking call
+     * and returns the {@link IllegalStateException} the API should propagate. Split out of
+     * {@link #enrich(Long)} purely to keep that method under Sonar's cognitive-complexity budget
+     * (rule {@code java:S3776}); the behaviour is identical to the previous inline branch.
+     *
+     * <p>Two shapes matter:</p>
+     * <ol>
+     *   <li>{@link KafkaReplyTimeoutException} — re-wrapped with a
+     *       {@link java.util.concurrent.TimeoutException} cause so {@code ApiExceptionHandler}
+     *       returns HTTP 504.</li>
+     *   <li>Anything else — logged with the cause's class + message (so the root cause is
+     *       searchable in Loki) and re-wrapped as a generic enrich failure.</li>
+     * </ol>
+     */
+    private IllegalStateException classifyEnrichExecutionException(Long id, ExecutionException e) {
+        Throwable cause = e.getCause();
+        if (cause instanceof KafkaReplyTimeoutException) {
+            // Warn, not error — the client-facing 504 is the right behaviour under broker
+            // slowness. Upgrade to error only if this fires repeatedly (downstream consumer dead?).
+            log.warn("kafka_enrich_timeout id={} timeoutSec={} topic={}",
+                    id, enrichTimeoutSeconds, customerRequestTopic);
+            return new IllegalStateException("kafka-timeout",
+                    new java.util.concurrent.TimeoutException("Kafka reply timed out for id=" + id));
+        }
+        String causeType = cause != null ? cause.getClass().getSimpleName() : "null";
+        String causeMsg = cause != null ? cause.getMessage() : "null";
+        log.error("kafka_enrich_failed id={} causeType={} causeMsg={}", id, causeType, causeMsg);
+        return new IllegalStateException("Enrich failed for id=" + id, cause);
     }
 
     // ─── SSE stream ─────────────────────────────────────────────────────────

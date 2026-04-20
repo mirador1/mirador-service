@@ -8,3 +8,7 @@ resources:
   # canary rollout view. Mounted into the LGTM pod at the provisioning path
   # via the volumeMount patch below (see lgtm.yaml).
   - grafana-dashboards.yaml
+  # OTel Collector receivers for cluster-wide metrics (kubeletstats +
+  # k8s_cluster). Adds ~90% of kube-prometheus-stack's useful scope at 0
+  # extra pod cost. See ADR-0038 for the full rationale.
+  - lgtm-k8s-receivers.yaml
