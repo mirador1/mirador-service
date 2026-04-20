@@ -185,16 +185,50 @@ section_ci() {
   echo "▸ CI pipelines (last main + 5-run trend per repo)…"
   for repo in "$SVC_DIR" "$UI_DIR"; do
     local name=$(basename "$repo")
-    # Latest main pipeline status — single line, blocks if failed.
-    local latest
-    latest=$( (cd "$repo" && glab pipeline list 2>/dev/null) \
-      | grep -E "main\s" | head -1 | awk '{print $1}')
-    if echo "$latest" | grep -q "failed"; then
-      finding block "$name: LATEST main pipeline is failed — \`glab pipeline list\` to inspect"
-    elif echo "$latest" | grep -q "success"; then
-      finding info "$name: latest main pipeline = success"
+    local project=""
+    case "$name" in
+      mirador-service) project="mirador1%2Fmirador-service" ;;
+      mirador-ui)      project="mirador1%2Fmirador-ui" ;;
+    esac
+    # Latest main pipeline. Don't trust raw `status: failed` because GitLab
+    # marks the whole pipeline failed when ANY job fails, even one shielded
+    # by `allow_failure: true`. Use the API to inspect which jobs failed:
+    # real failures (allow_failure: false) BLOCK the tag; shielded failures
+    # downgrade to ATTENTION.
+    local pid status
+    pid=$( (cd "$repo" && glab api "projects/$project/pipelines?ref=main&per_page=1" 2>/dev/null) \
+      | python3 -c "import json,sys; d=json.load(sys.stdin); print(d[0]['id'] if d else '')" 2>/dev/null || echo "")
+    if [[ -z "$pid" ]]; then
+      finding info "$name: no main pipeline found (API unreachable?)"
     else
-      finding info "$name: latest main pipeline = $latest (in flight)"
+      status=$( (cd "$repo" && glab api "projects/$project/pipelines/$pid" 2>/dev/null) \
+        | python3 -c "import json,sys; print(json.load(sys.stdin).get('status', '?'))" 2>/dev/null || echo "?")
+      if [[ "$status" == "failed" ]]; then
+        local jobs_json
+        jobs_json=$( (cd "$repo" && glab api "projects/$project/pipelines/$pid/jobs?per_page=50" 2>/dev/null) || echo "[]")
+        local real_fails shield_fails
+        real_fails=$(echo "$jobs_json" | python3 -c "
+import json, sys
+try: jobs = json.load(sys.stdin)
+except: jobs = []
+real = [j['name'] for j in jobs if j['status'] == 'failed' and not j.get('allow_failure', False)]
+print(','.join(real))" 2>/dev/null || echo "")
+        shield_fails=$(echo "$jobs_json" | python3 -c "
+import json, sys
+try: jobs = json.load(sys.stdin)
+except: jobs = []
+shielded = [j['name'] for j in jobs if j['status'] == 'failed' and j.get('allow_failure', False)]
+print(','.join(shielded))" 2>/dev/null || echo "")
+        if [[ -n "$real_fails" ]]; then
+          finding block "$name: LATEST main has REAL failures (no allow_failure): $real_fails"
+        else
+          finding warn "$name: latest main 'failed' but only allow_failure jobs: $shield_fails (yellow not red)"
+        fi
+      elif [[ "$status" == "success" ]]; then
+        finding info "$name: latest main pipeline = success"
+      else
+        finding info "$name: latest main pipeline = $status (in flight)"
+      fi
     fi
     # Last 5 main pipelines as a trend metric (info-only).
     local last5
