@@ -368,6 +368,15 @@ Developer laptop                         GKE Autopilot (no public surface)
 | Fly.io | Manual (PaaS) |
 | k3s / bare metal | Manual |
 
+> **Terraform for non-GCP clouds exists as reference.** `deploy/terraform/`
+> ships four modules — `gcp/` is the canonical target (applied in CI),
+> while `aws/` (ECS Fargate), `azure/` (AKS), and `scaleway/` (Kapsule,
+> EU-sovereign) are reference implementations kept for portability review.
+> See [ADR-0036](docs/adr/0036-multi-cloud-terraform-posture.md) for the
+> "ready-to-review, not-ready-to-apply" posture and
+> [`deploy/terraform/README.md`](deploy/terraform/README.md) for the
+> when-to-pick-which guide + cost comparison.
+
 ---
 
 ## Quick start
@@ -619,8 +628,11 @@ Non-obvious choices are justified in Michael-Nygard–style ADRs under
 | [`infra/postgres/`](infra/postgres/README.md) | One-shot SQL init scripts (SonarQube DB, etc.) |
 | [`deploy/`](deploy/README.md) | Production deployment artefacts (Terraform + Kubernetes) |
 | [`deploy/kubernetes/`](deploy/kubernetes/README.md) | K8s manifests per target (backend/frontend/stateful/gke/local) |
-| [`deploy/terraform/`](deploy/terraform/README.md) | IaC for GCP — VPC, GKE, Cloud SQL, Memorystore, IAM |
-| [`deploy/terraform/gcp/`](deploy/terraform/gcp/README.md) | File-by-file walkthrough of the GCP module |
+| [`deploy/terraform/`](deploy/terraform/README.md) | IaC entry point — GCP (canonical) + AWS / Azure / Scaleway reference modules (ADR-0036). Picks which. |
+| [`deploy/terraform/gcp/`](deploy/terraform/gcp/README.md) | File-by-file walkthrough of the **canonical** GCP module (applied in CI). |
+| [`deploy/terraform/aws/`](deploy/terraform/aws/README.md) | **Reference** — AWS ECS Fargate (no EKS — control-plane fee rules it out of €10/month cap). |
+| [`deploy/terraform/azure/`](deploy/terraform/azure/README.md) | **Reference** — Azure AKS (Standard_B2s, free control plane). |
+| [`deploy/terraform/scaleway/`](deploy/terraform/scaleway/README.md) | **Reference** — Scaleway Kapsule (EU-sovereign, cheapest always-on at ~€10/month). |
 | [`config/`](config/README.md) | Static analyzer configs (OWASP, PMD, SpotBugs) |
 | [`scripts/`](scripts/README.md) | Dev scripts (deploy-local, simulate-traffic, register-runner) |
 | [`build/`](build/owasp-data-README.md) | Build-time templates (OWASP README generator) |

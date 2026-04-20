@@ -1,0 +1,35 @@
+# =============================================================================
+# terraform.tfvars.example — copy to terraform.tfvars and fill in your values.
+#
+# terraform.tfvars is git-ignored (see ../.gitignore) — never commit
+# subscription IDs or internal hostnames.
+#
+# In CI, prefer TF_VAR_* environment variables over a tfvars file.
+# =============================================================================
+
+# Optional — Azure region. Default: westeurope (Netherlands, parity
+# with GCP europe-west1). Other EU options:
+#   francecentral   — Paris, slightly more expensive
+#   northeurope     — Ireland, typically cheapest for compute
+# location = "westeurope"
+
+# Optional — Resource Group name. Default "mirador-prod".
+# Azure RG names are unique within the subscription. Cannot be renamed.
+# resource_group_name = "mirador-prod"
+
+# Optional — AKS cluster name + prefix for VNet, subnet, logs, DNS.
+# Default "mirador-prod". Max 63 chars, alphanumeric + hyphens.
+# cluster_name = "mirador-prod"
+
+# Optional — VM size for the default node pool. Default Standard_B2s
+# (2 vCPU, 4 GB, burstable, ~€30/month). For production, bump to
+# Standard_D2s_v5 (non-burstable) or Standard_D4s_v5 (more headroom).
+# node_vm_size = "Standard_B2s"
+
+# Optional — number of nodes in the system pool. Default 1 matches
+# the single-replica demo policy (ADR-0014). Set 3 for HA production.
+# node_count = 1
+
+# Stage 2 only — public hostname for Application Gateway + DNS record.
+# Not consumed by main.tf yet.
+# app_host = "mirador.yourdomain.com"

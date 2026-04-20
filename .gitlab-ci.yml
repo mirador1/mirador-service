@@ -1808,25 +1808,40 @@ terraform-apply:
     - kubectl rollout status deployment/mirador -n app --timeout=360s
 
 # ── smoke-test — k6 smoke test ────────────────────────────────────────────────
-# Manual-trigger job. Pre-ADR-0025 this ran automatically against
-# mirador1.duckdns.org after deploy:gke. Now that the cluster has no public
-# surface, the smoke test only makes sense when a developer has:
-#   1. Booted the cluster   (bin/cluster/demo-up.sh, 13 min)
-#   2. Started the tunnels  (bin/cluster/pf-prod.sh --daemon)
-# … and targets localhost:18080 instead of a public host.
+# Manual-trigger job. Pre-ADR-0025 this ran against mirador1.duckdns.org
+# after deploy:gke. Now that the cluster has no public surface, the job
+# stands up its OWN backend inside the runner (docker-compose for deps +
+# `mvn spring-boot:run` for the app) and runs k6 against it.
+#
+# Pattern mirrors the UI repo's `e2e:kind` job (see ADR-0033 + the UI
+# .gitlab-ci.yml). Rationale: the smoke test asserts the user-visible
+# contract — p95 latency, zero 5xx, readiness — which doesn't depend on
+# the GKE topology. Running it in-job removes the cluster-up prerequisite
+# so every MR pipeline can trigger it manually without €0.26/h cluster
+# costs (ADR-0022).
 #
 # 30 s of light read-only traffic at ~3 RPS, pass/fail on p95 < 500 ms and
 # < 1 % errors. See scripts/load-test/README.md for thresholds.
 smoke-test:
   stage: deploy
-  # Override entrypoint: grafana/k6 ships with `k6` as ENTRYPOINT, so the
-  # GitLab runner's bash wrapper fails with `unknown command "sh" for "k6"`
-  # before the script even runs. Same pattern we hit with cosign earlier.
-  image:
-    name: grafana/k6:1.4.0
-    entrypoint: [""]
+  # Run in a Maven + JDK 21 image (not grafana/k6 directly): the job needs
+  # `mvn spring-boot:run` to start the app, `docker compose` to bring up
+  # db + kafka + redis, and `curl` + `k6` to probe. grafana/k6 is Alpine
+  # with no package manager surface for Maven/Java, so we flip the image
+  # and install k6 as a binary in before_script (single 70 MB download).
+  # JDK 21 chosen to match the `-Dcompat` Maven profile — JDK 25 would
+  # cost an extra ~150 MB image pull for no gain here.
+  image: maven:3.9.14-eclipse-temurin-21-noble
+  # macbook-local: shares /var/run/docker.sock with the host so docker
+  # compose works (shared GitLab SaaS runners don't expose the socket).
+  # Matches every other docker-heavy job in this pipeline.
   tags:
     - macbook-local
+  # interruptible:true — new MRs should cancel an in-flight smoke-test
+  # rather than let it finish against a stale code base. The maven repo
+  # + compose stack are both recreated per-job, so cancelling mid-run
+  # leaks nothing beyond what after_script already cleans up.
+  interruptible: true
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -1834,15 +1849,127 @@ smoke-test:
       when: manual
       allow_failure: true
   variables:
-    # Defaults to port-forwarded backend. Override in CI variables if a
-    # public endpoint is re-introduced (not expected under ADR-0025).
-    K8S_HOST: "${K8S_HOST:-localhost:18080}"
+    # K6_VERSION pinned (no floating tags per CLAUDE.md). Bump deliberately.
+    K6_VERSION: "v1.4.0"
+    # Compose project namespace — scoped to this job ID so parallel CI
+    # runs (or the developer's local dev stack) don't share containers.
+    COMPOSE_PROJECT: "ci-smoke-${CI_JOB_ID}"
+    # Target inside the job container: the Spring app runs as a child
+    # process on localhost:8080 (same as `mvn spring-boot:run` locally).
+    # Plain HTTP — no TLS inside the job container, so K8S_SCHEME=http
+    # tells smoke.js to skip https (see the K8S_SCHEME branch in smoke.js).
+    K8S_HOST: "localhost:8080"
+    K8S_SCHEME: "http"
+  before_script:
+    # Install docker CLI + compose plugin (image ships neither, but the
+    # runner mounts /var/run/docker.sock). Official Docker apt repo for
+    # compose v2 — the Ubuntu/Debian `docker.io` package ships EOL v1.
+    - apt-get update -qq && apt-get install -y -qq curl gnupg ca-certificates
+    - install -m 0755 -d /etc/apt/keyrings
+    - curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    - |
+      echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+      https://download.docker.com/linux/debian $(. /etc/os-release && echo $VERSION_CODENAME) stable" \
+      > /etc/apt/sources.list.d/docker.list
+    - apt-get update -qq && apt-get install -y -qq docker-ce-cli docker-compose-plugin
+    # Install k6 binary (much smaller than swapping to grafana/k6 image
+    # which drops Maven/Java). Arch-aware: the macbook-local runner is
+    # arm64, but this block works for both arms and intel.
+    - |
+      ARCH=$(dpkg --print-architecture)
+      case "$ARCH" in
+        arm64) K6_ARCH=linux-arm64 ;;
+        amd64) K6_ARCH=linux-amd64 ;;
+        *) echo "unsupported arch $ARCH" && exit 1 ;;
+      esac
+      curl -fsSLo /tmp/k6.tgz \
+        "https://github.com/grafana/k6/releases/download/${K6_VERSION}/k6-${K6_VERSION}-${K6_ARCH}.tar.gz"
+      tar -xzf /tmp/k6.tgz -C /tmp
+      install -m 0755 "/tmp/k6-${K6_VERSION}-${K6_ARCH}/k6" /usr/local/bin/k6
+      k6 version
   script:
-    - k6 run scripts/load-test/smoke.js
+    - |
+      set -euxo pipefail
+
+      # 1. Strip host-mode bits from compose: `container_name:` (would
+      #    collide with the developer's local dev stack on the same
+      #    socket) and `ports:` (host port publish — same collision
+      #    risk on 5432/9092/6379). Combined with `-p $COMPOSE_PROJECT`,
+      #    this gives a private bridge network with no host footprint.
+      #    Python for indented-YAML reliability (sed is brittle on
+      #    multi-line block scalars).
+      cp docker-compose.yml /tmp/docker-compose.ci.yml
+      sed -i '/^[[:space:]]*container_name:/d' /tmp/docker-compose.ci.yml
+      python3 -c "
+      import re
+      p = '/tmp/docker-compose.ci.yml'
+      with open(p) as f: txt = f.read()
+      txt = re.sub(r'^( +)ports:\s*\n(\1 +- .*\n)+', '', txt, flags=re.MULTILINE)
+      with open(p, 'w') as f: f.write(txt)
+      "
+
+      # 2. Bring up minimal infra only: db + kafka + redis. The `app`
+      #    compose service would trigger a full Docker build of the
+      #    current repo (~4 min cold) and pull Ollama/Keycloak via
+      #    depends_on — we avoid that by running `mvn spring-boot:run`
+      #    directly below instead.
+      DB_PORT=5432 DB_USER=mirador DB_PASSWORD=mirador DB_NAME=mirador \
+      SERVER_PORT=8080 \
+        docker compose -p "$COMPOSE_PROJECT" -f /tmp/docker-compose.ci.yml \
+          up -d db kafka redis
+
+      # 3. Connect THIS job container to the compose bridge network so
+      #    Maven can reach `db`, `kafka`, `redis` by docker DNS. Matches
+      #    the e2e:kind pattern — no host port publish needed.
+      JOB_CTR=$(hostname)
+      NET="${COMPOSE_PROJECT}_default"
+      docker network connect "$NET" "$JOB_CTR" 2>/dev/null || true
+
+      # 4. Start Spring Boot in the background via `mvn spring-boot:run`.
+      #    -Dcompat targets Java 21 (matches this job's image; the
+      #    default pom profile needs JDK 25). -DskipTests skips the
+      #    test phase — smoke.js is the test here.
+      #    SPRING_* env vars point at compose service names instead of
+      #    the default localhost addresses (which only work in the
+      #    developer's host-mode dev stack).
+      SPRING_DATASOURCE_URL="jdbc:postgresql://db:5432/mirador" \
+      SPRING_DATASOURCE_USERNAME=mirador \
+      SPRING_DATASOURCE_PASSWORD=mirador \
+      SPRING_DATA_REDIS_HOST=redis \
+      SPRING_DATA_REDIS_PORT=6379 \
+      SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:29092 \
+        nohup mvn $MAVEN_CLI_OPTS -Dcompat -DskipTests spring-boot:run \
+          > app.log 2>&1 &
+      echo $! > app.pid
+
+      # 5. Wait up to ~4 min for /actuator/health. Cold JVM + Flyway V1-V7
+      #    typically needs 60-90 s; we budget 240 s to absorb a Maven
+      #    dependency re-resolve on a cold cache.
+      for i in $(seq 1 120); do
+        curl -sSf http://localhost:8080/actuator/health >/dev/null 2>&1 && break
+        sleep 2
+      done
+      curl -sSf http://localhost:8080/actuator/health || { tail -120 app.log; exit 1; }
+
+      # 6. Run the k6 smoke test. K8S_HOST + K8S_SCHEME set via the
+      #    job `variables:` above propagate into k6 as __ENV.*.
+      k6 run scripts/load-test/smoke.js
+  after_script:
+    # Always stop compose + kill the Maven child process, even on
+    # failure or cancellation. `|| true` everywhere — after_script must
+    # not itself fail the job (hides the real error from the user).
+    - |
+      [ -f app.pid ] && kill "$(cat app.pid)" 2>/dev/null || true
+    - |
+      docker compose -p "$COMPOSE_PROJECT" -f /tmp/docker-compose.ci.yml down -v || true
   artifacts:
     when: always
     paths:
       - smoke-summary.json
+      # App log is useful when the startup wait fails — without it the
+      # user sees only "exit 1" and has to re-run to diagnose. Path is
+      # relative to $CI_PROJECT_DIR so GitLab can archive it.
+      - app.log
     expire_in: 30 days
 
 # deploy:gke was retired with ADR-0025 — Argo CD (ADR-0015) reconciles the

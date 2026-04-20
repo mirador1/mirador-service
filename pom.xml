@@ -1681,6 +1681,36 @@
                                                        flags="g" byline="true">
                                             <fileset dir="${project.build.directory}/merged-sources/main" includes="**/*.java"/>
                                         </replaceregexp>
+                                        <!--
+                                          Step 5: same copy + overlay pattern for tests.
+                                          Most tests compile unchanged on Java 21; the pre-java25
+                                          overlay replaces the one that touches JDK-25 preview APIs
+                                          (TraceServiceTest uses ScopedValue.where()) with a
+                                          ThreadLocal-based equivalent. Apply the JEP 443
+                                          unnamed-variable rewrites to tests too so the same
+                                          patterns used in production code compile on Java 21/17.
+                                        -->
+                                        <copy todir="${project.build.directory}/merged-sources/test">
+                                            <fileset dir="src/test/java"/>
+                                        </copy>
+                                        <copy todir="${project.build.directory}/merged-sources/test" overwrite="true">
+                                            <fileset dir="src/test/java-overlays/pre-java25"/>
+                                        </copy>
+                                        <replaceregexp match="catch \((\w+) _\)"
+                                                       replace="catch (\1 _ignored)"
+                                                       flags="g" byline="true">
+                                            <fileset dir="${project.build.directory}/merged-sources/test" includes="**/*.java"/>
+                                        </replaceregexp>
+                                        <replaceregexp match="try \(var _ ="
+                                                       replace="try (var _ignoredRes ="
+                                                       flags="g" byline="true">
+                                            <fileset dir="${project.build.directory}/merged-sources/test" includes="**/*.java"/>
+                                        </replaceregexp>
+                                        <replaceregexp match="case ([\w.]+) _ ->"
+                                                       replace="case \1 _ignored ->"
+                                                       flags="g" byline="true">
+                                            <fileset dir="${project.build.directory}/merged-sources/test" includes="**/*.java"/>
+                                        </replaceregexp>
                                     </target>
                                 </configuration>
                             </execution>
@@ -1689,11 +1719,35 @@
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-compiler-plugin</artifactId>
-                        <configuration>
-                            <compileSourceRoots>
-                                <compileSourceRoot>${project.build.directory}/merged-sources/main</compileSourceRoot>
-                            </compileSourceRoots>
-                        </configuration>
+                        <!--
+                          Scope compileSourceRoots overrides to each execution. Both the compile
+                          AND testCompile goals expose a parameter literally named
+                          "compileSourceRoots" (testCompile's default is
+                          ${project.testCompileSourceRoots}). A plugin-level <configuration>
+                          block therefore leaks into default-testCompile and forces it to compile
+                          main overlays into target/test-classes — producing 0 discoverable
+                          *Test.class for Surefire. Scoping to per-execution configuration is the
+                          only correct way to express "main goes here, tests go there".
+                          Root cause of the historic "compat-* runs 0 unit tests" CI failure.
+                        -->
+                        <executions>
+                            <execution>
+                                <id>default-compile</id>
+                                <configuration>
+                                    <compileSourceRoots>
+                                        <compileSourceRoot>${project.build.directory}/merged-sources/main</compileSourceRoot>
+                                    </compileSourceRoots>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>default-testCompile</id>
+                                <configuration>
+                                    <compileSourceRoots>
+                                        <compileSourceRoot>${project.build.directory}/merged-sources/test</compileSourceRoot>
+                                    </compileSourceRoots>
+                                </configuration>
+                            </execution>
+                        </executions>
                     </plugin>
                 </plugins>
             </build>
@@ -1807,18 +1861,38 @@
                             </execution>
                         </executions>
                     </plugin>
-                    <!-- Point the compiler at the merged source directories -->
+                    <!--
+                      Point the compiler at the merged source directories.
+                      maven-compiler-plugin's compile AND testCompile goals BOTH expose a
+                      parameter named "compileSourceRoots" (testCompile defaults it to
+                      ${project.testCompileSourceRoots}). A plugin-level <configuration> with
+                      <compileSourceRoots> leaks into default-testCompile and forces it to
+                      compile src/main into target/test-classes. testCompileSourceRoots at the
+                      plugin level is NOT a recognised parameter (Maven logs "unknown").
+                      Fix: scope each override to its matching execution. Same pitfall as
+                      the compat profile above — see TASKS.md "compat-* runs 0 unit tests".
+                    -->
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-compiler-plugin</artifactId>
-                        <configuration>
-                            <compileSourceRoots>
-                                <compileSourceRoot>${project.build.directory}/merged-sources/main</compileSourceRoot>
-                            </compileSourceRoots>
-                            <testCompileSourceRoots>
-                                <testCompileSourceRoot>${project.build.directory}/merged-sources/test</testCompileSourceRoot>
-                            </testCompileSourceRoots>
-                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>default-compile</id>
+                                <configuration>
+                                    <compileSourceRoots>
+                                        <compileSourceRoot>${project.build.directory}/merged-sources/main</compileSourceRoot>
+                                    </compileSourceRoots>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>default-testCompile</id>
+                                <configuration>
+                                    <compileSourceRoots>
+                                        <compileSourceRoot>${project.build.directory}/merged-sources/test</compileSourceRoot>
+                                    </compileSourceRoots>
+                                </configuration>
+                            </execution>
+                        </executions>
                     </plugin>
                 </plugins>
             </build>

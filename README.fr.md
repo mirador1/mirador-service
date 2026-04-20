@@ -232,10 +232,14 @@ sont identiques en anglais parce qu'elles contiennent quasi-exclusivement
 des commandes, des tables de ports et des chemins de fichiers.
 
 Pour aller plus loin :
-- [`docs/adr/`](docs/adr/) — les 30+ décisions architecturales
+- [`docs/adr/`](docs/adr/) — les 35+ décisions architecturales
 - [`docs/reference/technologies.md`](docs/reference/technologies.md) — glossaire complet
 - [`docs/ops/`](docs/ops/) — runbooks, politique coûts, mirror CI, CI philosophy
 - [`docs/architecture/`](docs/architecture/) — vue détaillée par couche
+- [`deploy/terraform/`](deploy/terraform/README.md) — IaC : GCP (cible
+  canonique, appliquée en CI) + modules de référence AWS, Azure, Scaleway
+  (prêts à être revus, pas à être appliqués — voir
+  [ADR-0036](docs/adr/0036-multi-cloud-terraform-posture.md))
 
 ---
 

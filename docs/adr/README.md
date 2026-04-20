@@ -21,7 +21,7 @@ navigational, no file layout change.
 
 ## Status snapshot
 
-- **Accepted**: 34
+- **Accepted**: 35
 - **Superseded**: 1 (ADR-0003 → ADR-0013)
 - **Deprecated**: 0
 
@@ -77,6 +77,7 @@ monotonic across supersessions.
 | 0033 | Accepted | [Playwright E2E in kind-in-CI](0033-playwright-e2e-in-kind-in-ci.md) |
 | 0034 | Accepted | [CI memory budget + Testcontainers-heavy ITs](0034-ci-memory-budget-testcontainers.md) |
 | 0035 | Accepted | [Defer Pact + Biome adoption](0035-defer-pact-and-biome.md) |
+| 0036 | Accepted | [Multi-cloud Terraform posture](0036-multi-cloud-terraform-posture.md) |
 
 ## Hierarchical index (by theme)
 
@@ -130,6 +131,7 @@ authoritative.
 - [ADR-0025](0025-ui-local-only-no-public-prod-ingress.md) — UI local-only, no public ingress
 - [ADR-0027](0027-decline-service-mesh-for-portfolio-demo.md) — Decline service mesh
 - [ADR-0030](0030-choose-gcp-as-the-kubernetes-target.md) — Choose GCP (GKE)
+- [ADR-0036](0036-multi-cloud-terraform-posture.md) — Multi-cloud Terraform posture (reference modules)
 
 ### 🔐 Secrets & authentication
 

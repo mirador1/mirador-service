@@ -1,0 +1,42 @@
+# =============================================================================
+# terraform.tfvars.example — copy to terraform.tfvars and fill in your values.
+#
+# terraform.tfvars is git-ignored (see ../.gitignore) — never commit
+# organization / project IDs.
+#
+# In CI, prefer TF_VAR_* environment variables over a tfvars file.
+#
+# Scaleway credentials themselves go in SCW_* env vars, NOT here:
+#   export SCW_ACCESS_KEY=...
+#   export SCW_SECRET_KEY=...
+#   export SCW_DEFAULT_ORGANIZATION_ID=...
+#   export SCW_DEFAULT_PROJECT_ID=...
+# =============================================================================
+
+# Optional — Scaleway region. Default: fr-par (Paris, EU-sovereign).
+# Other EU options:
+#   nl-ams  — Amsterdam, ~10 ms from Paris, same pricing.
+#   pl-waw  — Warsaw, sometimes cheapest SKUs, ~30 ms from Paris.
+# region = "fr-par"
+
+# Optional — Kapsule cluster name. Default "mirador-prod". Max 63 chars.
+# cluster_name = "mirador-prod"
+
+# Optional — Kubernetes version. Default "1.31" (widely supported as of
+# 2026-04). Check `scw k8s version list` before bumping.
+# kubernetes_version = "1.31"
+
+# Optional — node VM type. Default "DEV1-S" (2 vCPU, 2 GB, ~€10/month).
+# Step-ups:
+#   DEV1-M   — 2 vCPU, 4 GB, ~€16/month (extra JVM headroom).
+#   GP1-S    — 4 vCPU, 8 GB, ~€35/month (general purpose).
+#   PRO2-XS  — 2 vCPU, 8 GB, ~€27/month (prod-grade, better CPU bursts).
+# node_type = "DEV1-S"
+
+# Optional — number of nodes in the system pool. Default 1 (single-replica
+# demo policy, ADR-0014). Set 3 for HA production node pool.
+# node_count = 1
+
+# Stage 2 only — public hostname for LB + DNS record. Not consumed by
+# main.tf yet.
+# app_host = "mirador.yourdomain.com"

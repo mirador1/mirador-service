@@ -1,0 +1,37 @@
+# =============================================================================
+# terraform.tfvars.example — copy to terraform.tfvars and fill in your values.
+#
+# terraform.tfvars is git-ignored (see ../.gitignore) — never commit ARNs
+# with account IDs embedded, or internal hostnames.
+#
+# In CI, prefer TF_VAR_* environment variables over a tfvars file.
+# =============================================================================
+
+# Required — full URI to a Docker image that runs the mirador-service app.
+# For ECR in your own account:
+#   123456789012.dkr.ecr.eu-west-3.amazonaws.com/mirador:stable
+# For Docker Hub / GitLab Registry (public):
+#   registry.gitlab.com/mirador1/mirador-service:stable
+# Image MUST be linux/amd64 (Fargate doesn't support arm64 in every region).
+container_image = "123456789012.dkr.ecr.eu-west-3.amazonaws.com/mirador:stable"
+
+# Optional — AWS region. Default: eu-west-3 (Paris). Other EU options:
+# eu-west-1 (Ireland, typically cheapest), eu-central-1 (Frankfurt).
+# region = "eu-west-3"
+
+# Optional — ECS cluster name + prefix for all resources. Default:
+# "mirador-prod". Keep ≤ 28 chars so ALB/TG name truncation stays clean.
+# cluster_name = "mirador-prod"
+
+# Optional — Fargate sizing. Defaults match the GCP Deployment
+# (0.5 vCPU / 1 GB). Valid pairs per AWS matrix — see variables.tf.
+# task_cpu    = 512     # 1024 = 1 vCPU
+# task_memory = 1024    # MB
+
+# Optional — container port. Must match src/main/resources/application.yml
+# and deploy/kubernetes/backend/deployment.yaml. Default 8080.
+# container_port = 8080
+
+# Stage 2 only — public hostname for ACM cert + Route53 alias.
+# Not consumed by main.tf yet; set this when wiring HTTPS.
+# app_host = "mirador.yourdomain.com"

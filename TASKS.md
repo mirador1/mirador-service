@@ -3,53 +3,14 @@
 Source of truth across Claude sessions. Read this first. Update when
 adding/starting/finishing a task. Delete when empty (per CLAUDE.md).
 
-## 🔴 Real bugs (fix-now-ish)
+## ✅ Closed this session (2026-04-20)
 
-### `compat-*` profiles run 0 unit tests on CI
-
-Pipeline #500 (and previous main runs of any compat-* job) report:
-
-```
-[INFO] --- surefire:3.5.5:test (default-test) @ mirador ---
-[INFO] Tests run: 0, Failures: 0, Errors: 0, Skipped: 0
-[INFO] Skipping JaCoCo execution due to missing execution data file.
-[ERROR] Failed to execute goal jacoco-maven-plugin:check ... instructions covered ratio is 0.00, but expected minimum is 0.70
-```
-
-Compile reports show 85 test sources successfully compiled, but Surefire
-discovers ZERO of them. Root cause unknown — investigated 2026-04-20:
-
-- compat profile DOES set `compileSourceRoots` for `maven-compiler-plugin`
-  (main → merged-sources/main, target/classes is correct)
-- `<excludedGroups>` is on failsafe only, not surefire
-- 24 `*Test.java` (excluding `*ITest.java`) exist
-- MAVEN_CLI_OPTS contains no test filter
-- Same code passes `mvn verify` (default profile, Java 25) on the main pipeline
-
-Hypotheses to test next session:
-1. JUnit 5 vs JUnit 4 dependency: junit-vintage-engine missing from compat
-   classpath?
-2. Spring Boot 3 / SB4 BOM clash with JUnit Platform discovery?
-3. `compileSourceRoots` override breaks `testCompileSourceRoots` path?
-4. Surefire test classes directory not aligned with `target/test-classes`?
-
-Repro: `mvn $MAVEN_CLI_OPTS verify -Dcompat` in maven:3.9.14-eclipse-temurin-21-noble.
-
-Until fixed: the 4 compat-* jobs stay 🟡 in stability-check reports.
-
-### UI: 15 feature components have 0 unit tests
-
-Coverage gap surfaced by 2026-04-20 audit. Components:
-
-```
-src/app/features/{customers,settings,database,maven-site,quality,security,
-                  activity,diagnostic,pipelines,chaos,observability,
-                  request-builder,about,login}/
-```
-
-Plan: write thin smoke specs (component creation + signal init) for each,
-~10 lines per component. Not blocking pipelines today (vitest only runs
-existing specs) but blocks any future coverage gate.
+- UI 15 feature smoke specs (UI !58, commit 088ec90 → squash on main)
+- compat-* profiles surefire discovery (svc !98, commit 029dead — root
+  cause: plugin-level compileSourceRoots leaked to testCompile)
+- smoke-test CI infra (svc !98, commit ebbdb96 — swap k6 image for
+  maven + docker CLI, spin compose + spring-boot:run, target
+  app@localhost:8080)
 
 ## 🟡 Improvements
 
