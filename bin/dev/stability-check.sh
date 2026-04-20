@@ -666,6 +666,59 @@ section_terraform() {
   fi
 }
 
+# ── Section 7b: Pinned upstream versions (no :latest, no floating tags) ───
+# CLAUDE.md "Pin every upstream reference. No floating tags." — when an
+# upstream ships a breaking change silently, floating tags turn it into a
+# production outage. Scans compose files and Dockerfiles for :latest or
+# bare `image: foo` without tag.
+section_pinned_versions() {
+  echo "▸ Pinned upstream versions…"
+  local floating=""
+  # Explicit file list — bash globs under `set -o pipefail` combined with
+  # the double grep pipeline can return non-zero when the second grep
+  # filters everything, killing the script. Use a plain loop with
+  # defensive `|| true` inside.
+  local files=(
+    "$SVC_DIR/docker-compose.yml"
+    "$SVC_DIR/docker-compose.observability.yml"
+    "$SVC_DIR/build/Dockerfile"
+  )
+  for f in "${files[@]}"; do
+    [[ ! -f "$f" ]] && continue
+    # Only flag literal `:latest` tags — bare `image: foo` is often a
+    # build-context artefact (our own local image) which shouldn't be
+    # tagged; too noisy to enforce here.
+    if grep -qE "^\s*(image|FROM)\s+\S*:latest\b" "$f" 2>/dev/null; then
+      floating="${floating}$(basename "$f") "
+    fi
+  done
+  if [[ -n "$floating" ]]; then
+    finding warn "Floating :latest tags in: $floating— pin per CLAUDE.md"
+  else
+    finding info "All upstream images pinned (no :latest)"
+  fi
+}
+
+# ── Section 7c: .env key drift vs .env.example (onboarding hygiene) ────────
+# If .env has keys that .env.example doesn't document, a new contributor
+# can't `cp .env.example .env` and get a working local stack — they'll hit
+# a runtime error later when the code reads an undocumented env var.
+section_env_drift() {
+  echo "▸ .env / .env.example drift…"
+  for repo in "$SVC_DIR" "$UI_DIR"; do
+    local name=$(basename "$repo")
+    [[ ! -f "$repo/.env.example" || ! -f "$repo/.env" ]] && continue
+    local missing
+    missing=$(comm -23 \
+      <(grep -oE "^[A-Z_]+" "$repo/.env" 2>/dev/null | sort -u) \
+      <(grep -oE "^[A-Z_]+" "$repo/.env.example" 2>/dev/null | sort -u) \
+      | tr '\n' ' ')
+    if [[ -n "$missing" ]]; then
+      finding warn "$name .env keys missing from .env.example: $missing"
+    fi
+  done
+}
+
 # ── Section 8b: Manual job health (svc only — they're scheduled-or-manual) ──
 section_manual_health() {
   echo "▸ Manual job health (last run on svc main)…"
@@ -870,6 +923,8 @@ main() {
   section_docs
   section_adr_sequence
   section_terraform
+  section_pinned_versions
+  section_env_drift
   section_infra
   section_manual_jobs
   section_manual_health
