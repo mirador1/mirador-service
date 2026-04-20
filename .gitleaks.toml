@@ -50,6 +50,9 @@ regexes = [
   '''local-dev-api-key''',
   # Keycloak default admin user documented in README.
   '''admin/admin''',
+  # Local SonarQube dev default — used by bin/dev/stability-check.sh
+  # to query /api/projects/search (admin auth required for that endpoint).
+  '''admin:admin''',
   # Fake JWT tokens in tests (header.payload.signature shape).
   '''eyJhbGciOiJIUzI1NiIs[A-Za-z0-9_\-\.]+''',
 ]
