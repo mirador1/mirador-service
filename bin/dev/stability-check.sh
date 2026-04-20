@@ -630,6 +630,42 @@ section_dep_cache_size() {
   fi
 }
 
+# ── Section 6c: Terraform syntax + fmt validation ──────────────────────────
+# Catches HCL regressions across all 4 provider modules (gcp, aws, azure,
+# scaleway) without running `terraform plan` (which would need cloud auth).
+# Fast: `validate` + `fmt -check` are purely local HCL parsing, ~1s per
+# module. Skipped if `terraform` binary isn't installed (demo-friendly).
+section_terraform() {
+  echo "▸ Terraform validate + fmt…"
+  if ! command -v terraform >/dev/null 2>&1; then
+    finding info "terraform binary not installed — skip (brew install terraform)"
+    return
+  fi
+  local invalid=""
+  local unformatted=""
+  for mod in "$SVC_DIR/deploy/terraform"/{gcp,aws,azure,scaleway}; do
+    [[ ! -d "$mod" ]] && continue
+    local mod_name=$(basename "$mod")
+    # `init -backend=false` avoids touching remote state. Quiet on success.
+    if ! (cd "$mod" && silent terraform init -backend=false -input=false \
+          && terraform validate >/dev/null 2>&1); then
+      invalid="${invalid}${mod_name} "
+    fi
+    if ! (cd "$mod" && silent terraform fmt -check -diff); then
+      unformatted="${unformatted}${mod_name} "
+    fi
+  done
+  if [[ -n "$invalid" ]]; then
+    finding warn "Terraform validate failed: $invalid— \`terraform validate\` in each"
+  fi
+  if [[ -n "$unformatted" ]]; then
+    finding warn "Terraform fmt drift: $unformatted— \`terraform fmt -recursive deploy/terraform/\`"
+  fi
+  if [[ -z "$invalid" && -z "$unformatted" ]]; then
+    finding info "Terraform: all 4 modules validate + formatted"
+  fi
+}
+
 # ── Section 8b: Manual job health (svc only — they're scheduled-or-manual) ──
 section_manual_health() {
   echo "▸ Manual job health (last run on svc main)…"
@@ -833,6 +869,7 @@ main() {
   section_ui_console
   section_docs
   section_adr_sequence
+  section_terraform
   section_infra
   section_manual_jobs
   section_manual_health
