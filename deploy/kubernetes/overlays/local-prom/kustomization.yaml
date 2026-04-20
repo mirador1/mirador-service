@@ -51,6 +51,10 @@ resources:
   # bootstrap pattern: CRDs → CRs.
   - kube-prom-stack-crds.yaml
   - kube-prom-stack-rendered.yaml
+  # ServiceMonitor: Prometheus picks up Mirador's /actuator/prometheus.
+  # Required label `release: prometheus-stack` so the operator's selector
+  # matches. See file header for the silent-ignore trap.
+  - mirador-servicemonitor.yaml
   # Re-use the local/ overlay's plain Secrets (ESO has no path to GCP
   # Secret Manager from a kind cluster). Kustomize forbids resource
   # paths above the overlay's own directory AND rejects symlinks that

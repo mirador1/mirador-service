@@ -1,0 +1,58 @@
+# =============================================================================
+# ServiceMonitor — instructs kube-prometheus-stack's Prometheus to scrape
+# Mirador's Spring Boot Actuator /actuator/prometheus endpoint.
+#
+# Why this overlay-only resource:
+# ServiceMonitor is a CRD installed by the prometheus-operator (part of
+# kube-prometheus-stack). It does NOT exist in the default `local/`
+# overlay (lgtm-only). Without this manifest, kube-prom-stack's
+# Prometheus has all kubelet/cadvisor/ksm/node-exporter metrics but
+# zero Mirador app metrics — defeating the point of having an
+# application running.
+#
+# Label selector trap:
+# kube-prom-stack's Prometheus is configured (via the helm values
+# `prometheus.prometheusSpec.serviceMonitorSelector`) to ONLY pick up
+# ServiceMonitors with the label `release: prometheus-stack`. Without
+# it, the ServiceMonitor is silently ignored — no error, no scrape,
+# just empty `mirador_*` metrics in queries.
+# =============================================================================
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: mirador-app
+  # ServiceMonitor lives WITH Prometheus in the monitoring namespace by
+  # convention. Cross-namespace scrape (Prometheus → app/) is configured
+  # via spec.namespaceSelector below.
+  namespace: monitoring
+  labels:
+    # Required so kube-prom-stack's Prometheus selects this ServiceMonitor.
+    release: prometheus-stack
+    app.kubernetes.io/name: mirador
+spec:
+  # Match the mirador Service in the `app` namespace by its label.
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mirador
+      app.kubernetes.io/component: backend
+  namespaceSelector:
+    matchNames:
+      - app
+  endpoints:
+    - port: http   # named port from app/mirador Service
+      path: /actuator/prometheus
+      interval: 30s
+      # Mirador exposes the actuator endpoints anonymously by default
+      # (see SecurityConfig — /actuator/prometheus is permitted without
+      # auth). If we ever flip to JWT-required, add `bearerTokenSecret`
+      # here pointing at a Secret with a service-to-service token.
+      scrapeTimeout: 10s
+      # Re-label so the metrics in Prometheus carry namespace + pod for
+      # easy filtering.
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_pod_name]
+          targetLabel: pod
+        - sourceLabels: [__meta_kubernetes_namespace]
+          targetLabel: namespace
+        - sourceLabels: [__meta_kubernetes_service_name]
+          targetLabel: service
