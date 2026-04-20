@@ -696,7 +696,7 @@ Sibling catalogue for the Angular UI: <https://gitlab.com/mirador1/mirador-ui/-/
 
 ### 🪝 [lefthook](https://lefthook.dev/)
 - **What it is**: Fast Git hooks manager (Go binary, no Node required).
-- **Usage here**: `lefthook.yml` at repo root. Pre-commit: glab CI lint, hadolint, kubectl dry-run, terraform fmt+validate, env key parity, pom hardcoded-version scan, xmllint, gitleaks. Commit-msg: Conventional Commits regex. Pre-push: unit tests.
+- **Usage here**: `.config/lefthook.yml` (moved from repo root on 2026-04-20 per root-hygiene rule; `.config/` is an XDG-style auto-discovery path, no flag needed). Pre-commit: glab CI lint, hadolint, kubectl dry-run, terraform fmt+validate, env key parity, pom hardcoded-version scan, xmllint, gitleaks. Commit-msg: Conventional Commits regex. Pre-push: unit tests.
 - **Why it's pertinent**: Catches the errors that previously took 4+ CI iterations to find. Fast-fail locally saves pipeline quota.
 
 ### 📝 [Conventional Commits](https://www.conventionalcommits.org/)
@@ -706,17 +706,17 @@ Sibling catalogue for the Angular UI: <https://gitlab.com/mirador1/mirador-ui/-/
 
 ### 📝 [commitlint](https://commitlint.js.org/)
 - **What it is**: Node-based Conventional Commits linter.
-- **Usage here**: `commitlint.config.mjs` documents the rules; actual enforcement is the pure-bash regex in `lefthook.yml` (avoids a `node_modules/` dependency for a Java project).
+- **Usage here**: `config/commitlint.config.mjs` documents the rules; actual enforcement is the pure-bash regex in `.config/lefthook.yml` (avoids a `node_modules/` dependency for a Java project).
 - **Why it's pertinent**: Config file documents intent even without the runtime — tooling can be swapped to the Node impl at any time.
 
 ### 🚀 [release-please](https://github.com/googleapis/release-please)
 - **What it is**: Google's release-automation tool — reads Conventional Commits, opens a release MR, tags on merge.
-- **Usage here**: `release-please` CI job on `main`. Uses `release-please-config.json` + `.release-please-manifest.json`.
+- **Usage here**: `release-please` CI job on `main`. Uses `config/release-please-config.json` + `.release-please-manifest.json`.
 - **Why it's pertinent**: Eliminates manual CHANGELOG.md maintenance and manual tagging.
 
 ### 🦊 [`glab`](https://gitlab.com/gitlab-org/cli)
 - **What it is**: Official GitLab CLI.
-- **Usage here**: `lefthook.yml` pre-commit runs `glab ci lint` on `.gitlab-ci.yml` changes. Used interactively to create/merge MRs.
+- **Usage here**: `.config/lefthook.yml` pre-commit runs `glab ci lint` on `.gitlab-ci.yml` changes. Used interactively to create/merge MRs.
 - **Why it's pertinent**: Locally validates CI YAML against GitLab's API — one round-trip vs "push and wait for the pipeline".
 
 ### 🔒 [gitleaks](https://github.com/gitleaks/gitleaks)
@@ -819,12 +819,12 @@ Sibling catalogue for the Angular UI: <https://gitlab.com/mirador1/mirador-ui/-/
 
 ### 🔧 **`.env` / `.env.example`**
 - **What it is**: Convention for per-developer environment variables.
-- **Usage here**: Compose reads `.env`; `lefthook.yml` enforces key parity between `.env` and `.env.example`.
+- **Usage here**: Compose reads `.env`; `.config/lefthook.yml` enforces key parity between `.env` and `.env.example`.
 - **Why it's pertinent**: Every developer gets documented keys; nobody commits secrets. Parity check prevents drift.
 
 ### 🔧 **`run.sh`**
 - **What it is**: Project-local task runner (Bash script).
-- **Usage here**: `./run.sh check`, `./run.sh sonar`, `./run.sh site`, etc. Referenced from `lefthook.yml` pre-push (`./run.sh check`).
+- **Usage here**: `./run.sh check`, `./run.sh sonar`, `./run.sh site`, etc. Referenced from `.config/lefthook.yml` pre-push (`./run.sh check`).
 - **Why it's pertinent**: Canonical entry points so humans and CI both invoke the same commands.
 
 ---

@@ -37,6 +37,12 @@ services:
   # can reach the Spring Boot app running outside Docker.
   # ---------------------------------------------------------------------------
   lgtm:
+    # observability profile: activated when layering this file on top of
+    # docker-compose.yml with `--profile observability`. Kept as the
+    # default profile too (no `profiles:` = always-on) was NOT chosen —
+    # explicit profile means `docker compose -f observability.yml up` by
+    # itself is a no-op, matching the single-purpose intent of this file.
+    profiles: ["observability"]
     # Pinned tag. Bumping from 0.22.1 (Loki 3.6.7 / Grafana 12.4.1 /
     # Tempo 2.10.3 / Prom 3.10.0) to 0.25.0 (Loki 3.7.1 / Grafana 12.4.2
     # / Tempo 2.10.4 / Prom 3.11.2) unlocks Loki bloom-filter support
@@ -112,6 +118,8 @@ services:
   # to the host — only this proxy does.
   # ---------------------------------------------------------------------------
   cors-proxy:
+    # observability profile: only useful alongside lgtm + docker-proxy.
+    profiles: ["observability"]
     image: nginx:1.27-alpine
     container_name: customerservice-cors-proxy
     ports:
@@ -137,6 +145,9 @@ services:
   # This keeps the backend agnostic — no Docker code in Spring Boot.
   # ---------------------------------------------------------------------------
   docker-proxy:
+    # observability profile: read-only Docker Engine API proxy, consumed
+    # by the Angular Observability page (container start/stop/status).
+    profiles: ["observability"]
     image: tecnativa/docker-socket-proxy:latest  # 0.4.2 tag was removed from Docker Hub
     container_name: customerservice-docker-proxy
     environment:

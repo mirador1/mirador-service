@@ -1,6 +1,12 @@
 // =============================================================================
 // Jenkinsfile — declarative pipeline, mirrors the GitLab CI stages.
 //
+// moved 2026-04-20 from repo root to ci/ per root-hygiene rule
+// (CLAUDE.md → "Root file hygiene"). This file is a parity demonstrator
+// (ADR-0029), not a live pipeline — no tool auto-discovers Jenkinsfile
+// at ./Jenkinsfile for this project. If Jenkins is ever activated, the
+// Multibranch Pipeline job would be configured to look at ci/Jenkinsfile.
+//
 // Why this exists, when GitLab CI already works:
 //   Jenkins is the de-facto standard in a lot of enterprise environments
 //   (banking, insurance, telco) where GitLab SaaS isn't available. The

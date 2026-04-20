@@ -10,7 +10,7 @@ duplication is carefully avoided.
 |---|---|---|---|
 | [`.gitlab-ci.yml`](../../.gitlab-ci.yml) | GitLab CI | **Canonical** (master) | The only CI that builds, tests, scans, signs and deploys. Every merge passes through it. |
 | [`.github/workflows/*.yml`](../../.github/workflows/) | GitHub Actions | **Complement** | Runs ONLY what GitHub provides natively and GitLab can't match: CodeQL SAST + OSSF Scorecard. Nothing else. |
-| [`Jenkinsfile`](../../Jenkinsfile) | Jenkins | **Parity demonstrator** | Not live. Shipped to prove the industrial tooling (Testcontainers, SBOM, cosign, Sonar, PIT) runs under Jenkins unchanged. Adoptable in enterprises locked into Jenkins. |
+| [`ci/Jenkinsfile`](../../ci/Jenkinsfile) | Jenkins | **Parity demonstrator** | Not live. Shipped to prove the industrial tooling (Testcontainers, SBOM, cosign, Sonar, PIT) runs under Jenkins unchanged. Adoptable in enterprises locked into Jenkins. |
 
 ## The hard rules
 
@@ -128,4 +128,4 @@ Each of these would be an ADR, not an impulse edit.
 - [`.gitlab-ci.yml`](../../.gitlab-ci.yml) — the real pipeline.
 - [`.github/workflows/`](../../.github/workflows/) — the narrow GitHub
   one.
-- [`Jenkinsfile`](../../Jenkinsfile) — the parity demonstrator.
+- [`ci/Jenkinsfile`](../../ci/Jenkinsfile) — the parity demonstrator.

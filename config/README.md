@@ -10,8 +10,10 @@ built".
 
 | File                       | Consumed by                                              | Purpose                                                                                                                                                 |
 | -------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `commitlint.config.mjs`    | `commitlint` CLI (documentation only — actual enforcement is the bash regex in `.config/lefthook.yml`) | Declares Conventional Commits rules for tooling that understands commitlint. |
 | `owasp-suppressions.xml`   | `org.owasp:dependency-check-maven` (pom.xml → `<suppressionFile>`) | Project-specific CVE false-positive suppressions. Each `<suppress>` entry carries a `<notes>` comment explaining why the CVE doesn't apply or when the suppression should be revisited. |
 | `pmd-ruleset.xml`          | `org.apache.maven.plugins:maven-pmd-plugin` (pom.xml → `<ruleset>`) | Selects which PMD rule categories to enforce and which rules to exclude. Currently: `bestpractices`, `design` (minus LawOfDemeter + LoosePackageCoupling), `errorprone`, `performance`. Excluded rules are ones that StackOverflow on Java 25 generic type hierarchies. |
+| `release-please-config.json` | `release-please` CLI (`.gitlab-ci.yml` release-please job → `--config-file`) | Release automation config — moved from repo root 2026-04-20 per root-hygiene rule. The CLI takes any path via `--config-file`, so no tool default was broken. |
 | `spotbugs-exclude.xml`     | `com.github.spotbugs:spotbugs-maven-plugin` (pom.xml → `<excludeFilterFile>`) | Documents and suppresses SpotBugs false positives for Spring DI patterns (field injection, bean lifecycle, etc.) that otherwise drown the real signal. |
 | `README.md`                | (humans)                                                 | This file.                                                                                                                                              |
 

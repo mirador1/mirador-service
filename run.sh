@@ -135,13 +135,19 @@ case "$1" in
   all)
     ensure_docker
     echo "Starting everything..."
-    # Start infra services + the optional dev tools — we use `--profile full`
-    # so ollama/keycloak/cloudbeaver/kafka-ui/redisinsight/redis-commander
-    # are pulled in (they live in the `full` profile in docker-compose.yml so
-    # `docker compose up` defaults to a fast minimal stack — db+kafka+redis).
-    docker compose --profile full up -d db kafka redis ollama keycloak cloudbeaver kafka-ui redisinsight redis-commander
-    # Start observability stack
-    docker compose -f deploy/compose/observability.yml up -d
+    # Start infra + every optional service. After the 2026-04 profile
+    # taxonomy refactor (see docker-compose.yml header), the profiles
+    # split is:
+    #   full  → heavy extras (ollama, keycloak)
+    #   admin → nice-to-have browsers (cloudbeaver, kafka-ui, redis*, sonarqube)
+    # `run.sh all` keeps the original "kitchen sink" semantics by
+    # activating both. `docs` (maven-site, compodoc) is opt-in only —
+    # `run.sh site` brings maven-site up on demand.
+    docker compose --profile full --profile admin up -d \
+      db kafka redis ollama keycloak cloudbeaver kafka-ui redisinsight redis-commander
+    # Start observability stack (lgtm, cors-proxy, docker-proxy) — all
+    # now live under the `observability` profile.
+    docker compose -f deploy/compose/observability.yml --profile observability up -d
     # Wait for DB to be healthy before starting the app
     echo -n "Waiting for PostgreSQL"
     until docker inspect -f '{{.State.Health.Status}}' postgres-demo 2>/dev/null | grep -q healthy; do
@@ -166,10 +172,14 @@ case "$1" in
     # Stop all containers (both compose files)
     docker compose -f deploy/compose/observability.yml down
     docker compose down
-    # Start infra (not the app container — we run locally via Maven)
-    docker compose up -d db kafka redis ollama keycloak cloudbeaver kafka-ui redisinsight
-    # Start observability stack
-    docker compose -f deploy/compose/observability.yml up -d
+    # Start infra (not the app container — we run locally via Maven).
+    # Explicit `--profile` flags needed after the 2026-04 profile
+    # taxonomy refactor: ollama/keycloak live under `full`;
+    # cloudbeaver/kafka-ui/redisinsight under `admin`.
+    docker compose --profile full --profile admin up -d \
+      db kafka redis ollama keycloak cloudbeaver kafka-ui redisinsight
+    # Start observability stack (profile-gated since 2026-04-20).
+    docker compose -f deploy/compose/observability.yml --profile observability up -d
     # Wait for DB to be healthy before starting the app
     echo -n "Waiting for PostgreSQL"
     until docker inspect -f '{{.State.Health.Status}}' postgres-demo 2>/dev/null | grep -q healthy; do
@@ -275,7 +285,10 @@ case "$1" in
     $MAVEN site post-site -q
     echo ""
     echo "Starting maven-site nginx container..."
-    docker compose up -d maven-site
+    # `maven-site` now lives under the `docs` profile (2026-04-20) — must
+    # activate the profile explicitly for `docker compose up -d <svc>` to
+    # target a profile-gated service.
+    docker compose --profile docs up -d maven-site
     echo ""
     echo "  Maven Site  http://localhost:8084"
     echo "  Reports:    Surefire · Failsafe · JaCoCo · SpotBugs · Mutation Testing · Javadoc"
@@ -287,7 +300,7 @@ case "$1" in
   sonar-setup)
     # First-time SonarQube configuration on a fresh volume.
     # Disables force-authentication so the dashboard is accessible without login (local dev only).
-    # Run once after `docker compose up -d sonarqube` when the volume is new.
+    # Run once after `docker compose --profile admin up -d sonarqube` when the volume is new.
     ensure_docker
     echo "Waiting for SonarQube to be ready..."
     until curl -s http://localhost:9000/api/system/status | grep -q '"status":"UP"'; do
@@ -309,7 +322,7 @@ case "$1" in
   sonar)
     # Run SonarQube analysis against the local Docker SonarQube instance (port 9000).
     # Prerequisites:
-    #   1. docker compose up -d sonarqube (wait ~2 min for first startup)
+    #   1. docker compose --profile admin up -d sonarqube (wait ~2 min for first startup)
     #   2. ./run.sh sonar-setup           (disables force-auth, one-time)
     #   3. Generate a token at http://localhost:9000/account/security
     #   4. Set SONAR_TOKEN=<token> in .env

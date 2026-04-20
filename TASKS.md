@@ -11,6 +11,11 @@ adding/starting/finishing a task. Delete when empty (per CLAUDE.md).
 - smoke-test CI infra (svc !98, commit ebbdb96 — swap k6 image for
   maven + docker CLI, spin compose + spring-boot:run, target
   app@localhost:8080)
+- compose-profiles cleanup (svc, commit d80db1f — split full into
+  full/admin/docs, tag observability stack, README+FR updated)
+- Auth0 JWT validation ITest (svc, commit 60a5969 — 4 scenarios:
+  happy path + expired + wrong issuer + wrong audience, uses
+  in-process HttpServer + RSA keypair, no WireMock / Testcontainers)
 
 ## 🟡 Improvements
 
@@ -56,16 +61,6 @@ Current failure shape (pipeline #528, 2026-04-20):
 
 Acceptance: `npx spectral-cli@6.15.1 lint … --fail-severity error`
 exits 0 → drop `allow_failure: true` on the job.
-
-### Write integration tests for OAuth2 / Auth0 flow
-
-`auth/JwtAuthenticationFilter.java` and `auth/KeycloakConfig.java`
-reference Auth0 (production path) but `src/test/**/Auth0*` is empty.
-
-### Compose-profiles cleanup
-
-`docker-compose.yml` profile labels added in earlier MR but some
-nice-to-have services still default-start. Audit + tag.
 
 ## 🟢 Nice-to-have
 

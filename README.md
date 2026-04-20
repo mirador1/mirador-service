@@ -426,10 +426,43 @@ That's it. Docker starts automatically. Sign in at http://localhost:8080/swagger
 ./run.sh all
 
 # Or step by step:
-docker compose up -d              # infra (DB, Kafka, Redis, Ollama, Keycloak, admin tools)
+docker compose up -d              # core only: DB + Kafka + Redis + app (~1 GB, ~4 containers)
 ./run.sh obs                      # observability (Grafana, Prometheus, Tempo, Zipkin, Pyroscope)
 ./run.sh app                      # Spring Boot app
+```
 
+#### Compose profiles
+
+The compose stack is profile-gated so a fresh clone doesn't pull ~12 GB
+of optional tooling on the first `docker compose up`. Profiles are
+additive — combine them as needed.
+
+| Profile | Services | When to activate |
+|---|---|---|
+| (none) | `db`, `kafka`, `redis`, `app` | Default. Minimum to boot the API. |
+| `full` | + `keycloak`, `ollama` | OAuth2 IdP + local LLM (Spring AI). Heavy — ~3 GB extra. |
+| `admin` | + `cloudbeaver`, `pgweb-local`, `kafka-ui`, `redisinsight`, `redis-commander`, `sonarqube` | Browsing & quality UIs (SQL, topics, Redis, static analysis). |
+| `docs` | + `maven-site`, `compodoc` | Local static-site servers for Maven reports + Angular Compodoc. |
+| `observability` (in `deploy/compose/observability.yml`) | `lgtm`, `cors-proxy`, `docker-proxy` | Grafana + Loki + Tempo + Mimir + Pyroscope + CORS/Docker proxies. |
+| `kind-tunnel` / `prod-tunnel` | `pgweb-kind` / `pgweb-prod` | Browse kind / GKE Postgres via `bin/cluster/pf-*.sh` port-forwards. |
+
+```bash
+# Examples
+docker compose up -d                                       # core only
+docker compose --profile full up -d                        # core + keycloak + ollama
+docker compose --profile admin up -d                       # core + browsing tools
+docker compose --profile full --profile admin up -d        # "kitchen sink"
+docker compose -f docker-compose.yml \
+               -f deploy/compose/observability.yml \
+               --profile full --profile admin --profile observability up -d
+```
+
+`./run.sh all` activates `full + admin + observability` to preserve the
+historical "start everything" behaviour.
+
+### Quick API smoke test
+
+```bash
 # Get a token
 TOKEN=$(curl -s -X POST http://localhost:8080/auth/login \
   -H 'Content-Type: application/json' \

@@ -62,7 +62,8 @@ curl -s http://localhost:11434/api/generate \
 
 ## Fix that worked last time
 
-- **Container stopped** — `docker compose up -d ollama` or
+- **Container stopped** — `docker compose --profile full up -d ollama`
+  (ollama lives under the `full` profile since 2026-04-20) or
   `./run.sh all` to bring everything back.
 - **Cold start** — warm up the model before demo:
   ```

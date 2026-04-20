@@ -16,13 +16,14 @@
 # Rationale for this specific approach in ADR-0029.
 #
 # Usage:
-#   bin/ci/jenkins-lint.sh                # lint ./Jenkinsfile
+#   bin/ci/jenkins-lint.sh                # lint ./ci/Jenkinsfile
 #   bin/ci/jenkins-lint.sh path/to/file  # lint an arbitrary file
 # =============================================================================
 
 set -euo pipefail
 
-FILE="${1:-Jenkinsfile}"
+# Default path reflects the 2026-04-20 root-hygiene move (root → ci/).
+FILE="${1:-ci/Jenkinsfile}"
 IMAGE="${JENKINS_IMAGE:-jenkins/jenkins:lts-jdk25}"
 CONTAINER="${JENKINS_LINT_CONTAINER:-mirador-jenkins-lint}"
 PORT="${JENKINS_LINT_PORT:-18082}"

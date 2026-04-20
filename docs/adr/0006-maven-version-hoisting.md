@@ -63,5 +63,5 @@ too, not just plugins.
 ## References
 
 - `pom.xml` — `<properties>` block at the top.
-- `lefthook.yml` — `pom-hardcoded-versions` hook.
+- `.config/lefthook.yml` — `pom-hardcoded-versions` hook.
 - ADR-0002 — related spirit: declarative centralisation.

@@ -1,6 +1,13 @@
 # =============================================================================
 # lefthook.yml — Git hooks configuration
 #
+# moved 2026-04-20 from repo root to .config/ per lefthook's XDG-style
+# auto-discovery path + root-hygiene rule (CLAUDE.md → "Root file
+# hygiene"). lefthook v2.x probes ./lefthook.yml, ./.config/lefthook.yml,
+# and a couple more — no flag or env var needed. Verified by running
+# `lefthook validate` and `lefthook install` from the repo root after
+# the move.
+#
 # lefthook is a fast Git hooks manager written in Go (no Node.js required).
 # Install: brew install lefthook
 # Activate: lefthook install   (wires hooks into .git/hooks/)

@@ -422,21 +422,27 @@ release-please:
     - apk add --no-cache git
   script:
     # --token passes the PAT; --repo-url points at this project.
-    # The CLI reads release-please-config.json + .release-please-manifest.json
-    # from the working tree.
+    # The CLI reads config/release-please-config.json + .release-please-manifest.json
+    # from the working tree. (config file moved out of repo root on
+    # 2026-04-20 per root-hygiene rule; the CLI accepts any path via
+    # --config-file, no tool default to preserve.)
     - |
       npx --yes release-please release-pr \
         --token "$RELEASE_PLEASE_TOKEN" \
         --repo-url "$CI_PROJECT_URL" \
         --target-branch "$CI_DEFAULT_BRANCH" \
-        --config-file release-please-config.json \
+        --config-file config/release-please-config.json \
         --manifest-file .release-please-manifest.json
       npx --yes release-please github-release \
         --token "$RELEASE_PLEASE_TOKEN" \
         --repo-url "$CI_PROJECT_URL" \
         --target-branch "$CI_DEFAULT_BRANCH" \
-        --config-file release-please-config.json \
+        --config-file config/release-please-config.json \
         --manifest-file .release-please-manifest.json
+  # TODO: flip to false by 2026-07-20 (90d) — gated on RELEASE_PLEASE_TOKEN
+  # being set as a GitLab CI variable. Action item: either provision the
+  # token (needs write_repository scope) or DELETE this job if we stick
+  # with manual semver. Revisit during the 90d review.
   allow_failure: true   # until RELEASE_PLEASE_TOKEN is set; flip to false after
 
 # ── stage: integration ────────────────────────────────────────────────────────
@@ -614,6 +620,10 @@ sonar-analysis:
     # Skip entirely if SONAR_TOKEN is not configured (avoids failing new environments)
     - if: '$SONAR_TOKEN == null || $SONAR_TOKEN == ""'
       when: never
+  # TODO: flip to false by 2026-10-20 (180d) — keeping the shield only
+  # because Sonar outage is the sole justified reason to break a deploy;
+  # re-evaluate after 6 months of uptime data. Ran green 3/3 on main
+  # (pipelines #525, #528, #530 on 2026-04-19).
   allow_failure: true   # SonarCloud outage must not block deployments
   cache:
     key: "$CI_COMMIT_REF_SLUG"
@@ -656,6 +666,11 @@ code-quality:
       when: never
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  # TODO: flip to false by 2026-10-20 (180d) — the analysis itself is
+  # informational, so blocking merges on a bad severity call would be
+  # noisy. Revisit after 6 months: if green-streak holds, keep shield;
+  # if we start adding real gates (cyclomatic thresholds, etc.) flip it.
+  # Ran green 3/3 on main (pipelines #525, #528, #530 on 2026-04-19).
   allow_failure: true   # Code Quality annotations are informational — must never block merges
   variables:
     MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
@@ -951,6 +966,12 @@ trivy:scan:
       when: never
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_COMMIT_TAG
+  # TODO: flip to false by 2026-07-20 (90d) — currently informational
+  # per the comment above. Ran green 3/3 on main (pipelines #525/#528/
+  # #530 on 2026-04-19) with --exit-code 0, so flipping only makes a
+  # difference once we switch to --exit-code 1 on HIGH/CRITICAL.
+  # Coordinated flip: both the exit-code AND allow_failure at the same
+  # time, so CVE gate becomes real. Revisit after SBOM+Grype lands.
   allow_failure: true
   script:
     - |
@@ -1075,6 +1096,13 @@ grype:scan:
       when: never
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_COMMIT_TAG
+  # TODO: flip to false by 2026-05-20 (30d) — RED 3/3 on main (pipelines
+  # #525/#528/#530 on 2026-04-19): Go runtime panic `fatal error:
+  # lfstack.push` — anchore/grype:v0.87.0-debug is amd64, runner is arm64.
+  # Need an arm64-compatible grype image (anchore/grype has multi-arch
+  # support in recent tags) or pin `--platform linux/amd64` with QEMU.
+  # Once the panic is fixed the shield becomes decorative → flip to false
+  # and let real HIGH CVEs block main. Mirrors trivy:scan policy.
   allow_failure: true   # informational, matches trivy:scan policy
   script:
     # Scan the SBOM rather than the image → faster + reproducible.
@@ -1111,6 +1139,11 @@ dockle:
       when: never
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_COMMIT_TAG
+  # TODO: flip to false by 2026-07-20 (90d) — ran green 3/3 on main
+  # (#525/#528/#530 on 2026-04-19). The backend Dockerfile already
+  # satisfies CIS + dockle baseline; a fresh DKL-* finding would likely
+  # be a real regression worth blocking. Re-evaluate if buildpack or
+  # base image changes introduce false positives in the interim.
   allow_failure: true   # hygiene checks — warn, don't block
   variables:
     DOCKLE_VERSION: "0.4.15"
@@ -1712,6 +1745,12 @@ build-native:
 # Output is stored as an artifact so terraform-apply can use it.
 terraform-plan:
   extends: .terraform-base
+  # TODO: flip to false by 2026-10-20 (180d) — RED 3/3 on main (pipelines
+  # #525/#528/#530 on 2026-04-19) because the Terraform state bucket
+  # isn't provisioned yet (ephemeral/dev pattern per ADR-0022). Once
+  # the bucket exists — or once we accept that terraform is a manual
+  # operator flow not a CI gate — either flip to false OR delete the job
+  # entirely (see deploy:gke which handles errors at apply-time).
   allow_failure: true   # Terraform state bucket may not exist yet; must not block deploy:gke
   script:
     - terraform plan

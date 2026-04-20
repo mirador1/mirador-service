@@ -1,21 +1,42 @@
 # =============================================================================
-# docker-compose.yml — Full local development stack
+# docker-compose.yml — Local development stack
 #
-# Services:
-#   db       — PostgreSQL 17 (primary data store, schema managed by Flyway)
-#   kafka    — Apache Kafka in KRaft mode (no ZooKeeper required)
-#   redis    — Redis 7 for RecentCustomerBuffer distributed caching
-#   ollama   — Local LLM runtime for Spring AI bio generation
-#   keycloak — Optional OAuth2 identity provider
-#   app      — Spring Boot application (built from Dockerfile)
-#   cloudbeaver — DBeaver web edition, SQL browser (http://localhost:8978)
-#   kafka-ui — Kafka topics/messages/consumer groups UI (http://localhost:9080)
-#   redisinsight — Redis data browser and CLI (http://localhost:5540)
+# ── Profile taxonomy ─────────────────────────────────────────────────────────
+# Services are grouped into profiles so `docker compose up -d` on a fresh
+# clone stays small (~5 containers / ~1 GB) instead of pulling every
+# optional tool (~15 containers / ~12 GB). Opt into extras as needed.
 #
-# Usage:
-#   docker compose up -d          start all services
-#   docker compose up -d db kafka start only DB + Kafka (without app or LLM)
-#   docker compose logs -f app    tail application logs
+#   (core, no profile)  db, kafka, redis, app
+#                       → the minimum to boot the Spring Boot API.
+#
+#   --profile full      keycloak, ollama
+#                       → heavy extras most contributors don't need
+#                         day-to-day (OAuth2 IdP, local LLM).
+#
+#   --profile admin     cloudbeaver, pgweb-local, kafka-ui, redisinsight,
+#                       redis-commander, sonarqube
+#                       → nice-to-have browsing / quality tools for
+#                         inspecting DB, Kafka, Redis, static-analysis.
+#
+#   --profile docs      maven-site, compodoc
+#                       → local-only documentation servers (Maven site,
+#                         Angular Compodoc reference).
+#
+#   --profile kind-tunnel / --profile prod-tunnel
+#                       → pgweb variants that proxy to kind/GKE via the
+#                         corresponding bin/cluster/pf-*.sh port-forwards.
+#
+# Observability (LGTM, cors-proxy, docker-proxy) lives in its own file:
+#   deploy/compose/observability.yml — also profile-tagged as
+#   `observability`, so you can opt into the full picture with:
+#   docker compose -f docker-compose.yml -f deploy/compose/observability.yml \
+#     --profile full --profile admin --profile observability up -d
+# ── Usage ────────────────────────────────────────────────────────────────────
+#   docker compose up -d                       → core only
+#   docker compose --profile full up -d        → core + keycloak + ollama
+#   docker compose --profile admin up -d       → core + browsing tools
+#   docker compose --profile full --profile admin up -d   → "kitchen sink"
+#   docker compose logs -f app                 → tail application logs
 #
 # Environment variables are loaded from .env (see .env.example for required keys).
 # =============================================================================
@@ -235,7 +256,8 @@ services:
   # versions). Five clicks once > brittle auto-wiring broken after upgrade.
   # ---------------------------------------------------------------------------
   cloudbeaver:
-    profiles: ["full"]
+    # admin profile: nice-to-have SQL browser, not part of the hot path.
+    profiles: ["admin"]
     image: dbeaver/cloudbeaver:26.0.2
     container_name: cloudbeaver
     depends_on:
@@ -262,7 +284,9 @@ services:
   # Angular dev server — no other site in the browser can call this pgweb.
   # ---------------------------------------------------------------------------
   pgweb-local:
-    profiles: ["full"]
+    # admin profile: HTTP↔Postgres bridge used by the Angular Database page;
+    # only needed when exercising the UI's SQL browser end-to-end locally.
+    profiles: ["admin"]
     image: sosedoff/pgweb:0.16.2
     container_name: pgweb-local
     depends_on:
@@ -337,7 +361,9 @@ services:
   # Access: http://localhost:9080
   # ---------------------------------------------------------------------------
   kafka-ui:
-    profiles: ["full"]
+    # admin profile: web UI to inspect topics/consumers, rarely needed
+    # on a fresh clone where the app boots against empty topics.
+    profiles: ["admin"]
     image: provectuslabs/kafka-ui:v0.7.2
     container_name: kafka-ui
     depends_on:
@@ -357,7 +383,8 @@ services:
   # Access: http://localhost:5540
   # ---------------------------------------------------------------------------
   redisinsight:
-    profiles: ["full"]
+    # admin profile: Redis key browser, only useful when debugging caches.
+    profiles: ["admin"]
     image: redis/redisinsight:2.68.0
     container_name: redisinsight
     depends_on:
@@ -377,7 +404,9 @@ services:
   # Access: http://localhost:8082
   # ---------------------------------------------------------------------------
   redis-commander:
-    profiles: ["full"]
+    # admin profile: alternative Redis UI with live command stream; kept
+    # alongside redisinsight for contributors who prefer the lighter tool.
+    profiles: ["admin"]
     image: rediscommander/redis-commander:0.8.1
     container_name: redis-commander
     depends_on:
@@ -408,7 +437,10 @@ services:
   # Access: http://localhost:8084
   # ---------------------------------------------------------------------------
   maven-site:
-    profiles: ["full"]
+    # docs profile: local static-site server for Maven-generated quality
+    # reports. Only relevant when reviewing reports locally (normally
+    # consumed via the CI-published `reports/` branch).
+    profiles: ["docs"]
     image: nginx:1.27-alpine
     container_name: maven-site
     volumes:
@@ -427,7 +459,10 @@ services:
       start_period: 5s
 
   sonarqube:
-    profiles: ["full"]
+    # admin profile: SonarQube dashboard — heavyweight (Elasticsearch,
+    # ~1 GB RAM) and only needed when analysing a branch locally rather
+    # than via CI.
+    profiles: ["admin"]
     # SonarQube Community Edition — static analysis dashboard for Java + TypeScript.
     # Free, self-hosted, no branch analysis (Community limitation — one branch per project).
     # First startup: visit http://localhost:9000, login admin/admin, change password,
@@ -467,7 +502,9 @@ services:
       start_period: 120s
 
   compodoc:
-    profiles: ["full"]
+    # docs profile: Angular API reference (Compodoc) — static-site only,
+    # mirrors the maven-site role for the UI side.
+    profiles: ["docs"]
     # Angular API reference generated by Compodoc (npm run compodoc in mirador-ui).
     # Serves the same role as Javadoc for the backend — components, services, interfaces,
     # routes and their JSDoc descriptions browseable at http://localhost:8086.

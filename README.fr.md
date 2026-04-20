@@ -225,11 +225,19 @@ des trous non-intentionnels.
 ## Détails techniques
 
 Les sections techniques purement informatives (architecture, quick
-start, référence des ports, CI/CD, screenshots, liens vers la doc
-détaillée) vivent dans la version anglaise à partir de la section
-[Architecture — dev (Docker Compose)](README.md#architecture). Elles
-sont identiques en anglais parce qu'elles contiennent quasi-exclusivement
-des commandes, des tables de ports et des chemins de fichiers.
+start, référence des ports, profils `docker compose`, CI/CD, screenshots,
+liens vers la doc détaillée) vivent dans la version anglaise à partir
+de la section [Architecture — dev (Docker Compose)](README.md#architecture).
+Elles sont identiques en anglais parce qu'elles contiennent
+quasi-exclusivement des commandes, des tables de ports et des chemins
+de fichiers.
+
+> **Profils `docker compose`** (2026-04-20) — `docker compose up -d`
+> sur un clone neuf démarre uniquement le core (db + kafka + redis +
+> app). Les extras (keycloak/ollama → `--profile full`, outils
+> d'admin → `--profile admin`, docs statiques → `--profile docs`,
+> stack observabilité → `--profile observability`) sont opt-in. Voir
+> la table détaillée dans le README anglais.
 
 Pour aller plus loin :
 - [`docs/adr/`](docs/adr/) — les 35+ décisions architecturales

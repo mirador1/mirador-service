@@ -21,7 +21,9 @@
 #   5.  code                   — `any`, silent handlers, empty catches
 #   5b. stale-todos            — TODO/FIXME >30 days old (git blame)
 #   5c. cve                    — npm audit (high/critical)
+#   5c2.trivy-delta            — Trivy fs scan, NEW HIGH/CRITICAL only vs last run
 #   5d. bundle-size            — UI dist/stats.json delta vs previous
+#   5d2.lighthouse             — Lighthouse score delta on :4200 (skip if UI down)
 #   5e. skipped-tests          — @Disabled (svc) + xit/.skip (UI)
 #   5f. sonar-freshness        — local Sonar projects analyzed >7d ago
 #   5g. java-logging           — System.out.print / printStackTrace
@@ -213,7 +215,7 @@ section_sonar() {
     return
   fi
   if ! curl -sf http://localhost:9000/api/system/status >/dev/null 2>&1; then
-    finding warn "Local Sonar at :9000 is DOWN — start with \`docker compose --profile full up -d sonarqube\`"
+    finding warn "Local Sonar at :9000 is DOWN — start with \`docker compose --profile admin up -d sonarqube\`"
     return
   fi
   # Refresh both projects.
@@ -423,6 +425,109 @@ except: print(0)" 2>/dev/null | tail -1)
   fi
 }
 
+# ── Section 5c2: Trivy filesystem CVE delta (new CVEs only) ────────────────
+# Running `trivy fs` every stability check flags the same ~20 HIGH/CRITICAL
+# transitive CVEs every time — the recurring noise buries real deltas. This
+# section stores the sorted list of CVE IDs from the previous scan and only
+# reports entries that are NEW since then (per-CVE-ID delta). That way the
+# audit report surfaces what actually changed, not an unchanging backlog.
+#
+# Runtime: ~10s cold, <1s warm (Trivy caches the vuln DB at ~/.cache/trivy).
+# Skipped if `trivy` binary is not installed — nothing to do, and CI's own
+# `trivy-scan` job covers image-layer coverage.
+section_trivy_delta() {
+  echo "▸ Trivy CVE delta (new HIGH/CRITICAL since last run)…"
+  if ! command -v trivy >/dev/null 2>&1; then
+    finding info "Trivy: binary not installed — skip (brew install trivy)"
+    return
+  fi
+  local out=/tmp/trivy.json
+  # `fs` scans the current directory tree. `--scanners vuln` limits to CVE
+  # detection (skip misconfigs/secrets — covered by other jobs). `--quiet`
+  # hides the progress bar; `--format json` gives us the structured result.
+  if ! (cd "$SVC_DIR" && trivy fs --scanners vuln \
+        --severity HIGH,CRITICAL --format json --quiet \
+        --output "$out" . 2>/dev/null); then
+    finding warn "Trivy: scan failed — run \`trivy fs --scanners vuln .\` manually"
+    return
+  fi
+  # Extract a sorted list of "SEVERITY CVE-ID pkg@version" tuples from the
+  # Results[].Vulnerabilities[] shape. De-dupe by (CVE-ID, package) —
+  # Trivy lists the same CVE once per file that transitively pulls it in.
+  local parsed
+  parsed=$(python3 -c "
+import json
+try:
+    d = json.load(open('$out'))
+    seen = set()
+    for r in d.get('Results', []) or []:
+        for v in r.get('Vulnerabilities', []) or []:
+            key = f\"{v.get('Severity','?')} {v.get('VulnerabilityID','?')} {v.get('PkgName','?')}@{v.get('InstalledVersion','?')}\"
+            seen.add(key)
+    for k in sorted(seen):
+        print(k)
+except Exception as e:
+    pass" 2>/dev/null || true)
+  local baseline="$REPORT_DIR/.trivy-last.json"
+  # Build the current set of CVE IDs (for storage + delta comparison).
+  local current_ids
+  current_ids=$(echo "$parsed" | awk '{print $2}' | sort -u | grep -v '^$' || true)
+  if [[ -z "$current_ids" ]]; then
+    finding info "Trivy: 0 HIGH/CRITICAL CVEs in svc filesystem"
+    # Still persist an empty list so next run has a baseline.
+    echo "[]" > "$baseline"
+    return
+  fi
+  # Compare against previous baseline.
+  if [[ -f "$baseline" ]]; then
+    local prev_ids new_ids
+    prev_ids=$(python3 -c "
+import json
+try: print('\n'.join(json.load(open('$baseline'))))
+except: pass" 2>/dev/null || true)
+    # `comm -23` emits lines only in the first set. Requires sorted input.
+    new_ids=$(comm -23 \
+      <(echo "$current_ids" | sort) \
+      <(echo "$prev_ids" | sort) 2>/dev/null || true)
+    if [[ -z "$new_ids" ]]; then
+      local cur_count
+      cur_count=$(echo "$current_ids" | wc -l | tr -d ' ')
+      finding info "Trivy: 0 new CVEs since last run ($cur_count still present)"
+    else
+      # Emit one line per new CVE with severity + package (from $parsed).
+      local new_crit=0 new_high=0
+      while IFS= read -r cve; do
+        [[ -z "$cve" ]] && continue
+        local detail
+        detail=$(echo "$parsed" | grep -F " $cve " | head -1)
+        [[ -z "$detail" ]] && detail="$cve"
+        finding info "Trivy NEW: $detail"
+        if echo "$detail" | grep -q "^CRITICAL "; then
+          new_crit=$((new_crit + 1))
+        elif echo "$detail" | grep -q "^HIGH "; then
+          new_high=$((new_high + 1))
+        fi
+      done <<< "$new_ids"
+      if [[ "$new_crit" -gt 0 ]]; then
+        finding block "Trivy: $new_crit NEW CRITICAL CVE(s) since last run"
+      fi
+      if [[ "$new_high" -gt 0 ]]; then
+        finding warn "Trivy: $new_high NEW HIGH CVE(s) since last run"
+      fi
+    fi
+  else
+    local cur_count
+    cur_count=$(echo "$current_ids" | wc -l | tr -d ' ')
+    finding info "Trivy: baseline recorded ($cur_count HIGH/CRITICAL CVE(s) — deltas from next run)"
+  fi
+  # Persist current CVE-ID list as a JSON array for the next run.
+  python3 -c "
+import json
+ids = '''$current_ids'''.strip().split('\n')
+ids = [i for i in ids if i]
+json.dump(ids, open('$baseline', 'w'))" 2>/dev/null || true
+}
+
 # ── Section 5d: UI bundle size delta vs previous run ────────────────────────
 # Reads the latest stats.json (if produced by `ng build --stats-json`),
 # compares total initial JS to the previous stability-check report.
@@ -461,6 +566,108 @@ print(total // 1024)" 2>/dev/null || echo "0")
     finding info "UI bundle: ${current_kb} KB (baseline run, no previous to compare)"
   fi
   echo "$current_kb" > "$trend_file"
+}
+
+# ── Section 5d2: Lighthouse score regression vs previous run ───────────────
+# Runs Lighthouse against the UI's dev server (or skips if nothing on :4200)
+# and compares the 4 category scores (perf, a11y, best-practices, SEO) to
+# the previous run stored at $REPORT_DIR/.lighthouse-last.json. Flags any
+# score drop of >5 points. A performance score below 50 is BLOCKING because
+# it correlates with real user-perceived slowness (LCP, TBT).
+#
+# Why a dedicated baseline file next to audit reports: the initial audit
+# produced docs/audit/lighthouse.{html,json} in the UI repo; those files
+# represent a one-shot snapshot. This section needs a MOVING baseline
+# (the previous stability-check run) — hence the separate dotfile.
+# Runtime: ~30s when UI is up (desktop preset), 0s when skipped.
+section_lighthouse() {
+  echo "▸ Lighthouse score delta (UI on :4200)…"
+  # Fast check: is the UI actually up? curl -f fails on non-2xx; --max-time
+  # keeps a hung port from blocking the whole stability check.
+  if ! curl -f -s --max-time 3 http://localhost:4200 >/dev/null 2>&1; then
+    finding info "Lighthouse: UI not on :4200 — skip (start with \`npm start\` in mirador-ui)"
+    return
+  fi
+  if ! command -v npx >/dev/null 2>&1; then
+    finding info "Lighthouse: npx binary missing — skip"
+    return
+  fi
+  local out=/tmp/lh-current.json
+  # `--quiet` suppresses the progress log; `--chrome-flags=--headless=new`
+  # is required on macOS to avoid the GUI Chrome window popping up.
+  # Using lighthouse@12 (current major at time of writing) to keep output
+  # schema stable across runs.
+  if ! npx --yes lighthouse@12 http://localhost:4200 \
+       --preset=desktop \
+       --output=json \
+       --output-path="$out" \
+       --chrome-flags="--headless=new --no-sandbox" \
+       --quiet >/dev/null 2>&1; then
+    finding warn "Lighthouse: run failed — check \`npx lighthouse http://localhost:4200\` manually"
+    return
+  fi
+  # Extract 4 scores as integers (Lighthouse emits 0.0–1.0 floats).
+  local cur_scores
+  cur_scores=$(python3 -c "
+import json
+d = json.load(open('$out'))
+cats = d.get('categories', {})
+def pct(k):
+    v = cats.get(k, {}).get('score')
+    return int(round(v * 100)) if v is not None else None
+perf = pct('performance')
+a11y = pct('accessibility')
+bp   = pct('best-practices')
+seo  = pct('seo')
+print(f'{perf}|{a11y}|{bp}|{seo}')" 2>/dev/null || echo "||||")
+  local perf a11y bp seo
+  IFS='|' read -r perf a11y bp seo <<< "$cur_scores"
+  [[ -z "$perf" || ! "$perf" =~ ^[0-9]+$ ]] && {
+    finding warn "Lighthouse: could not parse scores from $out"
+    return
+  }
+  # Compare to previous baseline if present.
+  local baseline="$REPORT_DIR/.lighthouse-last.json"
+  if [[ -f "$baseline" ]]; then
+    local prev_perf prev_a11y prev_bp prev_seo
+    local prev
+    prev=$(python3 -c "
+import json
+try:
+    d = json.load(open('$baseline'))
+    print(f\"{d.get('performance',0)}|{d.get('accessibility',0)}|{d.get('best-practices',0)}|{d.get('seo',0)}\")
+except: print('0|0|0|0')")
+    IFS='|' read -r prev_perf prev_a11y prev_bp prev_seo <<< "$prev"
+    local d_perf=$((perf - prev_perf))
+    local d_a11y=$((a11y - prev_a11y))
+    local d_bp=$((bp - prev_bp))
+    local d_seo=$((seo - prev_seo))
+    # A drop > 5 points on any category is worth surfacing; smaller wiggle
+    # is just Lighthouse measurement noise on a local machine.
+    local regressed=""
+    [[ "$d_perf" -lt -5 ]] && regressed="${regressed}perf ${prev_perf}→${perf} "
+    [[ "$d_a11y" -lt -5 ]] && regressed="${regressed}a11y ${prev_a11y}→${a11y} "
+    [[ "$d_bp"   -lt -5 ]] && regressed="${regressed}bp ${prev_bp}→${bp} "
+    [[ "$d_seo"  -lt -5 ]] && regressed="${regressed}seo ${prev_seo}→${seo} "
+    if [[ -n "$regressed" ]]; then
+      finding warn "Lighthouse regression (>5 pts): $regressed"
+    else
+      finding info "Lighthouse: perf=$perf a11y=$a11y bp=$bp seo=$seo (Δ $d_perf/$d_a11y/$d_bp/$d_seo)"
+    fi
+    # BLOCKING: perf < 50 is real user-facing slowness (LCP/TBT territory),
+    # independent of delta — flag regardless of whether it regressed.
+    if [[ "$perf" -lt 50 ]]; then
+      finding block "Lighthouse: performance score $perf < 50 (user-perceptible slowness)"
+    fi
+  else
+    finding info "Lighthouse: baseline recorded (perf=$perf a11y=$a11y bp=$bp seo=$seo)"
+  fi
+  # Persist current scores for next run's delta.
+  python3 -c "
+import json
+json.dump({'performance': $perf, 'accessibility': $a11y,
+           'best-practices': $bp, 'seo': $seo},
+          open('$baseline', 'w'))" 2>/dev/null || true
 }
 
 # ── Section 5e: Skipped tests (each one a debt — never accept silently) ────
@@ -594,16 +801,18 @@ section_ui_console() {
 }
 
 # ── Section 1b: Pre-commit hooks installed (lefthook) ──────────────────────
-# A repo with lefthook.yml but no .git/hooks/pre-commit silently bypasses
-# every lint/format/secret-scan we configured. Easy to forget after a
-# fresh `git clone` (lefthook needs an explicit `lefthook install`).
+# A repo with a lefthook config but no .git/hooks/pre-commit silently
+# bypasses every lint/format/secret-scan we configured. Easy to forget
+# after a fresh `git clone` (lefthook needs an explicit `lefthook
+# install`). As of 2026-04-20 the config can live at either ./lefthook.yml
+# (legacy) or ./.config/lefthook.yml (root-hygiene move); both probed.
 section_hooks_installed() {
   echo "▸ Pre-commit hooks installed…"
   for repo in "$SVC_DIR" "$UI_DIR"; do
     local name=$(basename "$repo")
-    if [[ ! -f "$repo/lefthook.yml" ]]; then continue; fi
+    if [[ ! -f "$repo/lefthook.yml" && ! -f "$repo/.config/lefthook.yml" ]]; then continue; fi
     if [[ ! -f "$repo/.git/hooks/pre-commit" ]]; then
-      finding warn "$name: lefthook.yml present but .git/hooks/pre-commit missing — \`lefthook install\`"
+      finding warn "$name: lefthook config present but .git/hooks/pre-commit missing — \`lefthook install\`"
     fi
   done
 }
@@ -915,7 +1124,9 @@ main() {
   section_code
   section_stale_todos
   section_cve
+  section_trivy_delta
   section_bundle_size
+  section_lighthouse
   section_skipped_tests
   section_sonar_freshness
   section_java_logging

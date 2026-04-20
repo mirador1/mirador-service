@@ -2,9 +2,11 @@
 // commitlint config — Conventional Commits reference.
 //
 // NOTE: this file documents the intent. The actual enforcement is a pure-bash
-// regex in lefthook.yml (commit-msg → conventional-commits) so we don't need
-// to install node_modules/ for a Java project. The two stay in sync by
-// convention — if you change this file, mirror the regex in lefthook.yml.
+// regex in .config/lefthook.yml (commit-msg → conventional-commits) so we
+// don't need to install node_modules/ for a Java project. The two stay in
+// sync by convention — if you change this file, mirror the regex in
+// .config/lefthook.yml. (lefthook.yml moved from repo root on 2026-04-20
+// per root-hygiene rule.)
 //
 // Run commitlint locally against a past commit (optional, requires npm install):
 //   npx @commitlint/cli --from=HEAD~1
