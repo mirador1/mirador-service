@@ -1,0 +1,29 @@
+# =============================================================================
+# monitoring namespace — host for the kube-prometheus-stack pods.
+#
+# Why a separate namespace from `observability`?
+# node-exporter (DaemonSet) needs hostNetwork+hostPID+hostPath to read
+# /proc, /sys, and the host's network namespace for `node_*` metrics.
+# Pod Security Standards `baseline` (the policy on `observability`)
+# rejects all three. Bumping `observability` to `privileged` would
+# weaken the policy for lgtm + pyroscope too — narrower blast radius
+# to keep node-exporter in its own ns.
+#
+# `monitoring` is labelled PSS=privileged because:
+#   - node-exporter mounts host filesystem (`hostPath: /proc, /sys, /`)
+#     and runs with hostNetwork=true to bind on the node IP.
+#   - Prometheus operator's admission webhook Job uses an init container
+#     that needs to mutate ValidatingWebhookConfiguration caBundle —
+#     baseline-compliant but cleaner to keep all chart pods together.
+# Read-only filesystem and runAsNonRoot are still set per-container by
+# the chart, so the actual blast radius is small even at PSS=privileged.
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    app.kubernetes.io/part-of: mirador
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: privileged
+    pod-security.kubernetes.io/warn: privileged
