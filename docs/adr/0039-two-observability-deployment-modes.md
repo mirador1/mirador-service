@@ -242,10 +242,28 @@ Tracked in TASKS.md, each independent:
   ourselves (Cluster overview, Node Exporter Full, K8s API server).
   Drop them into `grafana-dashboards.yaml`.
 
+## OpenLens provider gotcha (addendum 2026-04-21)
+
+Even with the kube-prom-stack `monitoring/prometheus-stack-kube-prom-prometheus:9090`
+service correctly populated and reachable, OpenLens kept showing
+`Metrics are not available due to missing or invalid Prometheus configuration`
+when `prometheusProvider.type` was set to `prometheus`. The fix was
+`type: operator` (UI label: "Prometheus Operator").
+
+Verified empirically:
+- `provider=prometheus` (sounds right but isn't a registered preset) →
+  `metadata.prometheus.success: false`
+- `provider=operator` → ✓ Metrics tab populates immediately
+
+Documented in `deploy/openlens/README.md` + the helper script writes
+the right value automatically.
+
 ## References
 
 - `deploy/kubernetes/overlays/local-prom/` — the new overlay.
-- `bin/cluster/openlens-prometheus-config.sh` — updated with auto-detection.
+- `bin/cluster/openlens-prometheus-config.sh` — updated with auto-detection (provider=operator for kube-prom).
+- `deploy/openlens/lens-cluster-store-snippet.json` — golden reference for OpenLens `preferences` block.
+- `deploy/openlens/README.md` — provider-name lookup table + apply guide.
 - ADR-0014 — single-replica deployments for the demo cluster.
 - ADR-0022 — ephemeral GKE cluster budget.
 - ADR-0038 — kubeletstats receiver in lgtm (the prior lgtm-only path).
