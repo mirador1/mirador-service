@@ -248,7 +248,14 @@ openapi-lint:
     paths:
       - /tmp/openapi.json
     expire_in: 1 week
-  allow_failure: true   # warnings-only initially; flip to false once clean
+  # TODO: flip to false by 2026-05-20 — tracked in TASKS.md. Current
+  # failure is 1 Spectral error (`oas3-schema` on bearerAuth securityScheme)
+  # + 6 warnings (missing operation descriptions, undefined tag, <script>
+  # tags in Markdown). All are real API-contract findings, not tool flakes.
+  # Fix path: (1) replace bearerAuth unevaluated-property, (2) add
+  # @Operation(description=) annotations on the flagged endpoints,
+  # (3) strip <script> demo content or tag those endpoints `@Hidden`.
+  allow_failure: true
 
 # ── stage: test ───────────────────────────────────────────────────────────────
 
@@ -306,7 +313,10 @@ dependency_scanning:
 # OWASP Dependency-Check — SCA (Software Composition Analysis).
 # Runs the Maven plugin to scan all dependencies against the NVD for known CVEs.
 # Produces an HTML report; fails on CVSS ≥ 7 (High/Critical).
-# allow_failure: true initially — promotes awareness without blocking the pipeline.
+# Shield removed 2026-04-20 — job was allow_failure: true "initially to
+# promote awareness" but ran green across 4+ consecutive pipelines on main.
+# If a High/Critical CVE lands, we want the MR to go red so dependency
+# bumps get prioritised instead of silently trailing in the report.
 # Set NVD_API_KEY as a masked CI/CD variable to speed up the NVD database download.
 owasp-dependency-check:
   stage: test
@@ -329,7 +339,6 @@ owasp-dependency-check:
     paths:
       - target/dependency-check-report.html
     expire_in: 1 week
-  allow_failure: true
 
 # Pull in the GitLab-managed SAST and Dependency Scanning job definitions.
 # Placed after the overrides so our `stage:` settings take effect.
@@ -1167,7 +1176,12 @@ cosign:sign:
       when: never
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_COMMIT_TAG
-  allow_failure: true   # until signing policy is wired into deploy; enforce later
+  # Shield removed 2026-04-20 — cosign:sign ran green 4+ times in a row
+  # against Sigstore's public Fulcio/Rekor. Signing is deterministic once
+  # the OIDC token + registry auth succeed; a real signing failure is a
+  # broken supply chain (tampered image, expired cert) and should fail
+  # the pipeline. The deploy-side enforcement (`cosign:verify`) already
+  # runs without a shield — signing should match its strictness.
   variables:
     COSIGN_VERSION: "2.5.0"        # pin the exact cosign release
     COSIGN_YES: "true"             # skip interactive prompt

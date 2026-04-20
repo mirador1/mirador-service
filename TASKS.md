@@ -22,9 +22,40 @@ paths documented in the file. Revisit on next springdoc version bump.
 
 ### Reduce `allow_failure: true` shields
 
-Inventory from stability-check: svc has 30, UI has 15. Each one needs
-a dated exit ticket per CLAUDE.md "Pipelines stay green". Target:
-remove or date 5 per session.
+Inventory from stability-check: svc had 30, UI had 15. Session
+2026-04-20 removed 4 stable shields and dated 1 flaky one:
+- svc `owasp-dependency-check` → REMOVED (4x success, "initially"
+  clause satisfied, genuine CVEs should now go red)
+- svc `cosign:sign` → REMOVED (4x success, deploy-side `cosign:verify`
+  already strict; signing failures are supply-chain breakage)
+- svc `openapi-lint` → DATED, flip to false by 2026-05-20
+- UI `bundle-size-check` → REMOVED (script never exits non-zero,
+  shield was redundant)
+- UI `typedoc` → REMOVED (`| tee` already masks typedoc's exit code,
+  shield was redundant)
+
+Remaining: svc ~28, UI ~13. Next sessions: continue 5/session.
+
+#### `openapi-lint` — flip `allow_failure: false` by 2026-05-20
+
+Current failure shape (pipeline #528, 2026-04-20):
+- 1 error `oas3-schema` on `components.securitySchemes.bearerAuth`
+  — the bearerAuth scheme carries an unevaluated OpenAPI property
+  (likely an extension or typo). Fix in the springdoc
+  `GroupedOpenApi` / `@SecurityScheme` config under `auth/`.
+- 6 warnings:
+  - `operation-description` missing on `/customers/{id}.get`,
+    `/scheduled/jobs.get`, `/customers/summary.get` — add
+    `@Operation(description=...)` on the controllers.
+  - `operation-tag-defined` on `/scheduled/jobs.get.tags[0]` —
+    either add the tag to `GroupedOpenApi.tags()` or drop the
+    controller-level `@Tag`.
+  - 2× `no-script-tags-in-markdown` on `/demo/security/xss-*` —
+    these are literal XSS demo endpoints; either `@Hidden` them in
+    prod OpenAPI groups or escape the `<script>` in the Javadoc.
+
+Acceptance: `npx spectral-cli@6.15.1 lint … --fail-severity error`
+exits 0 → drop `allow_failure: true` on the job.
 
 ### Write integration tests for OAuth2 / Auth0 flow
 
