@@ -1,0 +1,168 @@
+# =============================================================================
+# values-kube-prom-stack.yaml — input to `helm template` for the local-prom
+# overlay.
+#
+# This file is the SOURCE for `kube-prometheus-stack-rendered.yaml`. To
+# regenerate the rendered manifest after editing this file:
+#
+#   helm template prometheus-stack \
+#     prometheus-community/kube-prometheus-stack \
+#     --version 83.6.0 \
+#     --namespace observability \
+#     --values deploy/kubernetes/overlays/local-prom/values-kube-prom-stack.yaml \
+#     --include-crds \
+#     > deploy/kubernetes/overlays/local-prom/kube-prom-stack-rendered.yaml
+#
+# Then `git diff` the rendered output, run `kubectl apply -k overlays/local-prom`
+# to validate, commit both this file and the rendered YAML in the same MR.
+#
+# Why a static rendered YAML and not Helm at apply time?
+# - CI doesn't have Helm in every job; kustomize is universally available.
+# - Reviewers can diff the actual manifests when bumping the chart.
+# - Rollbacks are `git revert` of one commit, no `helm rollback` dance.
+# - Matches our pattern for argo-cd and external-secrets (rendered, vendored).
+#
+# Pinned chart version: 83.6.0 (latest stable on 2026-04-21).
+# Bump the version: edit the --version flag in the regen command above and
+# the comment on line 1 of kube-prom-stack-rendered.yaml.
+# =============================================================================
+
+# CRDs ship with the chart; we want them committed in the rendered file so
+# `kubectl apply -k` works without a separate `kubectl apply -f crds/` step.
+crds:
+  enabled: true
+
+# ── Disable the chart's bundled Grafana ──────────────────────────────────────
+# We already have Grafana inside the lgtm pod (port 3000). Adding the
+# chart's Grafana would mean two Grafana UIs — confusing for demos and
+# duplicate dashboards. The lgtm Grafana gets a Prometheus datasource
+# pointing at this chart's Prometheus (added via grafana-datasource-patch.yaml).
+grafana:
+  enabled: false
+
+# ── Disable Alertmanager ─────────────────────────────────────────────────────
+# ADR-0014 (single-replica demo) accepts no Alertmanager. Grafana's built-in
+# alert rules cover the basic routing the demo needs. Re-enable when moving
+# to a real production SLO (see ADR-0038 "Revisit criteria").
+alertmanager:
+  enabled: false
+
+# ── Disable shipped recording / alerting rules ──────────────────────────────
+# The chart bundles 200+ PrometheusRule objects (kube-state-metrics SLOs,
+# node-exporter SLOs, etc.). For the demo we only want the metrics, not
+# the alerts — they'd flood Grafana's alert list with "kube-apiserver
+# error budget exhausted" noise on a tiny kind cluster.
+defaultRules:
+  create: false
+
+# ── Prometheus server config — tuned for kind ────────────────────────────────
+prometheus:
+  prometheusSpec:
+    # Match what kubeletstats does in lgtm — same granularity, same load.
+    scrapeInterval: 30s
+    evaluationInterval: 30s
+    # 2-day retention: enough for "what did the cluster look like during the
+    # demo I just ran". emptyDir-backed (no PVC), so data is lost on pod
+    # restart — acceptable per ADR-0022.
+    retention: 2d
+    # Single replica for the demo (ADR-0014).
+    replicas: 1
+    shards: 1
+    # Resource budget tuned for kind (laptop, single node).
+    # Measured idle on this overlay: ~250-350 MiB RSS. Limit is 800Mi to
+    # leave headroom for short scrape spikes without OOM.
+    resources:
+      requests:
+        cpu: 100m
+        memory: 400Mi
+      limits:
+        memory: 800Mi
+    # IMPORTANT — these *NilUsesHelmValues=false flags tell the operator
+    # "select ALL ServiceMonitor / PodMonitor / etc. in the cluster, not
+    # only the ones with the chart's own labels". Without this the
+    # Prometheus would scrape nothing because no objects match the empty
+    # selector defaults. Mirador's app `ServiceMonitor` (added in a future
+    # commit) and any third-party operator-installed ServiceMonitor will
+    # be picked up automatically.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+    scrapeConfigSelectorNilUsesHelmValues: false
+
+# ── node-exporter DaemonSet ──────────────────────────────────────────────────
+# Provides per-node CPU/mem/disk/network metrics in the Prometheus-community
+# naming OpenLens expects (`node_cpu_seconds_total`, `node_memory_MemAvailable_bytes`).
+# Kind has 1 node so this is 1 pod.
+nodeExporter:
+  enabled: true
+prometheus-node-exporter:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 64Mi
+
+# ── kube-state-metrics ───────────────────────────────────────────────────────
+# Emits cluster object state (`kube_pod_status_phase`, `kube_deployment_status_replicas`,
+# `kube_node_status_condition`) — the canonical names OpenLens hardcodes.
+# This is the piece lgtm's metricstransform aliases tried (and failed) to
+# fake. Now we have the real source.
+kubeStateMetrics:
+  enabled: true
+kube-state-metrics:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      memory: 128Mi
+
+# ── Prometheus Operator ──────────────────────────────────────────────────────
+# Manages the Prometheus + Alertmanager CRDs and reconciles ServiceMonitors
+# into scrape config. Required, can't be disabled.
+prometheusOperator:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+  # The chart's admission webhook patches webhook caBundle via a Job. On
+  # kind that Job needs to run before any ServiceMonitor is admitted —
+  # leave the defaults here, the Job is short-lived (~10s).
+
+# ── Scrape targets ──────────────────────────────────────────────────────────
+# kubelet/cadvisor scrape — the canonical source of `container_cpu_usage_seconds_total`.
+# https=true tells the chart to use the kubelet's HTTPS endpoint with the
+# pod's mounted SA token (works on kind because the chart sets
+# insecureSkipVerify on the ServiceMonitor's tlsConfig automatically).
+kubelet:
+  serviceMonitor:
+    https: true
+
+# kube-apiserver — useful Prometheus metrics about apiserver itself.
+kubeApiServer:
+  enabled: true
+
+# kube-controller-manager / scheduler / proxy / etcd — disabled because:
+# - kind exposes them only on 127.0.0.1 inside the control-plane pod, not
+#   on the node IP. The chart's default scrape config can't reach them →
+#   ServiceMonitor would forever show targets DOWN.
+# - We don't currently care about controller-manager metrics for the demo.
+# Re-enable on GKE (where the cluster is fully observable) by flipping
+# these to true in a gke-prom overlay (not yet shipped).
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false
+kubeEtcd:
+  enabled: false
+
+# CoreDNS exposes Prometheus metrics on :9153 — kind ships it with that
+# endpoint enabled by default, so this scrape works out of the box.
+coreDns:
+  enabled: true

@@ -1,0 +1,42 @@
+# =============================================================================
+# lgtm-mount-patch.yaml — strategic-merge patch on the lgtm Deployment
+#
+# Mounts the `grafana-extra-datasources` ConfigMap (defined in the sibling
+# file grafana-datasource-patch.yaml) into Grafana's provisioning dir
+# inside the lgtm pod. This is the file kustomize references via
+# `patches:` — see kustomization.yaml.
+#
+# Strategic merge means kustomize ADDS this volume + volumeMount to the
+# existing list rather than replacing the whole spec. The base lgtm
+# Deployment already has 3 volumes (data emptyDir, grafana-dashboards
+# ConfigMap, otelcol-config ConfigMap) — we're adding a 4th. Same for
+# volumeMounts — base has 4, we add a 5th.
+#
+# Provisioning is one-shot at Grafana boot. After applying this overlay
+# for the first time the lgtm pod must restart to pick up the new file
+# (`kubectl rollout restart deployment/lgtm -n infra`). Subsequent
+# applies that don't touch the ConfigMap content do not trigger a
+# restart automatically — Grafana's file-based provisioning only
+# scans on boot, not at runtime, for datasources.
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lgtm
+  namespace: infra
+spec:
+  template:
+    spec:
+      containers:
+        - name: lgtm
+          volumeMounts:
+            - name: grafana-extra-datasources
+              # subPath into the dir alongside the bundled grafana-datasources.yaml
+              # — Grafana scans every *.yaml here at boot.
+              mountPath: /otel-lgtm/grafana/conf/provisioning/datasources/kubeprom.yaml
+              subPath: kubeprom-datasource.yaml
+              readOnly: true
+      volumes:
+        - name: grafana-extra-datasources
+          configMap:
+            name: grafana-extra-datasources

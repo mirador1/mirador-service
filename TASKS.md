@@ -91,6 +91,28 @@ Current failure shape (pipeline #528, 2026-04-20):
 Acceptance: `npx spectral-cli@6.15.1 lint … --fail-severity error`
 exits 0 → drop `allow_failure: true` on the job.
 
+### Follow-ups from ADR-0039 (kube-prometheus-stack overlay)
+
+The `local-prom/` overlay shipped 2026-04-21 (svc MR pending). It deploys
+kube-prometheus-stack alongside lgtm without breaking the existing OTLP
+flow. Three follow-ups tracked:
+
+- **`gke-prom/` overlay** — same pattern for GKE Autopilot (no
+  `insecure_skip_verify`, kubeControllerManager re-enabled, retention
+  bumped to 7 d, scrape config tightened). Requires testing on the
+  ephemeral cluster — schedule alongside the next `bin/cluster/demo-up.sh`
+  cycle.
+- **`test:k8s-apply-prom` CI job** — copy of the existing `test:k8s-apply`
+  but applies `local-prom/`. Adds ~3 min to the pipeline; only runs on
+  `deploy/kubernetes/overlays/local-prom/**` changes (path filter).
+  Catches Prometheus Operator manifest drift in CI before it hits a
+  developer's machine.
+- **Mirador `ServiceMonitor`** — declares the `mirador` Service in
+  `app` namespace as a scrape target for the chart's Prometheus. With
+  this in place, both surfaces (lgtm Mimir via OTLP push + chart
+  Prometheus via scrape) hold the same Mirador metrics — useful for
+  benchmarking which path has lower scrape overhead. ~30 lines of YAML.
+
 ## 🟢 Nice-to-have
 
 ### Extend `bin/dev/stability-check.sh`

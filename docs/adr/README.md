@@ -78,6 +78,9 @@ monotonic across supersessions.
 | 0034 | Accepted | [CI memory budget + Testcontainers-heavy ITs](0034-ci-memory-budget-testcontainers.md) |
 | 0035 | Accepted | [Defer Pact + Biome adoption](0035-defer-pact-and-biome.md) |
 | 0036 | Accepted | [Multi-cloud Terraform posture](0036-multi-cloud-terraform-posture.md) |
+| 0037 | Accepted | [Spectral oas3-valid-* rules disabled](0037-spectral-oas3-valid-example-rules-disabled.md) |
+| 0038 | Accepted | [Cluster metrics via OTel Collector receivers in lgtm](0038-kubeletstats-receiver-in-lgtm-not-kube-prometheus-stack.md) |
+| 0039 | Accepted | [Two observability deployment modes (OTel-native vs Prometheus-community)](0039-two-observability-deployment-modes.md) |
 
 ## Hierarchical index (by theme)
 
@@ -144,6 +147,8 @@ authoritative.
 - [ADR-0010](0010-otlp-push-to-collector.md) — OTLP push to collector
 - [ADR-0012](0012-stay-on-lgtm-with-bloom-filters.md) — Stay on LGTM with bloom filters
 - [ADR-0024](0024-bff-observability-proxy-and-unleash-without-sdk.md) — BFF observability proxy + Unleash
+- [ADR-0038](0038-kubeletstats-receiver-in-lgtm-not-kube-prometheus-stack.md) — Cluster metrics via OTel Collector receivers in lgtm (no kube-prom-stack)
+- [ADR-0039](0039-two-observability-deployment-modes.md) — Two overlays: OTel-native (`local`) vs Prometheus-community (`local-prom`)
 
 ### 🛡️ Resilience
 

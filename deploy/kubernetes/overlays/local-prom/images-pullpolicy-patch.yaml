@@ -1,0 +1,25 @@
+# =============================================================================
+# imagePullPolicy: Never — for kind (local) clusters
+#
+# Why Never and not IfNotPresent?
+#   deploy-local.sh loads images directly into the kind cluster's containerd
+#   via `kind load docker-image`. The images are present locally but NOT in
+#   any remote registry. The default imagePullPolicy on `:latest`-style tags
+#   is Always — which would make kubelet try to pull from the (non-existent)
+#   remote and crash the pod with ErrImagePull.
+#
+# Never = "use the local cached image, fail if absent". Correct for kind.
+# Production overlays (gke/eks/aks) keep the base's Always policy (pull by SHA).
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mirador
+  namespace: app
+spec:
+  template:
+    spec:
+      containers:
+        - name: mirador
+          imagePullPolicy: Never
+# customer-ui patch removed with ADR-0025 — no UI Deployment in any cluster.

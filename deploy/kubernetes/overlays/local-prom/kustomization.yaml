@@ -1,0 +1,119 @@
+# =============================================================================
+# local-prom/ overlay — kind cluster + kube-prometheus-stack alongside lgtm
+#
+# Target: `kind` running locally (scripts/deploy-local.sh creates the
+# cluster). Same as `local/` but adds the full kube-prometheus-stack so:
+#   - OpenLens "Metrics" tab works (cluster CPU/mem graphs visible)
+#   - Native Prometheus-community / kube-state-metrics naming is available
+#     to anything that hardcodes those names (Grafana.com community
+#     dashboards, third-party tools).
+#
+# What this overlay adds on top of the `local/` overlay's content:
+#   • `monitoring` namespace (PSS=privileged for node-exporter)
+#   • Prometheus Operator + CRDs
+#   • A 1-shard, 1-replica Prometheus (StatefulSet via the operator)
+#   • node-exporter DaemonSet (1 pod per node — kind has 1 node = 1 pod)
+#   • kube-state-metrics Deployment
+#   • 7 ServiceMonitors (kubelet, apiserver, coreDNS, the 4 chart services)
+#   • Grafana datasource patch — adds a 5th datasource pointing at this
+#     Prometheus, alongside the existing 4 (lgtm Mimir, Tempo, Loki,
+#     Pyroscope). lgtm still owns its Grafana — no duplicate UI.
+#
+# What stays unchanged from local/:
+#   • lgtm pod (Grafana + Loki + Tempo + Mimir + OTel Collector)
+#   • OTLP push from app pods → lgtm Collector → Mimir/Tempo/Loki
+#   • Mirador's own dashboards, alerts, and the kubeletstats receiver
+#     (extra cost is tiny — 30s scrape interval on each)
+#
+# When to use this overlay vs `local/`:
+#   • Use `local/` when demoing the OTel-native single-pod story (ADR-0014
+#     and ADR-0038 — that's the headline architecture).
+#   • Use `local-prom/` when developing OpenLens integration, evaluating
+#     kube-state-metrics naming, or building dashboards that need both
+#     OTel-pushed metrics AND scraped Prometheus metrics.
+#
+# Cost on kind (laptop): ~6 extra pods, ~700-900 MiB RSS. Detailed pod
+# table in this directory's README.md.
+#
+# Apply:  kubectl apply -k deploy/kubernetes/overlays/local-prom
+# =============================================================================
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+  - ../../base/postgres
+  # `monitoring` namespace must exist before the chart's pods are created
+  # — kustomize preserves resources order.
+  - namespace.yaml
+  # Prometheus Operator CRDs first, then the Prometheus / ServiceMonitor /
+  # PodMonitor objects that reference them. Same recipe as Argo CD's
+  # bootstrap pattern: CRDs → CRs.
+  - kube-prom-stack-crds.yaml
+  - kube-prom-stack-rendered.yaml
+  # Re-use the local/ overlay's plain Secrets (ESO has no path to GCP
+  # Secret Manager from a kind cluster). Kustomize forbids resource
+  # paths above the overlay's own directory AND rejects symlinks that
+  # resolve outside it (security: LoadRestrictionsRootOnly default), so
+  # the file is COPIED from ../local/local-secrets.yaml. Keep the two
+  # in sync by hand — both files have an identical comment header.
+  - local-secrets.yaml
+  # Adds the kube-prom Prometheus as a 5th Grafana datasource in lgtm's
+  # provisioning. Two files:
+  #   • grafana-datasource-patch.yaml — the ConfigMap (resource).
+  #   • lgtm-mount-patch.yaml — strategic-merge patch (in `patches:`)
+  #     that mounts the ConfigMap into the lgtm pod.
+  - grafana-datasource-patch.yaml
+  # Extra NetworkPolicies needed because the base default-deny-all on
+  # `infra` would block Grafana → kube-prom Prometheus. Adds an
+  # `infra → monitoring:9090` egress allow.
+  - networkpolicy-extras.yaml
+
+patches:
+  # imagePullPolicy: Never on app images (kind loads via docker-image,
+  # remote pull would 404). Same patch as local/ — copied here because
+  # kustomize forbids resource paths above the overlay's own directory.
+  - path: images-pullpolicy-patch.yaml
+
+  # Mounts the grafana-extra-datasources ConfigMap into the lgtm pod's
+  # Grafana provisioning dir. Strategic merge — adds 1 volume + 1
+  # volumeMount to the base lgtm Deployment without replacing the rest.
+  - path: lgtm-mount-patch.yaml
+
+  # ESO never syncs on kind — delete the ExternalSecret + SecretStore
+  # CRs so they don't hang in Error state. Same deletes as local/.
+  - patch: |-
+      $patch: delete
+      apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      metadata:
+        name: mirador-secrets
+        namespace: app
+  - patch: |-
+      $patch: delete
+      apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      metadata:
+        name: mirador-secrets
+        namespace: infra
+  - patch: |-
+      $patch: delete
+      apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      metadata:
+        name: keycloak-secrets
+        namespace: infra
+  - patch: |-
+      $patch: delete
+      apiVersion: external-secrets.io/v1
+      kind: SecretStore
+      metadata:
+        name: gcp-secret-manager
+        namespace: app
+  - patch: |-
+      $patch: delete
+      apiVersion: external-secrets.io/v1
+      kind: SecretStore
+      metadata:
+        name: gcp-secret-manager
+        namespace: infra

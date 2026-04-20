@@ -1,0 +1,51 @@
+# =============================================================================
+# networkpolicy-extras.yaml — overlay-only NetworkPolicies for local-prom
+#
+# The base ships strict ingress + egress policies on `app` and `infra`
+# namespaces (default-deny-all + targeted allow rules). When this overlay
+# adds the kube-prom Prometheus in the new `monitoring` namespace, two
+# legitimate cross-namespace flows would be blocked:
+#
+#   1. Grafana (in `infra`, lgtm pod) → kube-prom Prometheus
+#      (in `monitoring`, port 9090). Without this, the new Grafana
+#      datasource shows "Bad Gateway" / timeout when querying.
+#
+#   2. kube-prom Prometheus (in `monitoring`) → app pods (in `app`,
+#      port 8080 = Mirador's Micrometer endpoint). NOT enabled here
+#      yet — would require a `ServiceMonitor` for the Mirador app
+#      first. Tracked as a follow-up: ADR-0039 "Future work".
+#
+# We DO NOT add a default-deny in `monitoring` because the chart's
+# pods don't ship one and the operator would fight us if we did. The
+# blast radius of an open-by-default monitoring ns on a kind cluster
+# is zero — there are no secrets in there, and ingress to the cluster
+# is laptop-only via port-forward.
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-infra-egress-to-monitoring
+  namespace: infra
+  labels:
+    app.kubernetes.io/part-of: mirador
+    app.kubernetes.io/component: networkpolicy
+spec:
+  # Empty podSelector = applies to all pods in `infra`. Strictest sensible
+  # scope here would be "lgtm pod only" (label
+  # app.kubernetes.io/name=lgtm) but adding extras for future operators
+  # (cert-manager metrics scraping, etc.) is cheap and reduces churn.
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - port: 9090
+          protocol: TCP
+        # operator listens on 8080 for /metrics; not strictly needed for
+        # Grafana → Prometheus but cheap to allow for future use.
+        - port: 8080
+          protocol: TCP
