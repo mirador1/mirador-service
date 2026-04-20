@@ -14,6 +14,7 @@
 
 - **Start every response with the current time** in `HH:MM` format, no timezone suffix. Run `date "+%H:%M"` if uncertain — context-carried times can be stale after scheduled wakeups.
 - **Do not stop** between tasks — chain all pending work without asking "shall I continue?".
+- **Never go silent**: when no background work is in flight, say `⏸  Idle. No background work.` then re-list pending tasks and restart them. Same when polling — explicit "waiting for X, next check at Y", never silent. **Waiting on a pipeline counts as idle**: schedule a wakeup at most every 10 min so a green pipeline doesn't sit unmerged. See `~/.claude/CLAUDE.md` → "Never go silent" for the full rule.
 - **Regularly display the pending task list** — after completing a task, show what remains so the user can track progress without opening TASKS.md.
 - **Act directly** — read only what is strictly necessary, then make the change. No long exploration before acting.
 - **One commit per logical change** — do not batch unrelated fixes into one commit.
