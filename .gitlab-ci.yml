@@ -938,6 +938,12 @@ test:k8s-apply:
     # Unique cluster name per job so parallel runs don't collide on the
     # runner's shared Docker daemon.
     KIND_CLUSTER: "ci-k8s-${CI_JOB_ID}"
+    # 10 min per pod — keycloak on the arm64 macbook-local runner is
+    # slow to become Available (9m+ observed in pipeline #602 on a
+    # busy runner). 5 min default was too tight. test:k8s-apply-prom
+    # uses 8m for a similar reason (Prometheus Operator boot). Keep
+    # the two values close so behaviour is predictable across jobs.
+    TIMEOUT: "10m"
   before_script:
     - apk add --no-cache bash curl
     - |
