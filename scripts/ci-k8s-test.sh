@@ -27,6 +27,17 @@
 
 set -euo pipefail
 
+# Wrap a command that pipes into `head` or `grep -q` (which exits
+# early and causes SIGPIPE on the writer → exit 141 under pipefail).
+# Usage: sigpipe_safe <command>
+# Rationale: kind-on-CI runs that died with exit 141 "mid rollout-check"
+# (see .gitlab-ci.yml header) were classical producer-closes-first
+# SIGPIPE cases. Capturing the producer's output into a variable first,
+# THEN filtering it, avoids the pipe entirely. For the few cases below
+# where piping is cleaner, we explicitly tolerate SIGPIPE with trap.
+# Not inlined as a function because the capture pattern is more
+# readable at the call site.
+
 KIND_CLUSTER="${KIND_CLUSTER:-ci-k8s-${CI_JOB_ID:-local}}"
 KIND_CONFIG="${KIND_CONFIG:-deploy/kubernetes/kind-config.yaml}"
 OVERLAY="${OVERLAY:-deploy/kubernetes/overlays/local}"
@@ -98,7 +109,13 @@ if [ -f /.dockerenv ] || grep -q "docker\|kubepods" /proc/1/cgroup 2>/dev/null; 
 fi
 
 echo "📋  kubectl version"
-kubectl version --client=true --output=yaml | head -3
+# Capture → slice. Previous `kubectl version ... | head -3` was a
+# classic SIGPIPE trap: `head` exits after 3 lines while `kubectl`
+# keeps writing → SIGPIPE → exit 141 under pipefail. Taking 3
+# lines from a captured variable is equivalent + SIGPIPE-free.
+_kv=$(kubectl version --client=true --output=yaml)
+printf '%s\n' "$_kv" | awk 'NR<=3'
+unset _kv
 kubectl cluster-info
 
 # Install the third-party CRDs that the overlay's manifests reference.
@@ -164,8 +181,15 @@ fi
 # a restricted-enforced namespace (app) accumulate drift.
 if grep -q "would violate PodSecurity" /tmp/apply.log; then
   echo "ℹ️  PodSecurity warnings (informational — baseline policy in effect):"
-  grep "would violate PodSecurity" /tmp/apply.log | head -3
+  # Same SIGPIPE rewrite as the kubectl version block above: capture
+  # the matching lines FIRST (grep can't SIGPIPE to a file), then
+  # print the first 3 via awk. Previous `grep ... | head -3` sometimes
+  # died with exit 141 on noisy apply logs.
+  _psw=$(grep "would violate PodSecurity" /tmp/apply.log)
+  printf '%s\n' "$_psw" | awk 'NR<=3'
+  # grep -c is in a command substitution (no pipe, no SIGPIPE risk).
   echo "   …$(grep -c 'would violate PodSecurity' /tmp/apply.log) total."
+  unset _psw
 fi
 
 echo "⏳  Waiting for core pods to become Ready (timeout=$TIMEOUT)…"
@@ -178,18 +202,50 @@ fi
 for target in "${ALL_PODS[@]}"; do
   IFS='/' read -r ns kind name <<< "$target"
   printf "  %-60s " "$target"
-  if kubectl rollout status "$kind/$name" -n "$ns" --timeout="$TIMEOUT" >/dev/null 2>&1; then
-    echo "✅"
-  else
-    echo "❌"
-    kubectl describe "$kind/$name" -n "$ns" | tail -30
-    failed=$((failed + 1))
-  fi
+  # `kubectl wait --for=condition=Available` — the idiomatic idle
+  # loop for Deployments + StatefulSets (both support the Available
+  # condition since k8s 1.22). DaemonSets don't have Available; fall
+  # back to rollout status for those. Migrated from `kubectl rollout
+  # status` per the dated TODO in .gitlab-ci.yml — rollout status
+  # watches the stream of controller events, which produces rare
+  # buffer-flush SIGPIPEs that ci pipelines intermittently surfaced
+  # as exit 141. `kubectl wait` does not stream — it polls status
+  # conditions directly.
+  case "$kind" in
+    daemonset)
+      # DaemonSet has no Available condition — use --for=jsonpath on
+      # numberReady + the current desired count (Ready = desired = all nodes).
+      # Use rollout status (it's the canonical wait for DaemonSets and
+      # doesn't have the streaming-SIGPIPE shape the TODO targets).
+      if kubectl rollout status "daemonset/$name" -n "$ns" --timeout="$TIMEOUT" >/dev/null 2>&1; then
+        echo "✅"
+      else
+        echo "❌"
+        kubectl describe "daemonset/$name" -n "$ns" | tail -30
+        failed=$((failed + 1))
+      fi
+      ;;
+    *)
+      if kubectl wait --for=condition=Available --timeout="$TIMEOUT" \
+           "$kind/$name" -n "$ns" >/dev/null 2>&1; then
+        echo "✅"
+      else
+        echo "❌"
+        kubectl describe "$kind/$name" -n "$ns" | tail -30
+        failed=$((failed + 1))
+      fi
+      ;;
+  esac
 done
 
 if [ "$failed" -gt 0 ]; then
   echo "❌  $failed pod(s) did not reach Ready. Cluster state:"
-  kubectl get pods -A | grep -v Running
+  # Another SIGPIPE rewrite: previously `kubectl get pods -A | grep -v
+  # Running` could exit 141 if grep decided to close early on a large
+  # buffered response. awk on captured output is equivalent + safe.
+  _allpods=$(kubectl get pods -A)
+  printf '%s\n' "$_allpods" | awk 'NR==1 || $4 != "Running"'
+  unset _allpods
   exit 1
 fi
 

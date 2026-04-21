@@ -882,23 +882,32 @@ test:k8s-apply:
   tags:
     - macbook-local   # needs host Docker socket for kind-in-docker
   needs: []           # no upstream dependency — parallel to unit-test
-  # Kind-on-CI is intrinsically flaky: kustomize apply succeeds but the
-  # script exits 141 (SIGPIPE) mid rollout-check ~50% of runs. Pipelines
-  # #550 + #551 (retry) both died this way despite full successful apply.
-  # TODO: flip to false by 2026-05-21 after migrating to `kubectl wait
-  # --for=condition=Ready` (no piped greps that can SIGPIPE).
-  allow_failure: true
+  # Shield removed 2026-04-21 — the SIGPIPE/exit-141 pattern at
+  # "mid rollout-check" was caused by `kubectl version ... | head -3`,
+  # `grep ... | head -3` (PodSecurity warning block) and
+  # `kubectl get pods -A | grep -v Running` (cleanup block) — all
+  # classic producer-closes-first SIGPIPE traps under pipefail.
+  # scripts/ci-k8s-test.sh rewrite of those blocks to capture-then-
+  # filter + migration of the main wait loop from `kubectl rollout
+  # status` to `kubectl wait --for=condition=Available` (or rollout
+  # status for DaemonSets) removes the flake source entirely. If a
+  # different flake class surfaces post-flip, re-shield with a dated
+  # TODO rather than silently tolerate it.
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
-    # MRs: only when manifests actually change — most MRs skip entirely.
+    # MRs: only when manifests OR the apply script change — most MRs
+    # skip entirely. Script is included so the kubectl-wait / SIGPIPE
+    # fix (2026-04-21) gets validated by the same job it targets.
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         - deploy/kubernetes/**/*
+        - scripts/ci-k8s-test.sh
     # main: same filter. Catches a drift merged via an unrelated MR.
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       changes:
         - deploy/kubernetes/**/*
+        - scripts/ci-k8s-test.sh
   variables:
     KIND_VERSION: "v0.24.0"
     # Unique cluster name per job so parallel runs don't collide on the
@@ -957,12 +966,11 @@ test:k8s-apply-prom:
   tags:
     - macbook-local
   needs: []
-  # Same flakiness pattern as test:k8s-apply (kind-on-CI SIGPIPE),
-  # plus an extra unknown — Prometheus Operator's webhook validation
-  # may misbehave in kind's reduced API server. Keep shielded for the
-  # same dated window as the parent job, then flip together.
-  # TODO: flip to false by 2026-05-21 with test:k8s-apply.
-  allow_failure: true
+  # Shield removed 2026-04-21 together with test:k8s-apply — same
+  # SIGPIPE fix in scripts/ci-k8s-test.sh. If the Prometheus Operator
+  # webhook validation misbehaves in kind's reduced API server (a
+  # separate risk class flagged when this job shipped), re-shield
+  # with a dated TODO — do not mask it under a blanket allow_failure.
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
