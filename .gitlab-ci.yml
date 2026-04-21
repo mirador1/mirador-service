@@ -1920,10 +1920,27 @@ terraform-apply:
   script:
     - terraform apply -input=false tfplan
   needs:
+    # `optional: true` — terraform-plan does NOT run when TF_STATE_BUCKET
+    # is unset (per its rules added 2026-04-21 along with the
+    # terraform-plan shield removal). Without `optional`, GitLab refuses
+    # to create the WHOLE pipeline ("'terraform-apply' job needs
+    # 'terraform-plan' job, but 'terraform-plan' does not exist in the
+    # pipeline") → catastrophic main-pipeline failure when the bucket
+    # var is missing. Caught the hard way in main pipeline #592 on
+    # 2026-04-21 (post-merge !123). With `optional: true`, terraform-
+    # apply silently skips when terraform-plan didn't run, which is
+    # the correct behaviour (you can't apply a plan that wasn't
+    # generated).
     - job: terraform-plan
       artifacts: true
+      optional: true
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    # Same TF_STATE_BUCKET gate as terraform-plan — keeps the manual
+    # button hidden when the prerequisite isn't met (avoids a confused
+    # "click ▶ → fail immediately" loop).
+    - if: '$TF_STATE_BUCKET == null || $TF_STATE_BUCKET == ""'
       when: never
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       when: manual
