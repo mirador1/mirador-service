@@ -149,11 +149,19 @@ for crd in podchaos.chaos-mesh.org networkchaos.chaos-mesh.org \
 done
 echo "  ✓ CRDs established."
 
-echo "🚀  kubectl apply -k $OVERLAY"
-# The server-side apply pass catches schema errors the `kubectl kustomize`
-# render in the pre-commit hook can't — missing CRDs, admission webhooks
-# rejecting resources, etc.
-if ! kubectl apply -k "$OVERLAY" 2>&1 | tee /tmp/apply.log; then
+echo "🚀  kubectl apply --server-side -k $OVERLAY"
+# `--server-side=true` (Server-Side Apply, SSA) is required for the
+# `local-prom` / `gke-prom` overlays because the vendored kube-prom-
+# stack CRDs (alertmanagerconfigs, prometheuses, scrapeconfigs, etc.)
+# exceed the 256KB `last-applied-configuration` annotation limit that
+# client-side apply stores — kubectl fails with "metadata.annotations:
+# Too long: must have at most 262144 bytes". Server-side apply stores
+# field ownership on the cluster side instead of stamping the full
+# manifest into an annotation, so the size limit does not apply.
+# `--force-conflicts` lets us own fields previously set by a no-longer-
+# present kustomize label patch (needed on re-applies after a rerun).
+# Pattern already used above for the chaos-mesh + ESO CRDs.
+if ! kubectl apply --server-side=true --force-conflicts -k "$OVERLAY" 2>&1 | tee /tmp/apply.log; then
   echo "❌  kubectl apply failed (see log above)."
   exit 1
 fi
