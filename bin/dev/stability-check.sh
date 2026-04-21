@@ -791,6 +791,71 @@ print(','.join(gaps))" 2>/dev/null || echo "")
   done
 }
 
+# ── Section 5f-bis: ADR "Proposed" status — flag stuck decisions ──────────
+# Why: Michael Nygard's ADR template uses Status: {Proposed, Accepted,
+# Rejected, Deprecated, Superseded}. A Proposed ADR is a half-baked
+# decision; if it sits in Proposed > 30 days the team has implicitly
+# moved on without recording the actual outcome. This section flags
+# them as warnings so the next session either accepts/rejects or
+# folds the doc back into a real proposal. We use git blame on the
+# Status line rather than file mtime so a typo-fix in the body
+# doesn't reset the clock.
+section_adr_proposed() {
+  echo "▸ ADR 'Proposed' status — stuck decisions…"
+  local cutoff
+  cutoff=$(date -v-30d +%s 2>/dev/null || date -d '30 days ago' +%s)
+  for repo in "$SVC_DIR" "$UI_DIR"; do
+    local name=$(basename "$repo")
+    if [[ ! -d "$repo/docs/adr" ]]; then continue; fi
+    local stuck=()
+    while IFS= read -r f; do
+      [[ -z "$f" ]] && continue
+      # Match either "- Status: Proposed" (our convention) or
+      # "Status: Proposed" plain. Case-insensitive on the value.
+      local line_no
+      line_no=$( (cd "$repo" && grep -nE "^\s*-?\s*Status:\s*Proposed" "$f" 2>/dev/null | head -1 | cut -d: -f1) || true)
+      [[ -z "$line_no" ]] && continue
+      local ts
+      ts=$( (cd "$repo" && git blame -L "$line_no,$line_no" --porcelain "$f" 2>/dev/null \
+        | grep "^author-time " | awk '{print $2}' | head -1) || echo "")
+      if [[ -n "$ts" && "$ts" -lt "$cutoff" ]]; then
+        stuck+=("$(basename "$f")")
+      fi
+    done < <( (cd "$repo" && ls docs/adr/*.md 2>/dev/null) || true)
+    if [[ "${#stuck[@]}" -gt 0 ]]; then
+      local more=""
+      [[ "${#stuck[@]}" -gt 5 ]] && more=" …(+$((${#stuck[@]} - 5)))"
+      finding warn "$name: ${#stuck[@]} ADR(s) stuck in 'Proposed' >30d: ${stuck[*]:0:5}${more}"
+    fi
+  done
+}
+
+# ── Section 5f-ter: Helm chart lint when deploy/helm/** exists ────────────
+# Why: when the project starts shipping Helm charts (today there are
+# none — only kustomize overlays — but the Java/cluster trajectory
+# regularly proposes Helm), `helm lint` catches templating errors
+# before they hit `helm install` and blow up the cluster. The check
+# is a no-op in repos without a chart, so leaving it on costs nothing.
+section_helm_lint() {
+  echo "▸ Helm chart lint (when deploy/helm/** exists)…"
+  if ! command -v helm &>/dev/null; then
+    finding info "helm: binary not installed — skip (brew install helm)"
+    return
+  fi
+  for repo in "$SVC_DIR" "$UI_DIR"; do
+    local name=$(basename "$repo")
+    if [[ ! -d "$repo/deploy/helm" ]]; then continue; fi
+    while IFS= read -r chart; do
+      [[ -z "$chart" ]] && continue
+      local errs
+      errs=$( (cd "$repo" && helm lint "$chart" 2>&1) | grep -cE "^Error:|\[ERROR\]" || echo 0)
+      if [[ "$errs" -gt 0 ]]; then
+        finding fail "$name: helm lint $chart — $errs error(s)"
+      fi
+    done < <( (cd "$repo" && find deploy/helm -name Chart.yaml -exec dirname {} \; 2>/dev/null) || true)
+  done
+}
+
 # ── Section 5g: System.out / printStackTrace in Java (Logger required) ─────
 # Spring Boot apps log via SLF4J/Logback. `System.out.println` and
 # `e.printStackTrace()` bypass that path: no log level, no MDC trace ID,
@@ -1167,6 +1232,8 @@ main() {
   section_ui_console
   section_docs
   section_adr_sequence
+  section_adr_proposed
+  section_helm_lint
   section_terraform
   section_pinned_versions
   section_env_drift

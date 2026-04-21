@@ -43,7 +43,12 @@ workflow:
   # the "main requires passing pipeline" branch protection rule — so MRs
   # touching only docs/ can auto-merge without a bypass push.
   rules:
-    # MR events — run when code, build, infra, CI or docs changes.
+    # MR events — run when code, build, infra, CI, scripts, hygiene/audit
+    # tooling, or docs changes. The allowlist must enumerate every path
+    # whose change a reviewer would want CI to validate; missing paths
+    # (e.g. `bin/**/*` until 2026-04-21) silently bypass the pipeline
+    # gate and the MR is BLOCKED by the branch-protection "ci_must_pass"
+    # rule with no pipeline ever running — opposite of "fail open".
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         - "src/**/*"
@@ -55,10 +60,15 @@ workflow:
         - ".dockerignore"
         - "docker-compose*.yml"
         - ".gitlab-ci.yml"
+        - ".github/**/*"   # Scorecard / GitHub Actions changes — Sonar may flag perms
+        - ".spectral.yaml" # OpenAPI lint ruleset
         - "deploy/**/*"
         - "scripts/**/*"
+        - "bin/**/*"       # Stability check + cluster lifecycle scripts
         - "docs/**/*"
         - "README.md"
+        - "README.fr.md"
+        - "CLAUDE.md"
         - "TASKS.md"
     # Main branch pushes — same allowlist, compared against HEAD~1 (last commit).
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE != "schedule"
@@ -72,11 +82,16 @@ workflow:
         - ".dockerignore"
         - "docs/**/*"
         - "README.md"
+        - "README.fr.md"
+        - "CLAUDE.md"
         - "TASKS.md"
         - "docker-compose*.yml"
         - ".gitlab-ci.yml"
+        - ".github/**/*"
+        - ".spectral.yaml"
         - "deploy/**/*"
         - "scripts/**/*"
+        - "bin/**/*"
     # Scheduled pipelines: two named schedules (native build + report generation).
     # Configure each in GitLab → CI/CD → Schedules. The REPORT_PIPELINE variable
     # distinguishes the report schedule from the native-build schedule.
@@ -450,11 +465,14 @@ release-please:
         --target-branch "$CI_DEFAULT_BRANCH" \
         --config-file config/release-please-config.json \
         --manifest-file .release-please-manifest.json
-  # TODO: flip to false by 2026-07-20 (90d) — gated on RELEASE_PLEASE_TOKEN
-  # being set as a GitLab CI variable. Action item: either provision the
-  # token (needs write_repository scope) or DELETE this job if we stick
-  # with manual semver. Revisit during the 90d review.
-  allow_failure: true   # until RELEASE_PLEASE_TOKEN is set; flip to false after
+  # Shield removed 2026-04-21 — the job is already gated on
+  # `$RELEASE_PLEASE_TOKEN` at line 446 (rule does not match when the
+  # token is unset → `when: never`), so the shield was protecting a job
+  # that genuinely cannot run. When the token is provisioned, a real
+  # release-please error SHOULD block the deploy stage; that's the
+  # whole point of the tag step. To re-shield during a transition,
+  # add `allow_failure: true` back here with a dated TODO per CLAUDE.md
+  # → "Pipelines stay green".
 
 # ── stage: integration ────────────────────────────────────────────────────────
 
@@ -625,17 +643,25 @@ sonar-analysis:
       artifacts: true
       optional: true
   rules:
-    # Run on default branch and MRs only — skip feature branches to avoid noise.
+    # MAIN ONLY — SonarCloud free tier does NOT support PR/MR analysis
+    # (the "Project not found" error you see if you try). Branch+MR
+    # decoration requires the paid Developer Edition. Keeping the MR
+    # rule was masked for months by `allow_failure: true` (now removed
+    # 2026-04-21); see [pipeline #570 sonar-analysis trace](https://gitlab.com/mirador1/mirador-service/-/jobs/14011853839)
+    # for the failure shape. Main-branch analysis is the source of
+    # truth for the SonarCloud quality gate; per-MR feedback comes
+    # from `code-quality` (PMD/Checkstyle/SpotBugs annotations).
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     # Skip entirely if SONAR_TOKEN is not configured (avoids failing new environments)
     - if: '$SONAR_TOKEN == null || $SONAR_TOKEN == ""'
       when: never
-  # TODO: flip to false by 2026-10-20 (180d) — keeping the shield only
-  # because Sonar outage is the sole justified reason to break a deploy;
-  # re-evaluate after 6 months of uptime data. Ran green 3/3 on main
-  # (pipelines #525, #528, #530 on 2026-04-19).
-  allow_failure: true   # SonarCloud outage must not block deployments
+  # Shield removed 2026-04-21 — sonar-analysis now main-only, where it
+  # has a clean 7/7 success record. The only realistic break is a
+  # SonarCloud 5xx; if that happens we WANT main to go red so we know
+  # to re-run later rather than silently merging without a fresh quality
+  # scan. The MR-rule removal above eliminated the "Project not found"
+  # 404 that was failing every MR pipeline — investigated 2026-04-21
+  # via [pipeline #570](https://gitlab.com/mirador1/mirador-service/-/pipelines/2467312321).
   cache:
     key: "$CI_COMMIT_REF_SLUG"
     paths:
@@ -677,12 +703,13 @@ code-quality:
       when: never
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-  # TODO: flip to false by 2026-10-20 (180d) — the analysis itself is
-  # informational, so blocking merges on a bad severity call would be
-  # noisy. Revisit after 6 months: if green-streak holds, keep shield;
-  # if we start adding real gates (cyclomatic thresholds, etc.) flip it.
-  # Ran green 3/3 on main (pipelines #525, #528, #530 on 2026-04-19).
-  allow_failure: true   # Code Quality annotations are informational — must never block merges
+  # Shield removed 2026-04-21 — ran green 7/7 on main (pipelines #557→
+  # #565). PMD/Checkstyle/SpotBugs annotations are deterministic on
+  # the Java 21 overlay and there is no severity gate enforced — so
+  # the only way the job fails is if the report-generation step itself
+  # breaks (Python conversion script, missing artifact, malformed XML).
+  # That IS something a reviewer wants to see as a red — silent
+  # breakage of the GitLab MR Code Quality widget is the worst case.
   variables:
     MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
   before_script:
@@ -983,13 +1010,14 @@ trivy:scan:
       when: never
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_COMMIT_TAG
-  # TODO: flip to false by 2026-07-20 (90d) — currently informational
-  # per the comment above. Ran green 3/3 on main (pipelines #525/#528/
-  # #530 on 2026-04-19) with --exit-code 0, so flipping only makes a
-  # difference once we switch to --exit-code 1 on HIGH/CRITICAL.
-  # Coordinated flip: both the exit-code AND allow_failure at the same
-  # time, so CVE gate becomes real. Revisit after SBOM+Grype lands.
-  allow_failure: true
+  # Shield removed 2026-04-21 — no-op flip with current --exit-code 0
+  # (the trivy invocation itself never returns non-zero today). Ran
+  # green 7/7 on main (pipelines #557→#565). Removing now so a future
+  # bump to --exit-code 1 on HIGH/CRITICAL lands a real CVE gate
+  # without a second config change. If we want to coordinate the
+  # exit-code flip + a brief shield window during the transition, add
+  # `allow_failure: true` back here with a dated TODO per CLAUDE.md
+  # → "Pipelines stay green".
   script:
     - |
       trivy image \
@@ -1156,12 +1184,12 @@ dockle:
       when: never
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_COMMIT_TAG
-  # TODO: flip to false by 2026-07-20 (90d) — ran green 3/3 on main
-  # (#525/#528/#530 on 2026-04-19). The backend Dockerfile already
-  # satisfies CIS + dockle baseline; a fresh DKL-* finding would likely
-  # be a real regression worth blocking. Re-evaluate if buildpack or
-  # base image changes introduce false positives in the interim.
-  allow_failure: true   # hygiene checks — warn, don't block
+  # Shield removed 2026-04-21 — ran green 7/7 on main (pipelines #557→
+  # #565). The backend Dockerfile satisfies the CIS + dockle baseline
+  # and a fresh DKL-* finding is exactly the regression worth blocking
+  # (a buildpack bump that introduces a sensitive flag, a base image
+  # CVE that surfaces a new check, etc.). Re-shield only if a known
+  # false positive lands and we're waiting for an upstream fix.
   variables:
     DOCKLE_VERSION: "0.4.15"
   before_script:

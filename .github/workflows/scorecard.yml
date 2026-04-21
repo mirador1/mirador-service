@@ -25,7 +25,22 @@ on:
     branches: [main]
   workflow_dispatch: {}
 
-permissions: read-all
+# Workflow-level permissions: minimum to clone the repo. The job below
+# (lines 35-39) sets its own `permissions:` block, which COMPLETELY
+# overrides this one for that job (per
+# https://docs.github.com/en/actions/using-jobs/assigning-permissions-to-jobs#overview).
+# The job already has the write scopes Scorecard needs:
+# `security-events: write` (SARIF upload) and `id-token: write`
+# (publish_results). The workflow-level scope here is documentation
+# for any future job that doesn't set its own block.
+#
+# Was previously `permissions: read-all`. Sonar `githubactions:S8234`
+# flagged it as too broad (drives `new_security_rating = 3`). Narrowed
+# 2026-04-21. The OSSF scorecard-action README explicitly forbids
+# workflow-level write permissions:
+# https://github.com/ossf/scorecard-action#global-workflow-restrictions.
+permissions:
+  contents: read
 
 jobs:
   analysis:
