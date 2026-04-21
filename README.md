@@ -863,7 +863,7 @@ All tools are integrated into the CI/CD pipeline and results are aggregated in t
 | **GitLab Code Quality** | SpotBugs + PMD + Checkstyle as inline MR diff annotations | Every push to `main` / MR | MR → Code Quality widget |
 | **Semgrep** | OSS rules: Java bugs, Spring patterns, OWASP Top 10, secrets | Daily schedule + manual | CI artifact `semgrep-report.json` · GitLab Security Dashboard |
 | **Maven Site** | HTML report portal: Surefire + JaCoCo + SpotBugs + Javadoc | Daily schedule | `reports/` branch · http://localhost:8084 |
-| **Trivy** | Docker image OS + Java CVE scan | Every push to `main` | CI artifact `trivy-report.json` |
+| **syft + Trivy + Grype** | Container CVE scan in 3 stages: syft generates the SBOM (CycloneDX + SPDX); Trivy scans the IMAGE (OS + JRE + libs, DB: aquasec/trivy-db); Grype scans the SBOM (Java coordinates, DB: GitHub Advisory + NVD). Trivy and Grype use different DBs and matchers — running both reduces false negatives without meaningful CI cost. | Every push to `main` + tags | CI artifacts `bom.cdx.json`, `bom.spdx.json`, trivy + grype reports · GitLab Security Dashboard |
 
 ### Run quality checks locally
 

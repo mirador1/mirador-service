@@ -778,20 +778,69 @@ to get the full picture._
 - **Usage here**: `semgrep` CI job on the daily report schedule; artefact `gl-sast-report.json` populates GitLab's SAST widget.
 - **Why it's pertinent**: Deep rules + GitLab integration — covered once above; listed here for completeness.
 
-### 🔒 [Trivy](https://trivy.dev/)
-- **What it is**: Aqua Security's image + dependency vulnerability scanner.
-- **Usage here**: `aquasec/trivy:0.69.3` in `trivy:scan`. Scans the pushed registry image directly (no DinD). HIGH + CRITICAL severity.
-- **Why it's pertinent**: Image-level CVE scan covers the base OS and JRE (OWASP Dep-Check only sees Maven deps). Pinned — never `:latest`.
+### 🔒 Container CVE scanning — Syft + Trivy + Grype (the 3-tool sandwich)
 
-### 🔒 [Grype](https://github.com/anchore/grype)
-- **What it is**: Anchore's CVE scanner, driven by a generated SBOM.
-- **Usage here**: `anchore/grype:v0.87.0` in `grype:scan`; reads the CycloneDX SBOM from `sbom:syft`.
-- **Why it's pertinent**: Second opinion vs Trivy — Grype uses GitHub Advisory DB + NVD, catches Java-specific CVEs Trivy might miss. Cross-referencing both reduces false negatives.
+We use **all three**, not "either / or". They have non-overlapping
+roles in the supply-chain pipeline — picking just one would let real
+CVEs slip through. The chain runs on every `main` push and tag:
 
-### 🔒 [syft](https://github.com/anchore/syft)
-- **What it is**: Anchore's SBOM generator.
-- **Usage here**: `anchore/syft:v1.18.1` in `sbom:syft`, emits both `bom.cdx.json` (CycloneDX) and `bom.spdx.json` (SPDX).
-- **Why it's pertinent**: SBOMs are mandated by NTIA and the EU CRA. Producing both formats covers all compliance frameworks.
+```
+docker-build  ─►  IMAGE pushed to registry
+                       │
+                       ├──►  syft        ──►  bom.cdx.json + bom.spdx.json   (the ingredient list)
+                       │                       │
+                       │                       ▼
+                       │                     grype:scan   (Java-focused, DB: GitHub Advisory + NVD)
+                       │
+                       └──►  trivy:scan   (image-wide, DB: aquasec/trivy-db)
+```
+
+#### 🔒 [syft](https://github.com/anchore/syft) — SBOM generator
+- **What it does**: Walks the built image and inventories every
+  package: OS packages from APK/APT/RPM, Java JARs by Maven
+  coordinates, native libraries.
+- **Usage here**: `anchore/syft:v1.18.1` in the `sbom:syft` job.
+  Emits both `bom.cdx.json` (CycloneDX) AND `bom.spdx.json` (SPDX)
+  as artifacts retained 90 days.
+- **Why it's pertinent**: SBOMs are mandated by NTIA + the EU Cyber
+  Resilience Act. Producing both formats covers every compliance
+  framework. The CycloneDX file is also the INPUT to Grype below.
+
+#### 🔒 [Trivy](https://trivy.dev/) — image scanner
+- **What it does**: Pulls the registry image and scans the LAYERS
+  themselves: OS package CVEs from the base image (Ubuntu noble),
+  the Java runtime (Temurin 25 JRE), embedded JARs detected via
+  Trivy's own analyzer.
+- **Usage here**: `aquasec/trivy:0.69.3` (pinned, never `:latest` —
+  the upstream rename of `:latest` broke pipeline #474). Severity
+  filter: HIGH + CRITICAL only. No DinD or privileged mode — it
+  reads the registry directly via `trivy registry login`.
+- **Why it's pertinent**: Catches things SBOM-based scanners miss —
+  e.g. a CVE in libssl that's installed at the OS layer but isn't
+  declared in any pom.xml.
+
+#### 🔒 [Grype](https://github.com/anchore/grype) — SBOM scanner
+- **What it does**: Reads the CycloneDX SBOM produced by syft and
+  cross-references each Java coordinate (`groupId:artifactId:version`)
+  against the **GitHub Advisory Database + NVD**. Different DB, different
+  matcher than Trivy.
+- **Usage here**: `anchore/grype:v0.87.0-debug` (the `-debug` variant
+  ships `/bin/sh` which GitLab CI's `sh -c` wrapper requires) in
+  `grype:scan`. Depends on `sbom:syft` for the SBOM artifact.
+- **Why it's pertinent — i.e. why we don't pick just Trivy**: Trivy
+  and Grype use **different vulnerability databases** and **different
+  matching logic**. A real-world Java CVE (e.g. log4shell-shaped issues
+  on niche transitive deps) sometimes lands in GitHub Advisory days
+  before Trivy DB picks it up; sometimes vice versa. Running both is
+  CHEAP (parallel jobs, ~30 s each) and the false-negative reduction is
+  worth far more than the doubled CI minute. The two tools also flag
+  different CVE IDs for the same vulnerability sometimes, which makes
+  triage faster — you cross-reference both reports.
+
+> **TL;DR if you only remember one thing**: syft = "what's in the
+> image"; Trivy = "is the image vulnerable" (OS + runtime focus);
+> Grype = "are the Java libs vulnerable" (Maven coordinates focus).
+> Three tools, three answers, one supply-chain story.
 
 ### 🔒 [dockle](https://github.com/goodwithtech/dockle)
 - **What it is**: Image-hygiene scanner (CIS Docker Benchmark, Dockerfile best practices).
