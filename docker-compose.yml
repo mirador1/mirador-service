@@ -237,6 +237,22 @@ services:
       OLLAMA_BASE_URL: http://ollama:11434
       # Redis host for the RecentCustomerBuffer (uses the service name in Docker network)
       SPRING_DATA_REDIS_HOST: redis
+      # Auth0 integration — lets the backend validate JWTs issued by the
+      # configured Auth0 tenant (in addition to the built-in HS256 tokens
+      # from /auth/login for admin/admin). All three are required together:
+      #   - AUTH0_ISSUER_URI: trailing slash mandatory, Auth0 puts it in the
+      #     `iss` claim and Spring Security does a string-compare.
+      #   - AUTH0_AUDIENCE: matches the API identifier registered in Auth0
+      #     Dashboard → Applications → APIs (value mirrored in UI
+      #     src/app/app.config.ts as AUTH0_AUDIENCE).
+      #   - AUTH0_DOMAIN: informational; used by package docs + logs.
+      # Without these, Auth0 JWTs fall through to HS256 validation with the
+      # internal secret, fail, and the UI's authInterceptor redirects to
+      # /login on 401. See docs/how-to/auth0-tenant-setup.md (UI repo) for
+      # the full setup flow and why these 3 are the minimum surface.
+      AUTH0_DOMAIN: dev-ksxj46zlkhk2gcvo.us.auth0.com
+      AUTH0_ISSUER_URI: https://dev-ksxj46zlkhk2gcvo.us.auth0.com/
+      AUTH0_AUDIENCE: https://mirador-api
 
   # ---------------------------------------------------------------------------
   # CloudBeaver — DBeaver web edition, self-hosted SQL browser.
