@@ -104,12 +104,32 @@ Running history:
 - 2026-04-21 stable-v1.0.6: removed 5 (svc sonar-analysis,
   code-quality, trivy:scan, dockle, release-please) +
   scoped sonar-analysis to main only (free-tier limitation).
+- 2026-04-21 stable-v1.0.8: 0 shield removals (audit confirmed
+  remaining 7 unconditional shields all protect legit flakes or
+  manual-trigger jobs) + scoped `terraform-plan` to require
+  `TF_STATE_BUCKET` set (was failing 5/5 main + 5/5 MR with "bucket
+  doesn't exist" — same anti-pattern as sonar's free-tier MR fail
+  before scope-out).
 
-Counts: svc 30 → 25, UI 14 → 14. Next sessions: continue 5/session.
-Priority candidates with KNOWN flakiness (manual investigation
-needed before flipping): `test:k8s-apply` (kubectl wait migration
-TODO), `grype:scan` (arm64 panic — deferred to upstream fix),
-`terraform-plan` (state bucket dependency).
+Counts: svc 30 → 25, UI 14 → 14.
+
+**No more easy wins** — the remaining 7 svc shields are residual
+hard cases. Each blocked by a specific issue:
+- `test:k8s-apply` + `test:k8s-apply-prom` — kind-on-CI SIGPIPE flake
+  (TODO: migrate to `kubectl wait --for=condition=Ready`, dated
+  2026-05-21).
+- `grype:scan` — Go runtime panic on arm64 macbook-local runner
+  (anchore/grype:v0.87.0-debug is amd64-only). Possible fixes
+  (require testing): bump to a newer multi-arch debug variant if
+  available, OR scope to schedule-only on a SaaS amd64 runner, OR
+  remove the job until grype ships arm64 binary. Not safe to flip
+  without one of these.
+- `.compat-job` template — manual-only, "compat failures don't
+  block MR merge" is documented intent.
+- `semgrep` — manual-only, "static analysis is informational" is
+  documented intent.
+- `native-image-build` — manual-only, 30-min Kaniko AOT build never
+  fired in observed window.
 
 #### Spectral warnings cleanup (was: openapi-lint shield flip — DONE 2026-04-21)
 
@@ -153,37 +173,37 @@ both. Remaining follow-ups:
     a `up{job="kubelet"}` query.
   - After `demo-down.sh`, the orphaned PVC is detected and cleaned by
     `bin/budget/gcp-cost-audit.sh`.
-- **`test:k8s-apply-prom` CI job** — copy of the existing `test:k8s-apply`
-  but applies `local-prom/`. Adds ~3 min to the pipeline; only runs on
-  `deploy/kubernetes/overlays/local-prom/**` changes (path filter).
-  Catches Prometheus Operator manifest drift in CI before it hits a
-  developer's machine. Also extend with a `gke-prom` matrix entry now
-  that the overlay exists.
-- **kubelet CA injection on GKE** — gke-prom currently keeps
-  `insecureSkipVerify: true` on the 3 kubelet ServiceMonitor endpoints
-  because GKE kubelet certs aren't signed by the SA-token-visible root.
-  Fix path: mount the kubelet CA from a Secret + add `caFile:` to each
-  endpoint via a JSON6902 patch on the rendered file. Documented in
-  ADR-0039 "Future work" + the gke-prom values-kube-prom-stack.yaml
-  comment block under `kubelet:`.
+- ~~**`test:k8s-apply-prom` CI job**~~ — DONE 2026-04-21 stable-v1.0.8
+  (svc !121). Path-filtered on `local-prom/**`, `gke-prom/**`,
+  `base/**`, `scripts/ci-k8s-test.sh`. EXTRA_PODS waits for the 4
+  kube-prom-stack pods (Prometheus StatefulSet, node-exporter
+  DaemonSet, ksm + operator Deployments). Same `allow_failure: true`
+  shield window as parent test:k8s-apply (2026-05-21).
+- ~~**kubelet CA injection on GKE**~~ — DECIDED 2026-04-21: not
+  pursued. The fix path (mount kubelet CA from a Secret + JSON6902
+  `caFile:` patch on the rendered file) was investigated and rejected
+  because GKE Autopilot signs the kubelet serving cert with a
+  separate, non-SA-token-visible root — there is no stable Secret
+  reference to mount at kustomize time. The trade-off is documented
+  inline at `deploy/kubernetes/overlays/gke-prom/values-kube-prom-stack.yaml`
+  lines 219-236: `insecureSkipVerify: true` stays, residual MITM
+  surface = cluster L3 isolation (already enforced by GKE network
+  policy). Re-evaluate if GKE ever ships kubelet certs signed by the
+  SA-token-visible root.
 
 ## 🟢 Nice-to-have
 
-### Extend `bin/dev/stability-check.sh` — 4 ideas remain
+### ~~Extend `bin/dev/stability-check.sh`~~ — DONE 2026-04-21
 
 stable-v1.0.6 added 2 sections (`section_adr_proposed`,
-`section_helm_lint`). Backlog of remaining ideas:
-
-- Lighthouse score regression vs baseline beyond the existing simple
-  delta (e.g. fail-on-degradation thresholds for perf/a11y/bp/seo).
-- Mermaid diagram syntax check (escape pitfalls re-occur in
-  long-form architecture docs).
-- Trivy CVE delta beyond the existing simple delta — currently flags
-  count change; could flag NEW CVE IDs vs last report so a 0→0 with
-  one CVE replaced by another is detected.
-- TODO/FIXME age scanner already exists (`section_stale_todos`); a
-  `git blame --porcelain` extension to attribute by author would be
-  the next step.
+`section_helm_lint`). stable-v1.0.8 added `section_mermaid_lint`
+(detects Mermaid blocks missing the diagram-type opener) +
+extended `section_lighthouse` with absolute thresholds for
+a11y/bp/seo (perf already had one). Trivy CVE delta is per-ID
+(`comm -23` between current and baseline ID sets) — was already
+done before this session, the TASKS description was stale. The
+TODO-age-by-author idea is low-value on a single-author project
+and was dropped.
 
 ### Move root-level files to `config/` (UI + svc) — defer
 

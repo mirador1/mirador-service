@@ -1878,13 +1878,29 @@ build-native:
 # Output is stored as an artifact so terraform-apply can use it.
 terraform-plan:
   extends: .terraform-base
-  # TODO: flip to false by 2026-10-20 (180d) — RED 3/3 on main (pipelines
-  # #525/#528/#530 on 2026-04-19) because the Terraform state bucket
-  # isn't provisioned yet (ephemeral/dev pattern per ADR-0022). Once
-  # the bucket exists — or once we accept that terraform is a manual
-  # operator flow not a CI gate — either flip to false OR delete the job
-  # entirely (see deploy:gke which handles errors at apply-time).
-  allow_failure: true   # Terraform state bucket may not exist yet; must not block deploy:gke
+  # Shield removed 2026-04-21 — replaced with a `when: never` rule when
+  # `TF_STATE_BUCKET` is unset (same pattern as `sonar-analysis` after
+  # the SonarCloud free-tier-MR-analysis fix). The job was failing
+  # 5/5 on main + 5/5 on MR with "bucket doesn't exist", silently
+  # tolerated by the shield, polluting every pipeline view with red
+  # squares. Per ADR-0022 the project deliberately doesn't provision
+  # a permanent GCS state bucket (ephemeral demo cluster pattern), so
+  # `TF_STATE_BUCKET` is not set in CI variables — and trying to run
+  # `terraform init` against an empty backend config fails 100%. The
+  # right fix is to NOT run the job rather than shield a guaranteed
+  # failure. When the bucket is provisioned, set `TF_STATE_BUCKET` in
+  # CI/CD variables → the rule below stops short-circuiting → the job
+  # runs as a real gate.
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    # Skip entirely if TF_STATE_BUCKET is unset — terraform init can't
+    # configure the GCS backend without it. Also covers the case where
+    # the variable is set to an empty string by GitLab UI default.
+    - if: '$TF_STATE_BUCKET == null || $TF_STATE_BUCKET == ""'
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   script:
     - terraform plan
         -var="project_id=${TF_VAR_project_id}"
