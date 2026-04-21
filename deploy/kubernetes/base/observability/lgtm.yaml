@@ -153,6 +153,9 @@ spec:
         - name: grafana-dashboards
           configMap:
             name: grafana-dashboards
+        - name: grafana-datasources-override
+          configMap:
+            name: grafana-datasources-override
         - name: otelcol-config
           configMap:
             name: lgtm-otelcol-config
