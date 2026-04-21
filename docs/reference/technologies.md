@@ -314,50 +314,77 @@ to get the full picture._
 
 ## Authentication and authorization
 
+> **Three identity-token flows in this project — pick the right one
+> per use case**:
+>
+> 1. **Built-in path** — `Authorization: Bearer <JWT>` issued by the
+>    app itself, signed with **HS256** (HMAC, shared secret). Validated
+>    by `JwtTokenProvider`. No external dependency, fits the demo.
+> 2. **Keycloak / Auth0 path** — JWT signed by an external IdP with
+>    **RS256** (asymmetric). The app validates against the IdP's
+>    **JWKS** endpoint via `spring-boot-starter-oauth2-resource-server`.
+>    Kicks in when `KEYCLOAK_URL` or `AUTH0_DOMAIN` is set.
+> 3. **CI → cloud path** — GitLab CI gets a short-lived GCP access
+>    token via **Workload Identity Federation** (WIF) by exchanging
+>    its OIDC token for a GCP one. No long-lived service-account
+>    JSON in CI variables.
+>
+> All three rely on **OIDC** as the wire format. JWT entries below are
+> grouped together first; IdPs (Keycloak, Auth0) and CI federation
+> (WIF) follow.
+
 ### 🔐 [JWT (JSON Web Token)](https://jwt.io/)
 - **What it is**: Signed JSON claims, transmitted as `Authorization: Bearer <token>`.
 - **Usage here**: Primary auth mechanism — validated by `JwtTokenProvider` (`com.mirador.auth`). Also accepted via Spring Security OAuth2 Resource Server for Keycloak/Auth0 tokens.
 - **Why it's pertinent**: Stateless auth means any pod can validate any request without shared session state — essential for horizontal scaling.
+- **Pairs with**: [JJWT](#-jjwt-iojsonwebtoken) (the Java library that signs and validates them), [JWKS](#-jwks-json-web-key-set) (public-key set used for RS256 validation), [Spring Security OAuth2 Resource Server](#-spring-security-oauth2-resource-server) (the validating filter), [Redis 7](#-redis-7-server--spring-data-redis--lettuce-client) (blacklist for revoked access tokens).
+
+### 🔐 [JWKS (JSON Web Key Set)](https://datatracker.ietf.org/doc/html/rfc7517)
+- **What it is**: JSON document listing the public keys a JWT issuer uses for signing. Each key has a `kid` (key ID) so a token's header can point at the exact key that signed it.
+- **Usage here**: Fetched from Keycloak (`<KEYCLOAK_URL>/realms/<realm>/protocol/openid-connect/certs`) or Auth0 (`https://<AUTH0_DOMAIN>/.well-known/jwks.json`) by `spring-boot-starter-oauth2-resource-server` on first incoming RS256 token, then cached.
+- **Why it's pertinent**: Key rotation is transparent — the IdP publishes the new public key, clients refetch the JWKS and validate against it without code changes. Required for the RS256 path; the built-in HS256 path uses a static shared secret instead.
+- **Pairs with**: [JWT](#-jwt-json-web-token) (what JWKS lets you validate), [Spring Security OAuth2 Resource Server](#-spring-security-oauth2-resource-server) (the consumer of JWKS), [Keycloak](#-keycloak) + [Auth0](#-auth0) (the issuers).
 
 ### 🔐 [JJWT (io.jsonwebtoken)](https://github.com/jwtk/jjwt)
 - **What it is**: Leading Java JWT library by Les Hazlewood.
 - **Usage here**: Three-artifact split — `jjwt-api` (compile), `jjwt-impl` (runtime), `jjwt-jackson` (runtime) at version `0.12.6`.
 - **Why it's pertinent**: The three-JAR split keeps the compile-time API small and prevents leaking `Impl` classes into consumer code. Used by `JwtTokenProvider`.
+- **Pairs with**: [JWT](#-jwt-json-web-token) (what it produces / parses), used by `JwtTokenProvider` in `com.mirador.auth` for the built-in HS256 path only — the RS256 / JWKS path goes through Spring Security's `nimbus-jose-jwt` instead.
 
 ### 🔐 [Spring Security OAuth2 Resource Server](https://docs.spring.io/spring-security/reference/servlet/oauth2/resource-server/index.html)
 - **What it is**: Spring Security module that validates JWT bearer tokens against a JWKS endpoint.
 - **Usage here**: `spring-boot-starter-oauth2-resource-server`. Activated when `KEYCLOAK_URL` (or `AUTH0_DOMAIN`) is set.
 - **Why it's pertinent**: Lets the app accept Keycloak or Auth0 tokens without bespoke JWKS polling. Pulls in `nimbus-jose-jwt` transitively.
+- **Pairs with**: [JWT](#-jwt-json-web-token) (what it validates), [JWKS](#-jwks-json-web-key-set) (where it pulls public keys from), [Keycloak](#-keycloak) + [Auth0](#-auth0) (the issuers it accepts), [OIDC](#-oidc-openid-connect) (the discovery protocol it uses to find JWKS endpoints).
 
 ### 🔐 [Keycloak](https://www.keycloak.org/)
 - **What it is**: Self-hosted open-source OIDC / SAML identity provider.
 - **Usage here**: `quay.io/keycloak/keycloak:26.2.5` in Compose; realm `customer-service` imported from `infra/keycloak/realm-dev.json`. Two M2M clients — `api-gateway` and `monitoring-service`.
 - **Why it's pertinent**: Demonstrates an OSS alternative to Auth0 for customers with on-prem requirements. Integration-tested via `testcontainers-keycloak`.
+- **Pairs with**: [JWKS](#-jwks-json-web-key-set) (publishes its signing keys here), [OIDC](#-oidc-openid-connect) (its wire protocol), [Spring Security OAuth2 Resource Server](#-spring-security-oauth2-resource-server) (validates its tokens).
 
 ### 🔐 [Auth0](https://auth0.com/)
 - **What it is**: Okta-owned SaaS identity provider.
 - **Usage here**: Production path; `docs/auth0-action-roles.js` shows the post-login role-mapping action.
 - **Why it's pertinent**: Zero-ops MFA, social login, and passwordless for the UI. Backend only needs to validate the issuer/JWKS.
+- **Pairs with**: [JWKS](#-jwks-json-web-key-set), [OIDC](#-oidc-openid-connect), [Spring Security OAuth2 Resource Server](#-spring-security-oauth2-resource-server) — same trio as Keycloak. Auth0 and Keycloak are interchangeable from the backend's point of view since both speak standard OIDC.
 
 ### 🔐 [OIDC (OpenID Connect)](https://openid.net/developers/how-connect-works/)
 - **What it is**: Identity layer on top of OAuth 2.0.
-- **Usage here**: Both Keycloak and Auth0 speak OIDC — the same resource-server config works for both.
-- **Why it's pertinent**: Standard means we can swap IDPs without code changes.
+- **Usage here**: Both Keycloak and Auth0 speak OIDC — the same resource-server config works for both. WIF (below) also uses OIDC for the GitLab-CI → GCP token exchange.
+- **Why it's pertinent**: Standardising on OIDC means IdPs swap without code changes, AND the same protocol covers both human-identity flows (Keycloak/Auth0) and machine-identity flows (WIF) — one mental model, two use cases.
+- **Pairs with**: [JWT](#-jwt-json-web-token) (the token format it issues), [Keycloak](#-keycloak) + [Auth0](#-auth0) + [WIF](#-workload-identity-federation-wif) (the three OIDC issuers in this project).
 
 ### 🔐 [Workload Identity Federation (WIF)](https://cloud.google.com/iam/docs/workload-identity-federation)
 - **What it is**: Google Cloud mechanism that trades an external OIDC token (e.g. GitLab CI JWT) for a short-lived GCP access token.
 - **Usage here**: Used by `terraform-*` and `deploy:gke` / `deploy:cloud-run` jobs — see the `external_account` credential block in `.gitlab-ci.yml`.
 - **Why it's pertinent**: No long-lived service-account JSON keys in CI variables — the most common credential leak vector for GCP.
+- **Pairs with**: [OIDC](#-oidc-openid-connect) (the protocol it federates over), [Sigstore Fulcio](#-sigstore-fulcio) (uses the SAME idea — exchange OIDC token for a short-lived credential, here a signing cert instead of an access token).
 
 ### ☸️ [`gke-gcloud-auth-plugin`](https://cloud.google.com/kubernetes-engine/docs/how-to/cluster-access-for-kubectl)
 - **What it is**: Kubectl auth plugin that exchanges a gcloud access token for a K8s API server credential.
 - **Usage here**: Installed by `deploy:gke` via `gcloud components install gke-gcloud-auth-plugin`.
 - **Why it's pertinent**: Required since K8s 1.26 — the deprecated in-tree GCP auth was removed.
-
-### 🔒 [Sigstore Fulcio](https://docs.sigstore.dev/certificate_authority/overview/)
-- **What it is**: Sigstore's code-signing certificate authority that issues short-lived certs against OIDC identities.
-- **Usage here**: `cosign:sign` CI job uses GitLab's `SIGSTORE_ID_TOKEN` to get a Fulcio-issued cert and sign image digests.
-- **Why it's pertinent**: Keyless image signing — no long-lived signing keys to rotate or leak.
 
 ---
 
@@ -884,10 +911,22 @@ docker-build  ─►  IMAGE pushed to registry
 - **Usage here**: `goodwithtech/dockle:v0.4.15` in the `dockle` job. Checks USER non-root, HEALTHCHECK, suspicious env vars. `allow_failure: true` — hygiene warnings, not blockers.
 - **Why it's pertinent**: Complements Trivy (CVEs) with hygiene (posture). Catches the "forgot `USER` directive" class of regression.
 
-### 🔒 [cosign](https://github.com/sigstore/cosign)
-- **What it is**: Sigstore's tool for signing OCI artefacts with Fulcio-issued short-lived certs.
-- **Usage here**: `gcr.io/projectsigstore/cosign:v2.5.0` in `cosign:sign`. Keyless mode using GitLab's `SIGSTORE_ID_TOKEN`.
-- **Why it's pertinent**: Signed images let downstream verify provenance. Keyless = no long-lived signing key to rotate.
+### 🔒 Image signing chain — Fulcio + cosign (keyless Sigstore)
+
+> Image signing in this project is **keyless** — no long-lived
+> signing key to rotate or leak. Two pieces work together:
+
+#### 🔒 [Sigstore Fulcio](https://docs.sigstore.dev/certificate_authority/overview/) — keyless cert authority
+- **What it is**: Sigstore's code-signing certificate authority. Issues **short-lived** (~10-min) X.509 certs against an OIDC identity instead of long-lived signing keys.
+- **Usage here**: The `cosign:sign` CI job presents GitLab's `SIGSTORE_ID_TOKEN` (an OIDC token whose claims include the project path + branch + pipeline ID) to Fulcio. Fulcio validates the token signature, then mints a cert binding the OIDC identity to a freshly-generated keypair.
+- **Why it's pertinent**: Eliminates the "signing key on a CI runner" leak vector entirely. The cert lives 10 min — by the time a leak would matter, it has expired. Provenance is recoverable from Sigstore's transparency log (Rekor) for years afterwards.
+- **Pairs with**: [cosign](#-cosign) (consumes the cert it issues), [WIF](#-workload-identity-federation-wif) (parallel pattern — exchange OIDC for short-lived credential), [SLSA / provenance](#-slsa--provenance) (foundation for L3 attestations).
+
+#### 🔒 [cosign](https://github.com/sigstore/cosign) — signs and verifies
+- **What it is**: Sigstore's tool for signing OCI artefacts using Fulcio-issued short-lived certs. Also writes the signature + cert to Sigstore's append-only **Rekor** transparency log so verification works even after the cert expires.
+- **Usage here**: `gcr.io/projectsigstore/cosign:v2.5.0` in `cosign:sign`. Keyless mode using GitLab's `SIGSTORE_ID_TOKEN`. Verification side runs in `deploy:gke` via `cosign verify` with the issuer + identity-regex pinned to the GitLab project.
+- **Why it's pertinent**: Signed images let downstream consumers verify the artefact actually came from this project's CI, not a tampered registry. Keyless = no long-lived signing key to rotate. Rekor log = independently auditable provenance.
+- **Pairs with**: [Sigstore Fulcio](#-sigstore-fulcio--keyless-cert-authority) (where cosign gets its signing cert), [syft + Trivy + Grype 3-tool sandwich](#-container-cve-scanning--syft--trivy--grype-the-3-tool-sandwich) (parallel supply-chain protection — Fulcio/cosign prove provenance, the scanners prove no known CVEs).
 
 ### 🔒 [CycloneDX / SPDX](https://cyclonedx.org/)
 - **What it is**: Competing SBOM formats — CycloneDX from OWASP, SPDX from Linux Foundation.
@@ -1152,11 +1191,6 @@ docker-build  ─►  IMAGE pushed to registry
 - **What it is**: IANA-reserved IPv4 ranges (10.0/8, 172.16/12, 192.168/16).
 - **Usage here**: GKE uses 10.x pod/service CIDRs provisioned in `deploy/terraform/gcp/main.tf`.
 - **Why it's pertinent**: Standard private addressing — avoids collisions with customer VPCs.
-
-### 🔐 [JWKS (JSON Web Key Set)](https://datatracker.ietf.org/doc/html/rfc7517)
-- **What it is**: JSON document listing public keys a JWT issuer uses for signing.
-- **Usage here**: Fetched from Keycloak or Auth0 by `spring-boot-starter-oauth2-resource-server`.
-- **Why it's pertinent**: Key rotation is transparent — the server publishes the new key, clients refetch.
 
 ### 🌐 [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS)
 - **What it is**: Browser-enforced cross-origin request policy.
