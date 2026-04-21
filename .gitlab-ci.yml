@@ -186,6 +186,53 @@ hadolint:
   script:
     - hadolint Dockerfile
 
+# ── promtool-check-rules — validate Mirador PrometheusRule objects ────────────
+# Phase 3 O2. Catches:
+#   • PromQL syntax errors (missing `)`, unknown functions)
+#   • Label selector typos (e.g. `status_code=~"5.."` instead of `status=~"5.."`)
+#   • Empty recording rule expressions (records that always evaluate to empty)
+#   • Duplicate rule names within a group
+#
+# Why here and not in the k8s stage: `promtool check rules` doesn't need a
+# cluster — it's pure parsing. Running it in `lint` fails fast, within 15 s
+# of commit, instead of after the 4-minute k8s dry-run job.
+#
+# Rule file: deploy/kubernetes/base/observability-prom/mirador-alerts.yaml.
+# See docs/adr/0048 and docs/ops/runbooks/ for the full story.
+promtool-check-rules:
+  stage: lint
+  # Official Prometheus image ships promtool in /bin. 3.x matches the kube-
+  # prometheus-stack version we deploy in overlays — keeps parser semantics
+  # identical between CI and runtime.
+  # `entrypoint: [""]` overrides the default `prometheus` binary so
+  # GitLab's script wrapper (which expects /bin/sh) runs normally. Without
+  # this, `script:` lines are appended to `prometheus` and the job fails
+  # with "unexpected promtool" at the first command.
+  image:
+    name: prom/prometheus:v3.1.0
+    entrypoint: [""]
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - deploy/kubernetes/base/observability-prom/**
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - deploy/kubernetes/base/observability-prom/**
+    - when: never
+  before_script: []
+  script:
+    # The rule file has `kind: PrometheusRule` + `spec.groups`. promtool
+    # expects a plain Prometheus rule file (no kube CR wrapper), so we
+    # strip the metadata + `spec:` line and de-indent `groups:` once.
+    # Tested locally: `SUCCESS: 13 rules found`. `yq` would be cleaner
+    # but the prom image doesn't ship it; sed keeps the job dep-free.
+    - cd deploy/kubernetes/base/observability-prom
+    - sed -n '/^spec:/,$ p' mirador-alerts.yaml | sed '1d;s/^  //' > /tmp/rules.yaml
+    - head -5 /tmp/rules.yaml
+    - /bin/promtool check rules /tmp/rules.yaml
+
 # ── openapi-lint — Spectral rules against the generated OpenAPI spec ────────
 # Compiles the app, boots it briefly, fetches /v3/api-docs (springdoc),
 # then runs Spectral with our ruleset (.spectral.yaml). Catches

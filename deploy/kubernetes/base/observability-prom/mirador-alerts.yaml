@@ -137,7 +137,7 @@ spec:
             summary: 'Mirador 5xx error rate >5% for 5 min'
             description: |
               The 5-minute rate of HTTP 5xx responses from Mirador is
-              {{ printf "%.1f" (mulf $value 100) }}% of total traffic.
+              {{ $value | humanizePercentage }} of total traffic.
               Likely causes: a DB outage, an LLM circuit-breaker flip
               (Ollama endpoint down), or a newly-shipped bug. Check the
               Grafana RED dashboard for per-endpoint breakdown.
@@ -181,7 +181,7 @@ spec:
           annotations:
             summary: 'Mirador JVM heap > 85% used for 10 min'
             description: |
-              Heap usage is {{ printf "%.0f" (mulf $value 100) }}%. This is
+              Heap usage is {{ $value | humanizePercentage }}. This is
               the yellow zone — the G1 collector starts concurrent GC at
               45% (IHOP) and blocks on full GC above 90%. If this fires
               along with increased p95 latency, it's a memory-pressure
@@ -206,7 +206,7 @@ spec:
           annotations:
             summary: 'Mirador >30% of JVM threads BLOCKED for 5 min'
             description: |
-              {{ printf "%.0f" (mulf $value 100) }}% of JVM threads are in
+              {{ $value | humanizePercentage }} of JVM threads are in
               BLOCKED state. Usually a `synchronized` contention or a
               `Lock.lock()` not released — run Pyroscope's lock profile
               to identify the monitor (`lock` profile type).

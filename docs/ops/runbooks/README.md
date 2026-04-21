@@ -21,6 +21,21 @@ Run them cold after a week away from the project.
 | GCP bill higher than expected | see `docs/ops/cost-control.md` + `bin/budget/gcp-cost-audit.sh` |
 | Playwright E2E fails in CI but passes locally | [e2e-ci-diff.md](e2e-ci-diff.md) *(pending — ROADMAP Tier-1 #2)* |
 
+### Prometheus-alert runbooks (Phase 3 O2)
+
+Referenced from the `runbook_url` annotation on each alert in
+`deploy/kubernetes/base/observability-prom/mirador-alerts.yaml`. Fire order
+below matches the alert group order.
+
+| Alert | Runbook |
+|---|---|
+| `MiradorBackendDown` / `MiradorBackendAbsent` | [backend-down.md](backend-down.md) |
+| `MiradorHighErrorRate` | [high-error-rate.md](high-error-rate.md) |
+| `MiradorHighLatencyP95` | [latency.md](latency.md) |
+| `MiradorHeapHigh` | [heap-pressure.md](heap-pressure.md) |
+| `MiradorThreadContention` | [thread-contention.md](thread-contention.md) |
+| `MiradorKafkaConsumerLagHigh` | [kafka-lag.md](kafka-lag.md) |
+
 ## Writing a new runbook
 
 Keep them short. 5 headings, in this order:
