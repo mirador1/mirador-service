@@ -88,12 +88,22 @@ class ArchitectureTest {
     }
 
     @Test
-    void rest_controllers_should_reside_in_customer_or_auth_package() {
-        // @RestController classes may only live in customer/ (domain) or auth/ (security).
+    void rest_controllers_should_reside_in_web_layer_feature_packages() {
+        // @RestController classes must live in a feature package that owns a
+        // web surface. Concretely: customer/ (domain), auth/ (security),
+        // observability/ (audit + quality reports), resilience/ (scheduled
+        // jobs admin endpoints), diag/ (startup timings), chaos/ (admin-only
+        // experiment triggers). NOT allowed: messaging/, integration/, api/.
         ArchRule rule = classes()
                 .that().areAnnotatedWith("org.springframework.web.bind.annotation.RestController")
-                .should().resideInAnyPackage("..customer..", "..auth..")
-                .because("REST controllers must be grouped in domain or auth packages");
+                .should().resideInAnyPackage(
+                        "..customer..",
+                        "..auth..",
+                        "..observability..",
+                        "..resilience..",
+                        "..diag..",
+                        "..chaos..")
+                .because("REST controllers must be grouped in a feature package that owns a web surface");
         rule.check(classes);
     }
 
