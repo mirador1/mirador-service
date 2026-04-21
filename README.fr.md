@@ -59,6 +59,23 @@ Le scénario démo initial ("que faut-il pour diagnostiquer un incident ?")
 reste le principe directeur — la stack est construite autour de ce cas
 d'usage plutôt qu'autour des technologies elles-mêmes.
 
+### Architecture Decision Records (ADRs) — le « pourquoi » canonique
+
+Chaque trade-off non-trivial du repo est capturé comme un Architecture
+Decision Record dans [`docs/adr/`](docs/adr/) (39 ADRs à ce jour, au
+[format de Michael Nygard](https://github.com/joelparkerhenderson/architecture-decision-record/blob/main/locales/en/templates/decision-record-template-by-michael-nygard/index.md) :
+contexte → décision → conséquences). Les ADRs sont rédigés en anglais
+pour rester accessibles aux contributeurs internationaux.
+
+Les deux glossaires complètent les ADRs côté « quoi » :
+- [`docs/reference/technologies.md`](docs/reference/technologies.md) — chaque
+  techno utilisée par le backend, ce qu'elle fait, pourquoi elle a été retenue.
+- [`docs/reference/methods-and-techniques.md`](docs/reference/methods-and-techniques.md)
+  — les pratiques (TDD, Conventional Commits, etc.) et leur rationale.
+
+Quand ce README mentionne une décision spécifique en inline `(voir
+ADR-NNNN)`, le lien va à l'enregistrement complet.
+
 ## Table des matières
 
 - [Pourquoi ceci, pas cela — les arbitrages](#pourquoi-ceci-pas-cela--les-arbitrages)
@@ -72,10 +89,10 @@ d'usage plutôt qu'autour des technologies elles-mêmes.
 ## Pourquoi ceci, pas cela — les arbitrages
 
 Chaque pattern industriel dans ce repo répond à un problème concret ;
-la liste ci-dessous dit ce que j'ai **rejeté** et pourquoi. Le détail
-complet avec contexte + alternatives + conséquences vit sous
-[`docs/adr/`](docs/adr/) — 30+ ADRs à ce jour (rédigés en anglais
-pour rester accessibles aux contributeurs internationaux).
+la liste ci-dessous dit ce qui a été **rejeté** et pourquoi. Les liens
+inline `(voir ADR-NNNN)` pointent vers l'enregistrement complet — voir
+la [section ADR ci-dessus](#architecture-decision-records-adrs--le--pourquoi--canonique)
+pour l'index complet.
 
 | Décision | Ce que j'ai retenu | Ce que j'ai considéré et pourquoi ça a perdu |
 |---|---|---|

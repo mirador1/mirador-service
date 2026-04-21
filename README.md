@@ -100,8 +100,9 @@ What the project actually exercises:
   K8s manifests, OpenTelemetry (traces + logs + metrics) to Grafana Cloud, Sonar,
   Semgrep, Trivy / Grype / Syft / cosign / Dockle, OWASP Dependency-Check, PIT mutation
   testing, resilience4j circuit-breakers + bucket4j rate limiting, Flyway, Testcontainers,
-  Workload Identity Federation, release-please. Each is justified in an ADR under
-  [`docs/adr/`](docs/adr/) or in the glossary at [`docs/reference/technologies.md`](docs/reference/technologies.md).
+  Workload Identity Federation, release-please. The "why" for each lives in the ADRs
+  + glossaries linked in the [Architecture Decision Records](#architecture-decision-records-adrs--the-canonical-why)
+  section above.
 - **Live observability of a running system**: every layer (JVM, HTTP, DB pool, Kafka,
   Redis, Tomcat, business counters) emits metrics and traces so the accompanying UI
   (and Grafana) can show what the code and the runtime are actually doing.
@@ -114,6 +115,25 @@ What the project actually exercises:
 The original demo scenario ("what does it take to diagnose an incident?") is still
 the organising principle — the stack is built around that use case rather than
 around the technologies themselves.
+
+### Architecture Decision Records (ADRs) — the canonical "why"
+
+Every non-trivial trade-off in this repo is captured as an Architecture
+Decision Record under [`docs/adr/`](docs/adr/) (39 ADRs at last count,
+in [Michael Nygard's
+format](https://github.com/joelparkerhenderson/architecture-decision-record/blob/main/locales/en/templates/decision-record-template-by-michael-nygard/index.md):
+context → decision → consequences). The two glossaries are the matching
+"what" reference:
+
+- [`docs/reference/technologies.md`](docs/reference/technologies.md) — every
+  tech the backend uses, what it does, why it was picked.
+- [`docs/reference/methods-and-techniques.md`](docs/reference/methods-and-techniques.md)
+  — the practices (TDD, Conventional Commits, etc.) and the rationale.
+
+When this README references a specific decision inline as `(see
+ADR-NNNN)`, the link goes to the full record. The rest of the README
+focuses on *what* the project shows; the ADRs answer *why each piece
+is here, and what was rejected to get here*.
 
 ## Table of contents
 
@@ -136,9 +156,10 @@ around the technologies themselves.
 ## Why this, not that — the arbitrages
 
 Every industrial pattern in this repo answers a concrete problem; the
-list below is what I **rejected** and why. The full set of decisions
-with context + alternatives + consequences lives under
-[`docs/adr/`](docs/adr/) — 23 ADRs at the time of writing.
+list below is what was **rejected** and why. Inline `(see ADR-NNNN)`
+links go to the full decision record — see the
+[ADR section above](#architecture-decision-records-adrs--the-canonical-why)
+for the complete index.
 
 | Decision | What I picked | What I considered & why it lost |
 |---|---|---|
@@ -193,8 +214,9 @@ Kept regardless of pressure, with the reason each earns its place:
   incident becomes detective work from log timestamps.
 - The CI supply-chain tooling (SBOM, Grype, cosign) — ~30 s runtime
   and catches real CVEs; removing it removes an invariant.
-- The ADR set — a decision log that costs nothing to maintain and
-  prevents the same trade-offs being relitigated later.
+- The ADR set (see [the ADR section above](#architecture-decision-records-adrs--the-canonical-why))
+  — costs nothing to maintain and prevents the same trade-offs being
+  relitigated later.
 
 ---
 
@@ -216,7 +238,7 @@ part should be read.
 
 > The assistant enumerates options; the arbitrage — which option fits
 > this specific context and which get rejected — is a human call, and
-> the ADRs under [`docs/adr/`](docs/adr/) are its audit trail.
+> the ADRs are its audit trail.
 
 The technology proposals come from a system that has read a large
 corpus of platform-engineering post-mortems and can enumerate options
