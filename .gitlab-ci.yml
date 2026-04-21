@@ -2333,6 +2333,71 @@ smoke-test:
       - app.log
     expire_in: 30 days
 
+# ── load-test:nightly — sustained k6 run against the GKE endpoint ─────────────
+#
+# Phase 3 T2. Where smoke-test answers "does it respond at all?" in 30 s,
+# load-test:nightly answers "does it hold up under demo-realistic sustained
+# traffic for 5 minutes?". Runs against the live GKE endpoint (no compose
+# setup), so the stack it exercises includes the real ingress + cloud SQL
+# backend. Results are kept as artefacts (30-day retention) so trend
+# regression is spotted by diffing consecutive nightly summaries.
+#
+# Only fires on the nightly scheduled pipeline with $LOAD_TEST=true (set on
+# the dedicated schedule in GitLab → CI/CD → Schedules). Not gated on MRs —
+# a 5-minute perf job would slow review latency without adding value the
+# smoke-test doesn't already provide.
+#
+# If thresholds fail, the job goes red and the next day's scheduled run
+# will notice (no separate Slack alert — see ADR-0048 for the no-routing
+# decision).
+load-test:nightly:
+  stage: deploy
+  # Alpine + curl + k6 is enough; no Java/Maven needed since the target is
+  # already deployed. Keeps image pull under 20 MB.
+  image: alpine:3.19
+  tags:
+    - macbook-local
+  rules:
+    # Scheduled with $LOAD_TEST=true — decouples from other scheduled
+    # pipelines (native-build, report generation) that run on their own
+    # separate schedules.
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $LOAD_TEST == "true"
+    # Also runnable manually from main for on-demand capacity checks.
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+      allow_failure: true
+    - when: never
+  interruptible: false   # A new schedule should NOT cancel an in-flight load test
+  variables:
+    K6_VERSION: "v1.4.0"
+    # GKE endpoint — the same K8S_HOST protected variable used by smoke-test.
+    # Default here keeps the manual-run mode self-documenting.
+    K8S_HOST: "$K8S_HOST"
+    K8S_SCHEME: "https"
+  before_script:
+    # Alpine dependency: curl + tar + ca-certificates.
+    - apk add --no-cache curl tar ca-certificates
+    # k6 binary, same pin as smoke-test for cross-job consistency.
+    - |
+      ARCH=$(uname -m)
+      case "$ARCH" in
+        aarch64|arm64) K6_ARCH=linux-arm64 ;;
+        x86_64|amd64)  K6_ARCH=linux-amd64 ;;
+        *) echo "unsupported arch $ARCH" && exit 1 ;;
+      esac
+      curl -fsSLo /tmp/k6.tgz \
+        "https://github.com/grafana/k6/releases/download/${K6_VERSION}/k6-${K6_VERSION}-${K6_ARCH}.tar.gz"
+      tar -xzf /tmp/k6.tgz -C /tmp
+      install -m 0755 "/tmp/k6-${K6_VERSION}-${K6_ARCH}/k6" /usr/local/bin/k6
+      k6 version
+  script:
+    - k6 run scripts/load-test/load.js
+  artifacts:
+    when: always
+    paths:
+      - load-summary.json
+    expire_in: 30 days
+
 # deploy:gke was retired with ADR-0025 — Argo CD (ADR-0015) reconciles the
 # GKE overlay from main on every commit, and overlays/gke/image-tags-patch.yaml
 # pins to :main (pushed by docker-build on every main merge) so a new image
