@@ -120,7 +120,12 @@ public class SecurityDemoController {
     // /xss-safe endpoint shows the correct HtmlUtils.htmlEscape form.
     @SuppressWarnings("javasecurity:S5131")
     @Operation(summary = "⚠️ XSS — VULNERABLE (reflects raw HTML)",
-            description = "Echoes `name` directly into an HTML page. Try `?name=<script>alert('XSS')</script>`. "
+            // Spectral's `no-script-tags-in-markdown` rule treats the description
+            // as Markdown and warns on raw `<script>` tags. Wrapping the example
+            // payload in a fenced code block (treated as inert text) keeps the
+            // intent clear without tripping the lint.
+            description = "Echoes `name` directly into an HTML page. Try the payload\n"
+                    + "```\n?name=&lt;script&gt;alert('XSS')&lt;/script&gt;\n```\n"
                     + "**OWASP A07:2021 — Cross-Site Scripting**")
     @GetMapping(value = "/xss-vulnerable", produces = "text/html")
     public String xssVulnerable(
@@ -139,7 +144,9 @@ public class SecurityDemoController {
      * harmless text instead of being executed as JavaScript.
      */
     @Operation(summary = "✅ XSS — SAFE (HTML-encoded output)",
-            description = "HTML-encodes the input using `HtmlUtils.htmlEscape()` before reflecting it. `<script>` becomes `&lt;script&gt;` — displayed as text, not executed.")
+            // Same Spectral `no-script-tags-in-markdown` constraint as the
+            // vulnerable variant — escape the literal tag in prose.
+            description = "HTML-encodes the input using `HtmlUtils.htmlEscape()` before reflecting it. `&lt;script&gt;` becomes `&amp;lt;script&amp;gt;` — displayed as text, not executed.")
     @GetMapping(value = "/xss-safe", produces = "text/html")
     public String xssSafe(
             @Parameter(description = "Input that will be safely HTML-encoded", example = "<b>Bold</b> & <i>italic</i>")

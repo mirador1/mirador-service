@@ -301,7 +301,8 @@ public class CustomerController {
      *
      * <p>Returns HTTP 404 if the customer does not exist.
      */
-    @Operation(summary = "Get a customer by ID")
+    @Operation(summary = "Get a customer by ID",
+            description = "Returns one customer by primary key. Read-only; uses the JPA second-level Caffeine cache (`@Cacheable(\"customers\")`). Returns 404 if the ID does not exist.")
     @ApiResponse(responseCode = "200", description = "Customer found")
     @ApiResponse(responseCode = "404", description = "No customer with this ID", content = @Content)
     @ApiResponse(responseCode = "401", description = "Missing or invalid JWT token", content = @Content)
@@ -416,6 +417,9 @@ public class CustomerController {
      *
      * [Spring Data JPA — interface projection]
      */
+    @Operation(summary = "Customer summary page (id + name only)",
+            description = "Lightweight paginated list using a Spring Data **interface projection** — emits `SELECT id, name FROM customer` instead of `SELECT *`. Useful for read-heavy list views where the full DTO is overkill. The `CustomerSummary` interface is resolved by Spring Data JPA without any DTO mapper.")
+    @ApiResponse(responseCode = "200", description = "Page of `{id, name}` projections")
     @GetMapping("/summary")
     public Page<CustomerSummary> getSummary(@PageableDefault(size = 20, sort = "id") Pageable pageable) {
         return service.findAllSummaries(pageable);
