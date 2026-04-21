@@ -93,25 +93,38 @@ exits 0 → drop `allow_failure: true` on the job.
 
 ### Follow-ups from ADR-0039 (kube-prometheus-stack overlay)
 
-The `local-prom/` overlay shipped 2026-04-21 (svc MR pending). It deploys
-kube-prometheus-stack alongside lgtm without breaking the existing OTLP
-flow. Three follow-ups tracked:
+The `local-prom/` overlay shipped 2026-04-21. The `gke-prom/` overlay
+shipped 2026-04-21 too (this MR). The Mirador ServiceMonitor shipped in
+both. Remaining follow-ups:
 
-- **`gke-prom/` overlay** — same pattern for GKE Autopilot (no
-  `insecure_skip_verify`, kubeControllerManager re-enabled, retention
-  bumped to 7 d, scrape config tightened). Requires testing on the
-  ephemeral cluster — schedule alongside the next `bin/cluster/demo-up.sh`
-  cycle.
+- **Smoke-test `gke-prom/` on the ephemeral cluster** — kustomize+dry-run
+  validation passes locally, but the storage class, PVC reclaim, and
+  Autopilot privileged-DaemonSet behaviours haven't been exercised on
+  a real GKE cluster yet. Schedule alongside the next
+  `bin/cluster/demo-up.sh` cycle. Then verify:
+  - PVC for `prometheus-prometheus-stack-kube-prom-prometheus-db-...-0`
+    binds on `standard-rwo` and is mounted at `/prometheus`.
+  - node-exporter pods schedule on every Autopilot worker node (PSS
+    privileged label honored).
+  - kube-prom Prometheus successfully scrapes Mirador's
+    `/actuator/prometheus` cross-namespace.
+  - Grafana datasource "Prometheus (kube-prom-stack)" returns data on
+    a `up{job="kubelet"}` query.
+  - After `demo-down.sh`, the orphaned PVC is detected and cleaned by
+    `bin/budget/gcp-cost-audit.sh`.
 - **`test:k8s-apply-prom` CI job** — copy of the existing `test:k8s-apply`
   but applies `local-prom/`. Adds ~3 min to the pipeline; only runs on
   `deploy/kubernetes/overlays/local-prom/**` changes (path filter).
   Catches Prometheus Operator manifest drift in CI before it hits a
-  developer's machine.
-- **Mirador `ServiceMonitor`** — declares the `mirador` Service in
-  `app` namespace as a scrape target for the chart's Prometheus. With
-  this in place, both surfaces (lgtm Mimir via OTLP push + chart
-  Prometheus via scrape) hold the same Mirador metrics — useful for
-  benchmarking which path has lower scrape overhead. ~30 lines of YAML.
+  developer's machine. Also extend with a `gke-prom` matrix entry now
+  that the overlay exists.
+- **kubelet CA injection on GKE** — gke-prom currently keeps
+  `insecureSkipVerify: true` on the 3 kubelet ServiceMonitor endpoints
+  because GKE kubelet certs aren't signed by the SA-token-visible root.
+  Fix path: mount the kubelet CA from a Secret + add `caFile:` to each
+  endpoint via a JSON6902 patch on the rendered file. Documented in
+  ADR-0039 "Future work" + the gke-prom values-kube-prom-stack.yaml
+  comment block under `kubelet:`.
 
 ## 🟢 Nice-to-have
 
