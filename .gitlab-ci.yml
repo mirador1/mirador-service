@@ -1217,7 +1217,13 @@ grype:scan:
   stage: package
   image:
     # -debug variant ships /bin/sh + /grype (same pattern as syft above).
-    name: anchore/grype:v0.87.0-debug
+    # 2026-04-21: bumped from v0.87.0-debug (amd64-only, Go runtime panic
+    # `fatal error: lfstack.push` on the arm64 macbook-local runner) to
+    # v0.111.0-debug which is multi-arch (amd64 + arm64 + ppc64le + s390x
+    # — verified via `docker manifest inspect anchore/grype:v0.111.0-debug`).
+    # This fixes the 5/5 FAIL pattern on main/tag pipelines without
+    # routing to a SaaS amd64 runner (would burn paid quota).
+    name: anchore/grype:v0.111.0-debug
     entrypoint: [""]
   tags:
     - macbook-local
@@ -1229,14 +1235,15 @@ grype:scan:
       when: never
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_COMMIT_TAG
-  # TODO: flip to false by 2026-05-20 (30d) — RED 3/3 on main (pipelines
-  # #525/#528/#530 on 2026-04-19): Go runtime panic `fatal error:
-  # lfstack.push` — anchore/grype:v0.87.0-debug is amd64, runner is arm64.
-  # Need an arm64-compatible grype image (anchore/grype has multi-arch
-  # support in recent tags) or pin `--platform linux/amd64` with QEMU.
-  # Once the panic is fixed the shield becomes decorative → flip to false
-  # and let real HIGH CVEs block main. Mirrors trivy:scan policy.
-  allow_failure: true   # informational, matches trivy:scan policy
+  # Shield removed 2026-04-21 — the arm64 panic was caused by
+  # v0.87.0-debug being amd64-only. v0.111.0-debug is multi-arch
+  # (amd64 + arm64 + ppc64le + s390x per the image manifest), so the
+  # macbook-local arm64 runner now runs the native arm64 binary and
+  # the `Go runtime fatal error: lfstack.push` is gone. With the root
+  # cause fixed, the shield becomes decorative — removing it lets a
+  # real HIGH CVE block main. Mirrors the trivy:scan policy.
+  # If a future arm64 regression resurfaces, re-shield with a dated
+  # TODO rather than silently tolerate it.
   script:
     # Scan the SBOM rather than the image → faster + reproducible.
     - export PATH="/:$PATH"

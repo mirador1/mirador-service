@@ -48,12 +48,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
+    # All `uses:` below pinned by full commit SHA — same supply-chain
+    # rationale as scorecard.yml (Sonar `githubactions:S7637`,
+    # OSSF Scorecard recommendation, tj-actions/changed-files March 2025
+    # incident). Renovate bumps these via the `digest` update-type
+    # configured in `renovate.json` (auto-merges patch/digest updates
+    # after CI green).
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Set up JDK 25
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
         with:
           # CodeQL supports Java 8–21 out of the box. For Java 25 we
           # tell the setup action to install it, CodeQL compiles
@@ -63,7 +69,7 @@ jobs:
           java-version: '21'
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@865f5f5c36632f18690a3d569fa0a764f2da0c3e # v3
         with:
           languages: java
           # Extended query suite — includes security-extended rules.
@@ -74,6 +80,6 @@ jobs:
           build-mode: none
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@865f5f5c36632f18690a3d569fa0a764f2da0c3e # v3
         with:
           category: "/language:java"

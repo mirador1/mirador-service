@@ -53,14 +53,32 @@ jobs:
       # Needed for publishing results via `publish_results: true`.
       id-token: write
 
+    # ── Action pinning policy ────────────────────────────────────────────
+    # Every `uses:` below pins the action by its FULL commit SHA, not by
+    # a floating tag. Rationale:
+    #   1. A tag is MUTABLE — the maintainer can move `v4` onto a new
+    #      commit anytime. A compromised tag (e.g. via stolen token)
+    #      silently feeds us new action code on every CI run. SHA
+    #      pinning blocks that entire class of supply-chain attack.
+    #   2. OSSF Scorecard itself downgrades projects that use tag-pinned
+    #      actions — which is ironic, given the Scorecard workflow
+    #      itself used to do that. Fixed 2026-04-21 (closes Sonar
+    #      `githubactions:S7637` hotspot).
+    #   3. Trailing `# vX.Y.Z` comment keeps the upgrade path readable
+    #      and gives Renovate the label to bump against (see
+    #      `renovate.json` → `packageRules` for GitHub Actions).
+    # Incident that makes this rule non-negotiable: `tj-actions/changed-files`
+    # supply-chain compromise in March 2025 — every project using
+    # `@v44`/`@v45` got a malicious step that dumped CI secrets to
+    # GitHub Actions logs. SHA-pinned consumers were unaffected.
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
 
       - name: Run analysis
-        uses: ossf/scorecard-action@v2.4.0
+        uses: ossf/scorecard-action@ff5dd8929f96a8a4dc67d13f32b8c75057829621 # v2.4.0
         with:
           results_file: results.sarif
           results_format: sarif
@@ -68,13 +86,13 @@ jobs:
           publish_results: true
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: SARIF-file
           path: results.sarif
           retention-days: 5
 
       - name: Upload to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@865f5f5c36632f18690a3d569fa0a764f2da0c3e # v3
         with:
           sarif_file: results.sarif
