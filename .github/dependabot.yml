@@ -1,0 +1,50 @@
+# =============================================================================
+# Dependabot — GitHub Actions dependency updates on the GH mirror.
+#
+# Scope: GITHUB-ACTIONS ONLY. The rest (Maven / npm / Docker base images /
+# Docker buildx cache) is handled by Renovate on the canonical GitLab repo
+# — see renovate.json at the repo root. Running both on the same ecosystem
+# would produce duplicate MRs/PRs + mirror-sync conflicts.
+#
+# Why Dependabot for Actions specifically?
+#   - The `.github/workflows/*.yml` files only execute on the GitHub mirror
+#     (not on GitLab CI). Renovate CAN update GitHub Actions SHA pins, but
+#     Dependabot is the platform-native tool + integrates with the
+#     required-checks / CodeQL flow we already have wired on GH.
+#   - Complements ADR-0043 (Pin GitHub Actions by commit SHA) — Dependabot
+#     refreshes the pinned SHAs weekly and lets us review the diff on a PR
+#     basis before the tag is re-advanced.
+#
+# Why weekly, not daily?
+#   - GitHub Actions releases are low-volume. Weekly bundles reduce PR
+#     churn; a daily cadence would produce mostly noise.
+#   - Matches the Renovate schedule on GitLab (package updates in grouped
+#     weekly batches per ADR-0045 equivalents).
+# =============================================================================
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:00"
+      timezone: "Europe/Paris"
+    # Group minor + patch into one PR per week so the review burden stays low.
+    # Majors land as separate PRs — they often need attention (breaking changes
+    # documented in the action's README).
+    groups:
+      github-actions-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    # Cap open PR count to avoid a long queue if we miss reviews for a while.
+    open-pull-requests-limit: 5
