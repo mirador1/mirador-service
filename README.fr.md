@@ -131,8 +131,13 @@ voici l'ordre dans lequel les éléments sortiraient, du coût le plus bas
 Conservés quelle que soit la pression, avec la raison pour chacun :
 - Observabilité (OTel, logs structurés) — sans ça chaque incident prod
   devient une enquête détective à partir de timestamps de logs.
-- L'outillage CI supply-chain (SBOM, Grype, cosign) — ~30 s d'exécution
-  et détecte de vrais CVE ; retirer cet outillage retire un invariant.
+- L'outillage CI supply-chain (**syft + Trivy + Grype + cosign**) — ~30 s
+  d'exécution et détecte de vrais CVE ; retirer cet outillage retire un
+  invariant. Trivy et Grype sont **complémentaires, pas redondants** :
+  syft génère le SBOM ; Trivy scanne l'IMAGE Docker (OS + JRE, DB
+  aquasec/trivy-db) ; Grype scanne le SBOM (coordonnées Maven, DB
+  GitHub Advisory + NVD). Détail dans la
+  [section EN du glossaire des technos](docs/reference/technologies.md#-container-cve-scanning--syft--trivy--grype-the-3-tool-sandwich).
 - Le jeu d'ADRs — un journal de décisions qui ne coûte rien à maintenir
   et empêche de relitiger les mêmes trade-offs plus tard.
 
