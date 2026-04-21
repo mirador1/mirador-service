@@ -17,6 +17,11 @@ adding/starting/finishing a task. Delete when empty (per CLAUDE.md).
   parameter examples to schema type. 13 unit tests. Spectral errors
   24→0 on `oas3-valid-{schema,media}-example`. Both rules re-enabled
   in `.spectral.yaml`.
+- bearerAuth `oas3-schema` "unevaluated properties: name" error fixed
+  (root cause: `.name(securitySchemeName)` setter is only valid on
+  `apiKey` schemes, not `http`). `openapi-lint` job
+  `allow_failure: true` shield removed — pipeline now goes red on any
+  Spectral error.
 
 ### 2026-04-20
 
@@ -81,15 +86,12 @@ Inventory from stability-check: svc had 30, UI had 15. Session
 
 Remaining: svc ~28, UI ~13. Next sessions: continue 5/session.
 
-#### `openapi-lint` — flip `allow_failure: false` (deadline 2026-05-20)
+#### Spectral warnings cleanup (was: openapi-lint shield flip — DONE 2026-04-21)
 
-After Path B (2026-04-21) the only remaining error is:
-- 1 error `oas3-schema` on `components.securitySchemes.bearerAuth`
-  — the bearerAuth scheme carries an unevaluated OpenAPI property
-  (likely an extension or typo). Fix in the springdoc
-  `GroupedOpenApi` / `@SecurityScheme` config under `auth/`.
+The `openapi-lint` job is now `allow_failure: false` (default) — any
+`--fail-severity error` finding goes red. 6 warnings remain that don't
+trip the gate but are real API-contract polishing:
 
-Plus 6 warnings:
 - `operation-description` missing on `/customers/{id}.get`,
   `/scheduled/jobs.get`, `/customers/summary.get` — add
   `@Operation(description=...)` on the controllers.
@@ -100,9 +102,10 @@ Plus 6 warnings:
   these are literal XSS demo endpoints; either `@Hidden` them in
   prod OpenAPI groups or escape the `<script>` in the Javadoc.
 
-Acceptance: fix the bearerAuth `@SecurityScheme` → `npx
-spectral-cli@6.15.1 lint … --fail-severity error` exits 0 → drop
-`allow_failure: true` on the job.
+If we want to gate on warnings too: drop `--fail-severity error` for
+`--fail-severity warn` on the spectral CLI invocation. Decide as a
+separate session — for now warnings are visible in the report
+artifact + Sonar issues UI.
 
 ### Follow-ups from ADR-0039 (kube-prometheus-stack overlay)
 

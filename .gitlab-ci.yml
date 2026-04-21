@@ -182,14 +182,19 @@ openapi-lint:
   image: node:22-alpine
   tags:
     - macbook-local
-  # Springdoc emits a `bearerAuth` security scheme with extra properties
-  # OAS 3.0 doesn't recognize ("unevaluated properties"). Same root cause
-  # class as the 2 spectral rules disabled in ADR-0037 — the springdoc
-  # output isn't strict OAS 3.0 in many edges. Until we either bump
-  # springdoc or wrap with an OpenApiCustomizer post-processor, accept
-  # this as warning instead of red.
-  # TODO: flip to false by 2026-05-21 — see ADR-0037 fix paths.
-  allow_failure: true
+  # Shield removed 2026-04-21 after:
+  #   1. ADR-0037 Path B (OpenApiCustomizer bean) cleared the 2
+  #      `oas3-valid-{schema,media}-example` errors (24 → 0).
+  #   2. Removing the `.name(securitySchemeName)` setter on the HTTP
+  #      `bearerAuth` SecurityScheme cleared the last `oas3-schema`
+  #      "unevaluated properties: name" error (1 → 0).
+  # The 6 remaining warnings (`operation-description`, `operation-tag-defined`,
+  # `no-script-tags-in-markdown`) do not fail `--fail-severity error` and
+  # are tracked separately in TASKS.md as code-cleanup follow-ups.
+  # If a future change re-introduces a Spectral error, the MR goes red —
+  # which is the whole point. To re-shield temporarily during a planned
+  # springdoc upgrade window, add `allow_failure: true` here with a
+  # dated TODO comment per CLAUDE.md → "Pipelines stay green".
   # Postgres sidecar — Spring Boot's Flyway auto-config will fail-fast on
   # a missing DB before OpenAPI routes come up, so we need a real DB on
   # localhost:5432. GitLab spawns this container on the same network.
@@ -256,14 +261,12 @@ openapi-lint:
     paths:
       - /tmp/openapi.json
     expire_in: 1 week
-  # TODO: flip to false by 2026-05-20 — tracked in TASKS.md. Current
-  # failure is 1 Spectral error (`oas3-schema` on bearerAuth securityScheme)
-  # + 6 warnings (missing operation descriptions, undefined tag, <script>
-  # tags in Markdown). All are real API-contract findings, not tool flakes.
-  # Fix path: (1) replace bearerAuth unevaluated-property, (2) add
-  # @Operation(description=) annotations on the flagged endpoints,
-  # (3) strip <script> demo content or tag those endpoints `@Hidden`.
-  allow_failure: true
+  # (Previously had a second `allow_failure: true` here; removed 2026-04-21
+  # alongside the top-of-job shield — see comment block above for the
+  # cleared-errors history. Keep the warnings list for future cleanup:
+  # `operation-description` missing on /customers/{id}.get, /scheduled/jobs.get,
+  # /customers/summary.get; `operation-tag-defined` on /scheduled/jobs.get;
+  # 2× `no-script-tags-in-markdown` on /demo/security/xss-*.)
 
 # ── stage: test ───────────────────────────────────────────────────────────────
 

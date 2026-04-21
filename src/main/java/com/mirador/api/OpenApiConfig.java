@@ -77,8 +77,16 @@ public class OpenApiConfig {
                         .description("Local development server"))
                 .addSecurityItem(new SecurityRequirement().addList(securitySchemeName))
                 .components(new Components()
+                        // The `name` setter is intentionally OMITTED here: per the OpenAPI 3.x
+                        // spec, `name` is only valid on `apiKey` security schemes (where it
+                        // designates the header/query/cookie parameter carrying the key). For
+                        // `http` schemes the name comes from the outer `addSecuritySchemes(key,
+                        // …)` call. swagger-models silently lets you call .name() on an HTTP
+                        // scheme and serialises it, but Spectral's `oas3-schema` rule rejects
+                        // the resulting object with `unevaluated properties: name` — the only
+                        // remaining error after ADR-0037 Path B. Removing the call closes
+                        // TASKS.md → "openapi-lint flip allow_failure: false".
                         .addSecuritySchemes(securitySchemeName, new SecurityScheme()
-                                .name(securitySchemeName)
                                 .type(SecurityScheme.Type.HTTP)
                                 .scheme("bearer")
                                 .bearerFormat("JWT")
