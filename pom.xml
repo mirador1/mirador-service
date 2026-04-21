@@ -82,6 +82,13 @@
           Spring Boot BOM, pin explicitly.
         -->
         <fabric8-kubernetes-client.version>7.3.1</fabric8-kubernetes-client.version>
+        <!--
+          jqwik — property-based testing framework for JUnit 5.
+          Test-scope only. Used by AggregationServicePropertyTest to verify
+          parallelism invariants across generated input sizes (see Phase 2.5
+          T3 in TASKS.md). Not in the Spring Boot BOM, pin explicitly.
+        -->
+        <jqwik.version>1.9.3</jqwik.version>
 
         <!-- ──────────────────────────────────────────────────────────────────────
              Build-plugin & analyzer versions
@@ -576,6 +583,18 @@
         <dependency>
             <groupId>org.springframework.kafka</groupId>
             <artifactId>spring-kafka-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!--
+          jqwik — property-based testing. @Property methods take @ForAll
+          parameters; jqwik synthesises many inputs per method. Used by
+          AggregationServicePropertyTest to demonstrate the pattern on a
+          parallelism invariant (see ADR list / T3 follow-up).
+        -->
+        <dependency>
+            <groupId>net.jqwik</groupId>
+            <artifactId>jqwik</artifactId>
+            <version>${jqwik.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>

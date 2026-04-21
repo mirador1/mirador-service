@@ -29,3 +29,6 @@ infra/pyroscope/pyroscope.jar
 # Claude Code local config and worktrees
 .claude/
 .owasp-data/
+
+# jqwik property-test state (failed-example cache, regenerated each run)
+.jqwik-database
