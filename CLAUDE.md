@@ -231,12 +231,54 @@ Loki, Tempo, Grafana are already inside the LGTM container — do NOT add them a
       `allow_failure` shields) are fix-now unless carried by a dated
       follow-up. See ~/.claude/CLAUDE.md → "Pipelines stay green".
 
-## Docker Cleanup
+## Docker Cleanup — TIGHTENED CADENCE (2026-04-21)
 
-At the start of each session (or after heavy build/test work), run:
+Run the prune trio at **each** of these moments, not just "start of session":
+
+1. **Session start** — baseline.
+2. **After any CI pipeline failure carrying a runner-pressure signal**
+   (connection refused to kind control-plane, OOMKilled, "resource quota
+   evaluation timed out", vitest worker exit 137, Maven SIGKILL in ≤ 60 s).
+   Rerun or repush WITHOUT cleanup → dies the same way.
+3. **Every 30 min of active local CI work** — catches leaks silently.
+4. **Before calling a session done** — clean slate for next session.
+
+### Leak classes specific to this repo
+
+- **Orphaned CI kind clusters** — `docker ps --format '{{.Names}}' |
+  grep -E '^ci-k8s(-prom)?-'` must return NOTHING outside an in-progress
+  job. Zombies outlive their CI job when jobs are cancelled mid-run —
+  kill with:
+  ```bash
+  docker ps --format '{{.Names}}' | grep -E '^ci-k8s(-prom)?-' \
+    | xargs -I {} kind delete cluster --name "$(echo {} | sed 's/-control-plane$//')"
+  ```
+  Session 2026-04-21 accumulated **4 stale clusters over 3 hours** before
+  detection; each was ~700 MB RSS × 4 = blown past the Docker Desktop VM
+  7.6 GB cap → cascading kind OOM on fresh pipelines.
+
+- **Local long-running JVMs** — `ps auxm | head -20` spots
+  `./mvnw spring-boot:run` or `java -jar target/*-SNAPSHOT.jar` left
+  from earlier dev work. ~250-800 MB RSS each; kill if not actively
+  needed.
+
+- **Dev demo containers** — `postgres-demo`, `kafka-demo`, `redis-demo`,
+  `ollama-demo` etc. started by `./run.sh all`. Stop if not needed:
+  `docker stop postgres-demo kafka-demo redis-demo ollama-demo`.
+
+### Prune trio + escalation
+
+```bash
+docker system df                                     # check first
+docker container prune -f                            # stopped containers
+docker builder prune -f                              # build cache
+docker image prune -f                                # dangling images
+# If > 80 GB total OR images > 100 count:
+docker image prune -a -f                             # ALL unused images (~20-30 GB typical)
 ```
-docker container prune -f
-docker volume prune -f
-docker builder prune -f
-```
-Check disk usage first with `docker system df`. Never prune running containers or named volumes without confirming with the user.
+
+**Never** prune named volumes (`docker volume prune`) without user
+confirmation — they hold postgres / sonar / flyway state.
+
+See `~/.claude/CLAUDE.md` → "Clean Docker regularly — don't wait for
+OOM" for the canonical rule.
