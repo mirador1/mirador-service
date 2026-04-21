@@ -151,6 +151,32 @@ Request
   → Spring Security chain
 ```
 
+## File length hygiene (segmenter les fichiers trop longs)
+
+When a hand-written source file crosses **~1 000 lines**, plan a split at
+the next touch; at **1 500+**, split NOW before shipping any other change.
+Current offenders to address over upcoming sessions:
+
+- `.gitlab-ci.yml` (2 619 lines) — modularise into `ci/includes/*.yml`
+  (lint, test, security, k8s, quality, package, native, deploy, release).
+- `src/main/java/com/mirador/observability/QualityReportEndpoint.java`
+  (1 934) — 7 parsers (Surefire, Jacoco, SpotBugs, OWASP, PMD, Checkstyle,
+  Pitest) each in their own class; the endpoint becomes a thin aggregator.
+- `bin/dev/stability-check.sh` (1 362) — split into
+  `bin/dev/stability/sections/*.sh` + a driver.
+
+Exceptions (length is inherent — don't split): `pom.xml` (Maven monorepo
+constraints), `README.md`, `docs/reference/*.md`, auto-generated manifests
+(`kube-prom-stack-rendered.yaml`, etc.).
+
+How to split — one commit per responsibility move, keep the public
+entrypoint small (~150 lines), grep-friendly names (`CustomerReadController`
+not `ReadController`), ADR if the dependency graph changes.
+
+Subdirectory side of the same rule: when a flat folder crosses **10
+entries**, group by purpose (bin/, features/, api/, port/, etc.); **15**
+is the hard ceiling. See `~/.claude/CLAUDE.md` → "Subdirectory hygiene".
+
 ## Test conventions
 
 - Unit tests mock collaborators via Mockito; use `MockHttpServletRequest/Response` for filter tests.
@@ -195,6 +221,10 @@ Loki, Tempo, Grafana are already inside the LGTM container — do NOT add them a
 - [ ] **Root hygiene**: no new file added to repo root that belongs under
       `config/`, `build/`, `deploy/compose/`, `docs/`, or `ci/`. See
       ~/.claude/CLAUDE.md → "Root file hygiene" for the authoritative list.
+- [ ] **File length hygiene**: no hand-written file > 1 000 lines without
+      a split plan (config/docs/auto-generated exempt). See
+      ~/.claude/CLAUDE.md → "File length hygiene" + this repo's
+      `File length hygiene` section above for current targets.
 - [ ] **Pipelines green**: `glab ci list` on `main` shows `success`
       for the last run. Any failed job (even `allow_failure: true`)
       counts as a task. Warnings (bundle budget, deprecations,
