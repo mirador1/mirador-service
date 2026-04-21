@@ -1123,7 +1123,13 @@
             <configuration>
                 <skip>true</skip>
                 <failOnViolation>false</failOnViolation>
-                <printFailingErrors>false</printFailingErrors>
+                <!-- Flipped true 2026-04-21 Phase A quality audit: violations
+                     now appear in Maven build output + CI log so reviewers see
+                     them at a glance. Build still passes (failOnViolation=false)
+                     — Phase C flips both to true once Phase B refactors clear
+                     the legacy outliers. See docs/audit/quality-thresholds-
+                     2026-04-21.md for the full phase sequencing. -->
+                <printFailingErrors>true</printFailingErrors>
                 <targetJdk>21</targetJdk>
                 <outputDirectory>${project.build.directory}</outputDirectory>
                 <format>xml</format>

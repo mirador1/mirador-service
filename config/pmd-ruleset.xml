@@ -97,6 +97,69 @@
              service + repo in com.mirador.customer). The design IS intentionally
              package-per-feature; this rule assumes package-per-layer. -->
         <exclude name="LoosePackageCoupling"/>
+        <!-- Re-imported below with industry-tuned thresholds
+             (see docs/audit/quality-thresholds-2026-04-21.md).
+             Excluded here to avoid the "rule registered twice with conflicting
+             properties" warning PMD emits when a generic import and a specific
+             override coexist. Added 2026-04-21 during Phase A quality audit. -->
+        <exclude name="NcssCount"/>
+        <exclude name="TooManyMethods"/>
+        <exclude name="ExcessivePublicCount"/>
+        <exclude name="ExcessiveParameterList"/>
+        <exclude name="CyclomaticComplexity"/>
+    </rule>
+
+    <!-- ── Industry-tuned size / complexity thresholds (Phase A) ──────────────
+         Defaults tightened per docs/audit/quality-thresholds-2026-04-21.md.
+         `failOnViolation` still false at pom.xml level; this is the "signal
+         visible in CI logs" stage. Phase C flips enforcement once outliers
+         (QualityReportEndpoint.java 1934, CustomerController.java 748) are
+         split below the new thresholds. -->
+    <rule ref="category/java/design.xml/NcssCount">
+        <properties>
+            <!-- Class ceiling: PMD default 1500 is "very large" — tightened
+                 to 750 (industry baseline) so the 1934-line QualityReportEndpoint
+                 fires visibly. Counts Non-Commenting Source Statements, not raw
+                 lines; a 1000-line class with heavy Javadoc may still pass. -->
+            <property name="classReportLevel" value="750"/>
+            <!-- Method ceiling: 60 default → 50 (industry middle).
+                 Sonar java:S138 maps 100 raw lines ≈ 50 NCSS. -->
+            <property name="methodReportLevel" value="50"/>
+        </properties>
+    </rule>
+
+    <rule ref="category/java/design.xml/TooManyMethods">
+        <properties>
+            <!-- PMD default 10 is too strict for Spring Boot controllers
+                 (~20 @GetMapping per customer controller is legitimate).
+                 25 is industry middle. -->
+            <property name="maxmethods" value="25"/>
+        </properties>
+    </rule>
+
+    <rule ref="category/java/design.xml/ExcessivePublicCount">
+        <properties>
+            <!-- Default 45 tightened to 40. -->
+            <property name="minimum" value="40"/>
+        </properties>
+    </rule>
+
+    <rule ref="category/java/design.xml/ExcessiveParameterList">
+        <properties>
+            <!-- PMD default 10 is wrong; industry is 4-7 (Uncle Bob says 3).
+                 7 accommodates Spring Data repository method signatures
+                 without being permissive. -->
+            <property name="minimum" value="7"/>
+        </properties>
+    </rule>
+
+    <rule ref="category/java/design.xml/CyclomaticComplexity">
+        <properties>
+            <!-- Method: keep PMD default 10 (industry standard). -->
+            <property name="methodReportLevel" value="10"/>
+            <!-- Class total: tighten 80 → 60. -->
+            <property name="classReportLevel" value="60"/>
+        </properties>
     </rule>
 
     <!-- =========================================================================
