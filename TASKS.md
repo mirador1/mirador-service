@@ -3,7 +3,22 @@
 Source of truth across Claude sessions. Read this first. Update when
 adding/starting/finishing a task. Delete when empty (per CLAUDE.md).
 
-## ✅ Closed this session (2026-04-20)
+## ✅ Closed this session
+
+### 2026-04-21 (current — checkpoint stable-v1.0.5)
+
+- ServiceMonitor for Mirador in local-prom overlay (svc !108, 1b9acbd)
+- gke-prom/ overlay: kube-prom-stack on GKE Autopilot (svc !109,
+  dc79814 + b87800a + 8a5292f) — 7d retention, 10Gi PVC on standard-rwo,
+  1.5Gi mem, 6 ServiceMonitors, ADR-0039 GKE section
+- ADR-0037 Path B: `OpenApiCustomizer openApiSchemaSanitizer()` (svc
+  !110, bf69492 + c50e12a + 95452fc) — strips MissingNode/NullNode
+  defaults, drops empty-string defaults on non-string types, normalises
+  parameter examples to schema type. 13 unit tests. Spectral errors
+  24→0 on `oas3-valid-{schema,media}-example`. Both rules re-enabled
+  in `.spectral.yaml`.
+
+### 2026-04-20
 
 - UI 15 feature smoke specs (UI !58, commit 088ec90 → squash on main)
 - compat-* profiles surefire discovery (svc !98, commit 029dead — root
@@ -42,15 +57,6 @@ projects. Gate ERROR persists because of:
 
 Each is an independent task; keep one MR per driver.
 
-### ~~Re-enable `oas3-valid-*-example` Spectral rules~~ — DONE 2026-04-21
-
-ADR-0037 Path B implemented: `OpenApiCustomizer` bean in `OpenApiConfig`
-post-processes the springdoc-generated tree (drops MissingNode/NullNode
-defaults, empty-string defaults on non-string types, type-mismatched
-parameter examples). Both rules re-enabled. Spectral errors now: 0 from
-those rules, 1 unrelated (`oas3-schema` on bearerAuth, tracked below).
-13 unit tests in `OpenApiSchemaSanitizerTest`.
-
 ### UI npm audit — 5 CVEs in @compodoc/compodoc (1 HIGH picomatch)
 
 Dev-only dependency (Angular API doc generator, not shipped to browser).
@@ -75,26 +81,28 @@ Inventory from stability-check: svc had 30, UI had 15. Session
 
 Remaining: svc ~28, UI ~13. Next sessions: continue 5/session.
 
-#### `openapi-lint` — flip `allow_failure: false` by 2026-05-20
+#### `openapi-lint` — flip `allow_failure: false` (deadline 2026-05-20)
 
-Current failure shape (pipeline #528, 2026-04-20):
+After Path B (2026-04-21) the only remaining error is:
 - 1 error `oas3-schema` on `components.securitySchemes.bearerAuth`
   — the bearerAuth scheme carries an unevaluated OpenAPI property
   (likely an extension or typo). Fix in the springdoc
   `GroupedOpenApi` / `@SecurityScheme` config under `auth/`.
-- 6 warnings:
-  - `operation-description` missing on `/customers/{id}.get`,
-    `/scheduled/jobs.get`, `/customers/summary.get` — add
-    `@Operation(description=...)` on the controllers.
-  - `operation-tag-defined` on `/scheduled/jobs.get.tags[0]` —
-    either add the tag to `GroupedOpenApi.tags()` or drop the
-    controller-level `@Tag`.
-  - 2× `no-script-tags-in-markdown` on `/demo/security/xss-*` —
-    these are literal XSS demo endpoints; either `@Hidden` them in
-    prod OpenAPI groups or escape the `<script>` in the Javadoc.
 
-Acceptance: `npx spectral-cli@6.15.1 lint … --fail-severity error`
-exits 0 → drop `allow_failure: true` on the job.
+Plus 6 warnings:
+- `operation-description` missing on `/customers/{id}.get`,
+  `/scheduled/jobs.get`, `/customers/summary.get` — add
+  `@Operation(description=...)` on the controllers.
+- `operation-tag-defined` on `/scheduled/jobs.get.tags[0]` —
+  either add the tag to `GroupedOpenApi.tags()` or drop the
+  controller-level `@Tag`.
+- 2× `no-script-tags-in-markdown` on `/demo/security/xss-*` —
+  these are literal XSS demo endpoints; either `@Hidden` them in
+  prod OpenAPI groups or escape the `<script>` in the Javadoc.
+
+Acceptance: fix the bearerAuth `@SecurityScheme` → `npx
+spectral-cli@6.15.1 lint … --fail-severity error` exits 0 → drop
+`allow_failure: true` on the job.
 
 ### Follow-ups from ADR-0039 (kube-prometheus-stack overlay)
 
