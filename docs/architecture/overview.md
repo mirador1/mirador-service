@@ -142,7 +142,7 @@ com.example.customerservice
 ├── observability/  ObservabilityConfig, DatabaseReachabilityHealthIndicator,
 │                   KafkaHealthIndicator, OllamaHealthIndicator,
 │                   RequestIdFilter, RequestContext,
-│                   TraceService, ZipkinExporterConfig,
+│                   TraceService,
 │                   AuditService                           — health, tracing, metrics, audit
 ├── resilience/     IdempotencyFilter, RateLimitingFilter,
 │                   ShedLockConfig                         — rate limiting, idempotency, distributed lock

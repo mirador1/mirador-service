@@ -73,9 +73,22 @@ Sibling catalogue for the Angular UI: <https://gitlab.com/mirador1/mirador-ui/-/
 - **Why it's pertinent**: Version 69 is why we pin ASM 9.8, SpotBugs 4.8.6+, PMD 7.20+, Checkstyle 13.4+ — older versions crash when encountering Java 25 class files.
 
 ### ☕ [OpenJDK / Eclipse Temurin](https://adoptium.net/)
-- **What it is**: Free, production-grade builds of the OpenJDK project, maintained by the Adoptium working group.
+- **What it is**: Free, production-grade builds of the OpenJDK project, maintained by the Adoptium working group at the Eclipse Foundation.
 - **Usage here**: `eclipse-temurin:25-jdk` for the builder stage and `eclipse-temurin:25-jre` for the runtime stage in `Dockerfile`. CI uses `maven:3.9.14-eclipse-temurin-25-noble` as the default image.
-- **Why it's pertinent**: Permissively licensed, TCK-certified, and the de-facto default in container images. Oracle JDK's licensing is hostile to long-running containers; Temurin just works.
+- **Why it's pertinent**: Permissively licensed (GPLv2 + Classpath Exception), TCK-certified, and the de-facto default in container images. Oracle JDK's licensing is hostile to long-running containers; Temurin just works.
+- **Why Temurin vs the other free OpenJDK distributions**: every alternative listed below also passes the Oracle TCK and ships free LTS builds — so the choice is governance + ecosystem fit, not compatibility:
+
+  | Distribution | Why we did NOT pick it |
+  |---|---|
+  | **Oracle JDK** | Free under NFTC for dev only; production use requires a paid Java SE Universal Subscription since Java 17. Hostile to a portfolio project that runs across CI, kind, GKE Autopilot, AKS, EKS without per-cluster billing. |
+  | **Amazon Corretto** | Excellent quality, but governance is AWS-controlled and the test matrix is biased toward EC2 / Graviton hardware. We deploy across GCP/AWS/Azure/Scaleway — picking a vendor's OpenJDK locks the project's "default" to that vendor's QA priorities. |
+  | **Azul Zulu (Community)** | TCK-certified and free, but the upgrade path nudges users toward paid Zulu Prime (their commercial Falcon JIT). Mixing CE in dev with Prime in prod creates a JIT-behaviour gap that is hard to debug. |
+  | **BellSoft Liberica** | Solid, ships JavaFX + musl/alpine variants we don't need. Smaller community than Temurin — `eclipse-temurin:*` Docker pulls are roughly an order of magnitude higher, which means more eyes on CVEs and faster security patches in practice. |
+  | **Microsoft Build of OpenJDK** | New (2021), still catching up on CVE backporting cadence. Tied to Azure-priority testing. |
+  | **IBM Semeru / OpenJ9** | Different VM (OpenJ9 instead of HotSpot) — better startup + RSS but worse compatibility with HotSpot-tuned libraries (Resilience4j, JFR-based profilers, Pyroscope). The Spring Boot 4 reference docs assume HotSpot; switching would mean re-validating every observability + perf assumption. |
+  | **GraalVM CE** | Used here for the **native-image** path (`build-native` job, manual ▶) because Temurin doesn't ship `native-image`. NOT used as the default JDK because GraalVM CE's HotSpot is identical-quality but the upgrade cadence trails Temurin by 1–2 weeks on critical CVE patches. The project keeps Temurin as the default and reaches for GraalVM CE only when AOT compilation is the goal. |
+
+  Net: Temurin is the only free OpenJDK distribution backed by a vendor-neutral foundation (Eclipse), with the largest container ecosystem, no commercial-tier upsell pressure, and the same JVM behaviour Spring Boot's reference docs were tested against. Switching distributions later is cheap (image tag change); switching governance models mid-project is not.
 
 ### 🧩 [Lombok](https://projectlombok.org/)
 - **What it is**: Annotation processor that generates boilerplate (getters, setters, builders, constructors) at compile time.
@@ -83,14 +96,9 @@ Sibling catalogue for the Angular UI: <https://gitlab.com/mirador1/mirador-ui/-/
 - **Why it's pertinent**: Eliminates ~30 % of boilerplate without adding runtime footprint. The explicit processor-path entry is required on Java 25 (implicit discovery was tightened).
 
 ### 📦 [Maven Central](https://central.sonatype.com/)
-- **What it is**: The canonical artifact repository for Java libraries (`repo1.maven.org/maven2`).
-- **Usage here**: Primary `<repository>` in `pom.xml`. All production dependencies resolve here.
-- **Why it's pertinent**: Immutable, globally CDN-distributed, and trust-anchored via Sonatype. Every other Maven repo is a fallback.
-
-### 🌱 [Maven Central](https://repo1.maven.org/maven2/)
-- **What it is**: The default Maven repository — all compile-time and test dependencies resolve from here.
-- **Usage here**: Sole repository declared in `pom.xml`. Spring AI 1.1.4 GA now lives on Central, so the Spring Milestones repo that used to host the 1.0.0-M6 milestone is no longer needed and has been removed.
-- **Why it's pertinent**: Fewer repositories means fewer supply-chain attack surfaces and faster dependency resolution on cold builds.
+- **What it is**: The canonical artifact repository for Java libraries (`repo1.maven.org/maven2`), operated by Sonatype.
+- **Usage here**: SOLE `<repository>` declared in `pom.xml`. Every production, test, and annotation-processor dependency resolves here. Spring AI 1.1.4 GA now lives on Central, so the Spring Milestones repo that used to host the 1.0.0-M6 milestone has been removed.
+- **Why it's pertinent**: Immutable, globally CDN-distributed, trust-anchored via Sonatype. Keeping it as the only repo (no `<pluginRepositories>` for Spring Milestones, JBoss, etc.) shrinks the supply-chain attack surface AND speeds cold builds — fewer mirrors to probe, fewer auth headers to negotiate.
 
 ---
 
@@ -136,20 +144,14 @@ Sibling catalogue for the Angular UI: <https://gitlab.com/mirador1/mirador-ui/-/
 - **Usage here**: Implicit — `spring-boot-starter-jdbc`/`jpa` brings it in automatically.
 - **Why it's pertinent**: Fastest pool in the JVM ecosystem; used unmodified because the defaults are already correct for this workload.
 
-### 🔴 [Spring Data Redis (Lettuce)](https://spring.io/projects/spring-data-redis)
-- **What it is**: Spring abstraction over a Redis client; Lettuce is the non-blocking default.
-- **Usage here**: `spring-boot-starter-data-redis` + `StringRedisTemplate` in `com.mirador.customer.RecentCustomerBuffer` (LPUSH + LTRIM + LRANGE ring of last-10 customers).
-- **Why it's pertinent**: Lettuce is netty-based, non-blocking, and safe to share across virtual threads. Moves the recent-customers buffer out of process memory so horizontal scaling works.
-
-### 🌱 [Spring Cache Abstraction + Caffeine](https://docs.spring.io/spring-framework/reference/integration/cache.html)
-- **What it is**: `@Cacheable`-style method caching with a pluggable backend; Caffeine is the recommended in-process cache.
-- **Usage here**: `spring-boot-starter-cache` + `com.github.ben-manes.caffeine:caffeine` for entity lookups (`findById`) that Redis does NOT handle.
-- **Why it's pertinent**: Caffeine is the successor to Guava Cache — W-TinyLFU eviction, low GC pressure. Reserving Caffeine for hot entity reads and Redis for cross-pod state keeps responsibilities clean.
-
-### 📨 [Spring Kafka](https://spring.io/projects/spring-kafka)
-- **What it is**: Spring's Kafka integration: listener containers, `KafkaTemplate`, request-reply.
-- **Usage here**: `spring-kafka` dependency; producers/consumers live in `com.mirador.messaging` (`KafkaConfig`, listener annotations).
-- **Why it's pertinent**: Avoids hand-rolling `KafkaConsumer` loops. Integrates `@KafkaListener` with Micrometer observations out of the box.
+_Storage / cache / broker stacks — Redis, Caffeine, Kafka — are
+documented as ONE entry each (the underlying service + the Spring
+integration library) in their domain sections below: see
+[Caching](#caching) for Redis + Caffeine and
+[Messaging](#messaging-and-real-time) for Kafka. Keeping the
+"Spring side" co-located with the service avoids the previous
+two-entries-per-stack split where readers had to cross-reference
+to get the full picture._
 
 ### 🔔 [Spring WebSocket / STOMP](https://docs.spring.io/spring-framework/reference/web/websocket.html)
 - **What it is**: Bidirectional messaging over WebSocket with the STOMP sub-protocol.
@@ -214,10 +216,12 @@ Sibling catalogue for the Angular UI: <https://gitlab.com/mirador1/mirador-ui/-/
 
 ## Caching
 
-### 🔴 [Redis 7](https://redis.io/)
-- **What it is**: In-memory key-value store with rich data types (LIST, HASH, SET, SORTED SET, STREAMS).
-- **Usage here**: `redis:7` in Compose; app connects via `SPRING_DATA_REDIS_HOST=redis`. Used by `RecentCustomerBuffer` (LPUSH + LTRIM + LRANGE), idempotency keys, and rate-limit buckets.
-- **Why it's pertinent**: Sub-ms latency, cross-pod state, and the right data types for our use cases (ring buffer via LIST, distinct keys via SET).
+### 🔴 [Redis 7](https://redis.io/) (server) + [Spring Data Redis / Lettuce](https://spring.io/projects/spring-data-redis) (client)
+- **What it is**: Redis 7 — in-memory key-value store with rich data types (LIST, HASH, SET, SORTED SET, STREAMS). Spring Data Redis is the Spring abstraction; Lettuce is the non-blocking netty-based driver bundled by default.
+- **Usage here**:
+  - **Server**: `redis:7` in Compose; in Kubernetes a Deployment in `deploy/kubernetes/base/stateful/redis.yaml`. App connects via `SPRING_DATA_REDIS_HOST=redis`.
+  - **Client**: `spring-boot-starter-data-redis` + `StringRedisTemplate` in `com.mirador.customer.RecentCustomerBuffer` (LPUSH + LTRIM + LRANGE ring of last-10 customers), JWT blacklist (`com.mirador.auth.JwtTokenProvider`), idempotency keys, rate-limit buckets.
+- **Why it's pertinent**: Sub-ms latency, cross-pod state, and the right data types for our use cases (ring buffer via LIST, distinct keys via SET). Lettuce is safe to share across virtual threads — no per-call thread blocking. Cross-pod scope is what makes Redis the right answer for "logout token X across all replicas" — Caffeine (in-JVM) cannot.
 
 ### ☁️ [Memorystore for Redis](https://cloud.google.com/memorystore)
 - **What it is**: Google Cloud's managed Redis service.
@@ -234,19 +238,25 @@ Sibling catalogue for the Angular UI: <https://gitlab.com/mirador1/mirador-ui/-/
 - **Usage here**: Compose service (port 8082), auto-connects to the `redis` service.
 - **Why it's pertinent**: Lets us watch idempotency keys and rate-limit buckets mutate live. Smaller than RedisInsight, good complement for tail-the-log style debugging.
 
-### 🗄️ [Caffeine](https://github.com/ben-manes/caffeine)
-- **What it is**: High-performance in-process Java cache.
-- **Usage here**: Backing cache for `@Cacheable` (see Spring Cache Abstraction entry).
-- **Why it's pertinent**: Best eviction policy in the JVM space (W-TinyLFU) and effectively zero config.
+### 🗄️ [Caffeine](https://github.com/ben-manes/caffeine) (in-JVM cache) + [Spring Cache Abstraction](https://docs.spring.io/spring-framework/reference/integration/cache.html)
+- **What it is**: Caffeine — high-performance in-process Java cache (the W-TinyLFU successor to Guava Cache, near-zero GC pressure). Spring Cache Abstraction is the `@Cacheable`/`@CacheEvict` annotation framework with a pluggable backend; Caffeine is the recommended in-JVM backend.
+- **Usage here**: `spring-boot-starter-cache` + `com.github.ben-manes.caffeine:caffeine` for entity lookups (`findById`) — single-pod hot reads where the network round-trip to Redis would dominate the JDBC fetch.
+- **Why it's pertinent — and why it does NOT overlap with Redis**:
+  - Caffeine = ~µs latency, **lost on pod restart**, **NOT shared across replicas**. Right for hot reads tolerant to staleness on restart.
+  - Redis = ~1 ms latency, survives restart, shared across replicas. Right for state that must be coordinated (token blacklist, rate-limit buckets) or carry a TTL (idempotency keys).
+  - PostgreSQL = ~5–10 ms, durable, shared. Right for state that must outlive the cluster.
+  Picking the right layer is a one-line decision: do you need cross-replica coordination → Redis; do you need durability → Postgres; otherwise Caffeine.
 
 ---
 
 ## Messaging and real-time
 
-### 📨 [Apache Kafka (KRaft)](https://kafka.apache.org/)
-- **What it is**: Distributed log / event streaming platform.
-- **Usage here**: `apache/kafka:4.0.0` in Compose, single-broker/controller KRaft mode (no ZooKeeper). App produces/consumes in `com.mirador.messaging`. In Kubernetes, a StatefulSet in `deploy/kubernetes/base/stateful/kafka.yaml`.
-- **Why it's pertinent**: Async decoupling, replay, and consumer groups. KRaft eliminates the ZooKeeper operational tax — a real cost reduction for small clusters.
+### 📨 [Apache Kafka (KRaft)](https://kafka.apache.org/) (broker) + [Spring Kafka](https://spring.io/projects/spring-kafka) (client)
+- **What it is**: Apache Kafka — distributed log / event-streaming platform; KRaft mode replaces ZooKeeper with an internal Raft quorum. Spring Kafka wraps the Apache Java client with listener containers, `KafkaTemplate`, and request-reply patterns.
+- **Usage here**:
+  - **Broker**: `apache/kafka:4.0.0` in Compose, single-broker/controller KRaft mode. In Kubernetes a StatefulSet in `deploy/kubernetes/base/stateful/kafka.yaml`. Topics auto-created on first publish.
+  - **Client**: `spring-kafka` dependency; producers / consumers / `@KafkaListener` annotations live in `com.mirador.messaging` (`KafkaConfig`, listener classes). Used for fire-and-forget audit events AND request-reply enrichment with built-in correlation + timeout.
+- **Why it's pertinent**: Async decoupling, replay, and consumer groups. KRaft eliminates the ZooKeeper operational tax — half the moving parts for small clusters. Spring Kafka removes the boilerplate of hand-rolling `KafkaConsumer` polling loops and integrates `@KafkaListener` with Micrometer observations out of the box.
 
 ### 📨 [Kafka UI (Provectus)](https://github.com/provectus/kafka-ui)
 - **What it is**: Web UI for topics, messages, consumer groups and ACLs.
@@ -404,11 +414,6 @@ Sibling catalogue for the Angular UI: <https://gitlab.com/mirador1/mirador-ui/-/
 - **What it is**: Continuous CPU + memory profiler (part of Grafana stack).
 - **Usage here**: `io.pyroscope:agent:2.1.2` embedded SDK; pushes JFR profiles every 10 s. Wired in `com.mirador.observability.PyroscopeConfig`.
 - **Why it's pertinent**: Production profiling without a JVM `-javaagent` flag — good for finding hot methods and allocation sites we'd otherwise never spot.
-
-### 📡 [Zipkin](https://zipkin.io/)
-- **What it is**: Distributed tracing collector from Twitter.
-- **Usage here**: Not used — LGTM/Tempo covers it.
-- **Why it's pertinent**: Mentioned here because the observability doc historically referenced it; now redundant.
 
 ### ☕ [JFR (Java Flight Recorder)](https://docs.oracle.com/en/java/javase/21/jfapi/flight-recorder-api-programmers-guide.html)
 - **What it is**: OpenJDK-native low-overhead profiling format.

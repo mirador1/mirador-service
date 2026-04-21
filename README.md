@@ -331,6 +331,25 @@ flowchart LR
     SVC -.-> OTEL
 ```
 
+### Where data lives — Caffeine vs Redis vs PostgreSQL
+
+The diagram above shows Redis next to Postgres and Kafka, but the
+three layers have **non-overlapping roles**. The project also runs an
+in-process Caffeine cache that doesn't appear in the diagram because
+it lives inside the Spring Boot pod, not in the infra namespace.
+Quick decision matrix for "where do I put this state?":
+
+| Layer | Lifetime | Scope | Latency | What we put here | Why not the others |
+|---|---|---|---|---|---|
+| **Caffeine** (in-JVM, `spring-boot-starter-cache` + `@Cacheable`) | Until pod restart | One JVM only — NOT shared across replicas | ~µs (no network) | Hot read paths: individual `findById` customer lookups | Redis would add a network round-trip (~1ms) for data that's read 100× more often than written and is fine to lose on restart. |
+| **Redis** (out-of-process, `spring-boot-starter-data-redis`) | Survives pod restart, TTL-bound | SHARED across all replicas | ~1 ms (TCP loopback in-cluster) | JWT blacklist with TTL = remaining token lifetime, recent-customer ring buffer, future distributed login-attempt counter | Caffeine can't do "logout token X across all 5 replicas" — every pod has its own heap. Postgres COULD store the blacklist but at ~10ms per check that adds latency to every authenticated request. |
+| **PostgreSQL** | Forever (until backup-restore window) | SHARED + durable | ~5–10 ms | Customers, refresh tokens, audit log, scheduled-job state — anything that must survive the whole stack going down | Redis is in-memory only (we don't enable AOF persistence here); a Redis crash with no replica = data loss. Caffeine of course doesn't even survive a pod restart. |
+
+So the order of "should I add a Redis call here?" is:
+1. **Read path that's hot but tolerant to staleness on restart** → Caffeine `@Cacheable`.
+2. **State that must be coordinated across replicas OR carry a TTL** → Redis.
+3. **State that must outlive the cluster** → Postgres.
+
 ---
 
 ## Architecture — production (Kubernetes)
@@ -435,7 +454,7 @@ That's it. Docker starts automatically. Sign in at http://localhost:8080/swagger
 
 # Or step by step:
 docker compose up -d              # core only: DB + Kafka + Redis + app (~1 GB, ~4 containers)
-./run.sh obs                      # observability (Grafana, Prometheus, Tempo, Zipkin, Pyroscope)
+./run.sh obs                      # observability (LGTM stack: Grafana, Prometheus, Tempo, Loki, Mimir + Pyroscope)
 ./run.sh app                      # Spring Boot app
 ```
 

@@ -177,7 +177,7 @@ Full details in `pom.xml` property comments and the cached report at `src/main/r
 
 Two compose files — never merge them:
 - `docker-compose.yml` — infra (PostgreSQL, Kafka, Redis, Ollama, Keycloak, admin tools)
-- `deploy/compose/observability.yml` — observability (Grafana, Prometheus, Tempo, Loki, Zipkin, Pyroscope)
+- `deploy/compose/observability.yml` — observability (LGTM stack — Grafana, Prometheus, Tempo, Loki, Mimir + Pyroscope)
 
 Loki, Tempo, Grafana are already inside the LGTM container — do NOT add them as separate services.
 

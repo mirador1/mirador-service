@@ -247,6 +247,15 @@ de fichiers.
 > stack observabilité → `--profile observability`) sont opt-in. Voir
 > la table détaillée dans le README anglais.
 
+> **Où vit la donnée — Caffeine vs Redis vs PostgreSQL** (2026-04-21) —
+> trois couches non-recouvrantes : **Caffeine** (cache JVM in-process,
+> ~µs, perdu au restart, NON partagé entre réplicas — pour les reads
+> chauds tolérant à la perte) ; **Redis** (~1 ms, survit au restart,
+> partagé entre réplicas — pour l'état coordonné inter-pods et les
+> TTL : blacklist JWT, idempotency, rate-limit) ; **PostgreSQL** (~5-10 ms,
+> durable, partagé — pour l'état qui doit survivre au cluster). Détail
+> + matrice de décision dans la [section anglaise "Where data lives"](README.md#where-data-lives--caffeine-vs-redis-vs-postgresql).
+
 Pour aller plus loin :
 - [`docs/adr/`](docs/adr/) — les 35+ décisions architecturales
 - [`docs/reference/technologies.md`](docs/reference/technologies.md) — glossaire complet
