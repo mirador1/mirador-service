@@ -1,0 +1,59 @@
+# =============================================================================
+# networkpolicy-extras.yaml — overlay-only NetworkPolicies for gke-prom
+#
+# The base ships strict ingress + egress policies on `app` and `infra`
+# namespaces (default-deny-all + targeted allow rules). When this overlay
+# adds the kube-prom Prometheus in the new `monitoring` namespace, ONE
+# legitimate cross-namespace flow would be blocked:
+#
+#   1. Grafana (in `infra`, lgtm pod) → kube-prom Prometheus
+#      (in `monitoring`, port 9090). Without this, the new Grafana
+#      datasource shows "Bad Gateway" / timeout when querying.
+#
+# `monitoring → app:8080` (Prometheus scraping Mirador's /actuator/prometheus)
+# is ALREADY allowed by the base `allow-port-forward-to-backend` rule in
+# base/networkpolicies.yaml — that rule has no `from` restriction on the
+# ingress port 8080, so any pod in any namespace (including monitoring) can
+# scrape the backend. No extra policy needed here.
+#
+# Identical to local-prom's networkpolicy-extras.yaml — the policy
+# topology (which ns talks to which) is the same on GKE as on kind.
+#
+# We DO NOT add a default-deny in `monitoring` because the chart's
+# pods don't ship one and the operator would fight us if we did. On
+# GKE Autopilot, the cluster-level Dataplane V2 (Cilium) enforces
+# NetworkPolicy as soon as ANY NetworkPolicy targets a namespace; we
+# leave `monitoring` un-restricted (no default-deny) so the operator
+# admission webhooks and the ServiceMonitor probes work end-to-end
+# without per-target ALLOW rules — the blast radius of an open-by-
+# default monitoring ns is zero (no secrets in there, ingress to the
+# cluster is laptop-only via port-forward per ADR-0025).
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-infra-egress-to-monitoring
+  namespace: infra
+  labels:
+    app.kubernetes.io/part-of: mirador
+    app.kubernetes.io/component: networkpolicy
+spec:
+  # Empty podSelector = applies to all pods in `infra`. Strictest sensible
+  # scope here would be "lgtm pod only" (label
+  # app.kubernetes.io/name=lgtm) but adding extras for future operators
+  # (cert-manager metrics scraping, etc.) is cheap and reduces churn.
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - port: 9090
+          protocol: TCP
+        # operator listens on 8080 for /metrics; not strictly needed for
+        # Grafana → Prometheus but cheap to allow for future use.
+        - port: 8080
+          protocol: TCP

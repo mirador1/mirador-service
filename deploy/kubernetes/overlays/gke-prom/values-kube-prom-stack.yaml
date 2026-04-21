@@ -1,0 +1,275 @@
+# =============================================================================
+# values-kube-prom-stack.yaml — input to `helm template` for the gke-prom overlay.
+#
+# This file is the SOURCE for `kube-prom-stack-rendered.yaml` in this same
+# directory. To regenerate the rendered manifest after editing this file:
+#
+#   helm template prometheus-stack \
+#     prometheus-community/kube-prometheus-stack \
+#     --version 83.6.0 \
+#     --namespace monitoring \
+#     --values deploy/kubernetes/overlays/gke-prom/values-kube-prom-stack.yaml \
+#     --include-crds \
+#     > deploy/kubernetes/overlays/gke-prom/kube-prom-stack-rendered.yaml
+#
+# Then `git diff` the rendered output, review, and commit both files in one MR.
+#
+# Why a static rendered YAML (same reasoning as local-prom):
+# - CI doesn't have Helm in every job; kustomize is universally available.
+# - Reviewers can diff the actual manifests when bumping the chart.
+# - Rollbacks are `git revert` of one commit, no `helm rollback` dance.
+# - Matches our pattern for argo-cd / external-secrets (rendered, vendored).
+#
+# Pinned chart version: 83.6.0 (matches local-prom for diff-ability — see
+# ADR-0039 "Pinned chart version"). Bump in lockstep with local-prom so the
+# two overlays stay comparable.
+#
+# What's DIFFERENT from local-prom/values-kube-prom-stack.yaml:
+#   1. Prometheus retention bumped to 7d (vs 2d) — production-grade window
+#      so the demo can show "what did the cluster look like during the
+#      last week" rather than only the current session.
+#   2. Persistent storage via volumeClaimTemplate (vs emptyDir) on the
+#      default `standard-rwo` StorageClass — survives pod restarts. Sized
+#      at 10Gi (see math in the comment block under prometheus.storageSpec).
+#   3. Memory limits bumped to match a 7-day window (1.5Gi vs 800Mi).
+#   4. kube-apiserver ServiceMonitor verifies the cert (insecureSkipVerify=
+#      false out of the box, no override needed) — apiserver's serving cert
+#      IS signed by the cluster root CA reachable via the SA token mount.
+#      The kubelet ServiceMonitor STAYS at insecureSkipVerify=true because
+#      GKE kubelets serve a certificate signed by the kubelet-CA, not by
+#      the cluster root CA reachable from /var/run/secrets/.../ca.crt — so
+#      a workload-pod-side verification can't succeed without injecting an
+#      extra CA bundle. This is a documented kube-prometheus-stack-on-GKE
+#      limitation, not a misconfiguration. Tracked under "Future work" in
+#      ADR-0039 — fixed by mounting the kubelet CA from a Secret, requires
+#      one extra `kubectl get secret` step at apply time we don't want to
+#      bake into the static manifest.
+#   5. node-exporter still enabled — GKE Autopilot DOES allow privileged
+#      DaemonSets in privileged-PSS namespaces. Verified empirically in
+#      ADR-0039 "GKE deployment" addendum. The DS scales to one pod per
+#      worker node; on the demo cluster this is typically 2-3 pods at
+#      ~10 MiB RSS each.
+#   6. defaultRules + alertmanager STAY disabled for the demo (same as
+#      local-prom). Re-enable when an SLO-grade observability story is
+#      needed; today's demo runs unattended for 2-hour windows max.
+#
+# What's UNCHANGED from local-prom (intentional — these are not GKE-specific):
+#   - kubeControllerManager / kubeScheduler / kubeProxy / kubeEtcd disabled.
+#     Autopilot does NOT expose these to workloads (control plane is fully
+#     managed). On Standard GKE they could be re-enabled but would require
+#     a separate gke-standard-prom overlay; we don't have one.
+#   - Grafana disabled (lgtm pod owns the single Grafana UI).
+#   - serviceMonitorSelectorNilUsesHelmValues=false so any ServiceMonitor
+#     in any namespace is picked up.
+# =============================================================================
+
+# CRDs ship with the chart; we want them committed in the rendered file so
+# `kubectl apply -k` works without a separate `kubectl apply -f crds/` step.
+crds:
+  enabled: true
+
+# ── Disable the chart's bundled Grafana ──────────────────────────────────────
+# The lgtm pod (deployed by base/observability) ships Grafana on port 3000.
+# Adding the chart's Grafana would mean two Grafana UIs — confusing for
+# demos and duplicate dashboards. The lgtm Grafana gets a Prometheus
+# datasource pointing at this chart's Prometheus (added via
+# grafana-datasource-patch.yaml in this overlay).
+grafana:
+  enabled: false
+
+# ── Disable Alertmanager ─────────────────────────────────────────────────────
+# ADR-0014 (single-replica demo) accepts no Alertmanager. Grafana's built-in
+# alert rules cover the basic routing the demo needs. Re-enable when moving
+# to a real production SLO (see ADR-0038 "Revisit criteria"). Same call as
+# local-prom for consistency.
+alertmanager:
+  enabled: false
+
+# ── Disable shipped recording / alerting rules ──────────────────────────────
+# The chart bundles 200+ PrometheusRule objects (kube-state-metrics SLOs,
+# node-exporter SLOs, etc.). For the demo we only want the metrics, not the
+# alerts — they'd flood Grafana's alert list with "kube-apiserver error
+# budget exhausted" noise on a tiny GKE cluster. Same call as local-prom.
+defaultRules:
+  create: false
+
+# ── Prometheus server config — tuned for GKE Autopilot ───────────────────────
+prometheus:
+  prometheusSpec:
+    # Match what kubeletstats does in lgtm — same granularity, same load.
+    scrapeInterval: 30s
+    evaluationInterval: 30s
+
+    # 7-day retention (vs 2d on local-prom) — production-grade window. Lets
+    # someone open Grafana the morning after a demo and see the full hour-by-
+    # hour timeline of what the cluster did. The PVC below is sized to fit.
+    retention: 7d
+
+    # Single replica (ADR-0014).
+    replicas: 1
+    shards: 1
+
+    # ── Persistent storage on the GKE default StorageClass ────────────────
+    # storageSpec.volumeClaimTemplate triggers the operator to add a
+    # volumeClaimTemplate to the underlying StatefulSet — Prometheus data
+    # then survives a pod restart, unlike the emptyDir on local-prom.
+    #
+    # Storage math (worst case for 7-day retention on this cluster size):
+    #   • Active series: ~5k (kubelet+ksm+node-exporter+coredns+app)
+    #   • Bytes per sample on disk: ~1.5-2 (Prometheus 3.x)
+    #   • Samples per series per day at 30s scrape: 2880
+    #   • Daily growth: 5000 × 2880 × 2 = ~28 MiB/day
+    #   • 7-day budget: ~200 MiB + WAL (~250 MiB max) + headroom = <1 GiB
+    # 10 GiB is intentionally over-provisioned (10x headroom) so a noisy
+    # cardinality event during the demo doesn't OOM the volume — and at
+    # GKE's standard-rwo pricing (€0.04/GiB/month, balanced PD), the cost
+    # is €0.40/month, well inside the €10/month cap (ADR-0022).
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          # Empty / null storageClassName = use the cluster default.
+          # GKE Autopilot's default is `standard-rwo` (balanced PD,
+          # ext4, ReadWriteOnce). Hard-coding `standard-rwo` would also
+          # work but then this overlay is GKE-only by class name, not
+          # by namespace policy — leaving it null lets the same overlay
+          # apply on EKS/AKS later if we wire those up.
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 10Gi
+
+    # Resource budget tuned for a 7-day window on GKE Autopilot.
+    # Autopilot mutates requests up to a minimum (50m CPU, 52Mi memory) so
+    # we set explicit values that already meet that floor. Limits give us a
+    # headroom ceiling without being so loose that one runaway WAL replay
+    # ruins the node's bin-pack.
+    #
+    # Worst-case memory at 7d retention with the headroom math above:
+    # ~600 MiB resident + WAL replay spike on restart (~+50%) = ~900 MiB.
+    # Limit set to 1.5Gi to absorb a cardinality bump without OOM.
+    resources:
+      requests:
+        cpu: 100m
+        memory: 600Mi
+      limits:
+        memory: 1500Mi
+
+    # IMPORTANT — these *NilUsesHelmValues=false flags tell the operator
+    # "select ALL ServiceMonitor / PodMonitor / etc. in the cluster, not
+    # only the ones with the chart's own labels". Without this the
+    # Prometheus would scrape nothing because no objects match the empty
+    # selector defaults. Mirador's app `ServiceMonitor` (mirador-
+    # servicemonitor.yaml in this overlay) and any third-party operator-
+    # installed ServiceMonitor will be picked up automatically. Same value
+    # as local-prom — kept here so a reviewer can diff cleanly.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+    scrapeConfigSelectorNilUsesHelmValues: false
+
+# ── node-exporter DaemonSet ──────────────────────────────────────────────────
+# Provides per-node CPU/mem/disk/network metrics in the Prometheus-community
+# naming OpenLens expects (`node_cpu_seconds_total`, `node_memory_MemAvailable_bytes`).
+# GKE Autopilot supports privileged DaemonSets when scheduled in a
+# privileged-PSS namespace (we set this on `monitoring` via namespace.yaml).
+# On a typical demo cluster this is 2-3 pods (one per Autopilot worker node).
+#
+# The chart's node-exporter sets nodeSelector kubernetes.io/os=linux and
+# tolerates all NoSchedule taints — which works on Autopilot because all
+# Autopilot nodes are linux + no special taints we need to opt into.
+nodeExporter:
+  enabled: true
+prometheus-node-exporter:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 64Mi
+
+# ── kube-state-metrics ───────────────────────────────────────────────────────
+# Emits cluster object state (`kube_pod_status_phase`, `kube_deployment_status_replicas`,
+# `kube_node_status_condition`) — the canonical names OpenLens hardcodes.
+# This is the piece lgtm's metricstransform aliases tried (and failed) to
+# fake. Now we have the real source.
+kubeStateMetrics:
+  enabled: true
+kube-state-metrics:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      memory: 128Mi
+
+# ── Prometheus Operator ──────────────────────────────────────────────────────
+# Manages the Prometheus + Alertmanager CRDs and reconciles ServiceMonitors
+# into scrape config. Required, can't be disabled. Same resource shape as
+# local-prom — the operator is configuration-light and idle most of the
+# time.
+prometheusOperator:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+
+# ── Scrape targets ──────────────────────────────────────────────────────────
+# kubelet/cadvisor scrape — the canonical source of `container_cpu_usage_seconds_total`.
+# https=true tells the chart to use the kubelet's HTTPS endpoint with the
+# pod's mounted SA token.
+#
+# On GKE the kubelet's serving cert is NOT signed by the cluster root CA
+# reachable from a workload pod's `/var/run/secrets/.../ca.crt` — the
+# kubelet uses a separately-signed cert. The chart leaves
+# insecureSkipVerify=true on each kubelet endpoint as a result; we keep
+# the default rather than chasing a fragile CA-injection patch (would
+# require adding a sidecar to mount the kubelet CA Secret, off-limits
+# because kustomize-time we don't have a stable Secret reference).
+#
+# Practical impact: scrape over HTTPS still happens, just without server
+# verification. Cluster-internal scrape only — no public network
+# exposure — so the residual MITM surface is the cluster network itself,
+# already protected by GKE's default L3 isolation. Re-evaluate when GKE
+# ships kubelet certs signed by the SA-token-visible root.
+kubelet:
+  serviceMonitor:
+    https: true
+
+# kube-apiserver — useful Prometheus metrics about apiserver itself. GKE
+# exposes the apiserver `/metrics` endpoint on the in-cluster service
+# `kubernetes.default.svc:443` — the chart's default ServiceMonitor works
+# unmodified. (Some metrics are filtered by GKE for security; the rest is
+# enough to draw apiserver request-rate and error graphs.)
+kubeApiServer:
+  enabled: true
+
+# kube-controller-manager / scheduler / proxy / etcd — STAY DISABLED on
+# Autopilot. GCP fully manages the control plane and does NOT expose these
+# components to workloads:
+#   - controllerManager + scheduler: no Service, no scrape endpoint.
+#   - proxy: replaced by GKE Dataplane V2 (Cilium). No kube-proxy DS.
+#   - etcd: managed externally, never reachable from a workload pod.
+# Re-enabling any of these on Autopilot would create ServiceMonitors with
+# permanently DOWN targets — noise in the alert list, no signal.
+#
+# (On GKE Standard, controller-manager + scheduler can be exposed via a
+# headless Service pointed at 127.0.0.1:10257 / :10259 of the control-
+# plane node, but Standard is out of scope per ADR-0023 — we stay on
+# Autopilot.)
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false
+kubeEtcd:
+  enabled: false
+
+# CoreDNS exposes Prometheus metrics on :9153. GKE's bundled CoreDNS
+# (kube-dns Deployment in kube-system) ships with the prometheus plugin
+# enabled, so this scrape works out of the box — same as kind.
+coreDns:
+  enabled: true

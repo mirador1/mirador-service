@@ -1,0 +1,116 @@
+# =============================================================================
+# gke-prom/ overlay — GKE Autopilot + kube-prometheus-stack alongside lgtm
+#
+# Target: GKE Autopilot cluster (mirador-prod, europe-west1, ephemeral per
+# ADR-0022). Same as `gke/` but adds the full kube-prometheus-stack so:
+#   - OpenLens "Metrics" tab works against a real Prometheus + ksm + node-
+#     exporter (the OTel-aliased path in lgtm-only `gke/` works too, but
+#     hardcoded community dashboards expect the Prometheus-community
+#     naming this overlay provides).
+#   - Production-grade 7-day metric history persisted on a 10Gi
+#     standard-rwo PVC (vs the 2-day emptyDir on local-prom).
+#
+# What this overlay adds on top of the `gke/` overlay's content:
+#   • `monitoring` namespace (PSS=privileged for node-exporter)
+#   • Prometheus Operator + CRDs
+#   • A 1-shard, 1-replica Prometheus (StatefulSet via the operator) with
+#     a 10Gi PersistentVolumeClaim on the cluster default StorageClass
+#     (= GKE Autopilot's `standard-rwo`)
+#   • node-exporter DaemonSet (1 pod per Autopilot worker node)
+#   • kube-state-metrics Deployment
+#   • 6 ServiceMonitors (kubelet, apiserver, coreDNS, the 3 chart services)
+#     + 1 ServiceMonitor for the Mirador app itself
+#   • Grafana datasource patch — adds a 5th datasource pointing at this
+#     Prometheus, alongside the existing 4 (lgtm Mimir, Tempo, Loki,
+#     Pyroscope). lgtm still owns its Grafana — no duplicate UI.
+#
+# What stays unchanged from gke/:
+#   • lgtm pod (Grafana + Loki + Tempo + Mimir + OTel Collector)
+#   • OTLP push from app pods → lgtm Collector → Mimir/Tempo/Loki
+#   • configmap-gke-patch.yaml (OTLP endpoint + Auth0 + CORS)
+#   • In-cluster Postgres (base/postgres) — Cloud SQL not used per ADR-0013
+#
+# When to use this overlay vs `gke/`:
+#   • Use `gke/` when running the OTel-native single-pod demo (the headline
+#     architecture per ADR-0014 + ADR-0038). Lower footprint, same
+#     observability story end-to-end.
+#   • Use `gke-prom/` when reviewing Prometheus Operator integrations on a
+#     cloud cluster, when a stakeholder expects to see ksm + node-exporter
+#     metrics natively, or when evaluating Grafana.com community dashboards
+#     against a real GKE cluster.
+#
+# Cost on GKE Autopilot (rough):
+#   • ~6 extra pods at minimal Autopilot resource classes (50m CPU floor,
+#     52Mi memory floor): ~0.4 vCPU + ~700 MiB requested → +€0.04/h above
+#     the lgtm-only baseline (€0.26/h, ADR-0022). Worst case with the
+#     cluster up 2h/week = +€0.30/month, well inside the €10/month cap.
+#   • 10Gi standard-rwo PD: €0.04/GiB/month = €0.40/month (lives on the
+#     PVC across destroy/restore — see "Cost gotcha" in this overlay's
+#     README.md).
+#
+# Apply (server-side required because chart CRDs exceed the 262 KiB
+# annotation limit):
+#   kubectl apply --server-side --force-conflicts -k deploy/kubernetes/overlays/gke-prom
+# =============================================================================
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+  - ../../base/postgres
+  # `monitoring` namespace must exist before the chart's pods are created
+  # — kustomize preserves resources order.
+  - namespace.yaml
+  # Prometheus Operator CRDs first, then the Prometheus / ServiceMonitor /
+  # PodMonitor objects that reference them. Same recipe as Argo CD's
+  # bootstrap pattern: CRDs → CRs.
+  - kube-prom-stack-crds.yaml
+  - kube-prom-stack-rendered.yaml
+  # ServiceMonitor: Prometheus picks up Mirador's /actuator/prometheus.
+  # Required label `release: prometheus-stack` so the operator's selector
+  # matches if it's ever tightened. See file header for the silent-ignore
+  # trap.
+  - mirador-servicemonitor.yaml
+  # Adds the kube-prom Prometheus as a 5th Grafana datasource in lgtm's
+  # provisioning. Two files:
+  #   • grafana-datasource-patch.yaml — the ConfigMap (resource).
+  #   • lgtm-mount-patch.yaml — strategic-merge patch (in `patches:`)
+  #     that mounts the ConfigMap into the lgtm pod.
+  - grafana-datasource-patch.yaml
+  # Extra NetworkPolicies needed because the base default-deny on `infra`
+  # would block lgtm Grafana → kube-prom Prometheus. Adds an
+  # `infra → monitoring:9090` egress allow.
+  #
+  # `monitoring → app:8080` (Prometheus scraping the Mirador backend) is
+  # already permitted by the base `allow-port-forward-to-backend` rule —
+  # see the comment in networkpolicy-extras.yaml for the analysis.
+  - networkpolicy-extras.yaml
+
+patches:
+  # ConfigMap patch — same hard-coded OTLP / Keycloak / CORS values as the
+  # gke/ overlay. Copied (not imported) because kustomize forbids resource
+  # paths above the overlay's own directory. Keep this file in sync with
+  # ../gke/configmap-gke-patch.yaml — both files have an identical comment
+  # header naming the other.
+  - path: configmap-gke-patch.yaml
+    target:
+      kind: ConfigMap
+      name: mirador-config
+
+  # Mounts the grafana-extra-datasources ConfigMap into the lgtm pod's
+  # Grafana provisioning dir. Strategic merge — adds 1 volume + 1
+  # volumeMount to the base lgtm Deployment without replacing the rest.
+  - path: lgtm-mount-patch.yaml
+
+# No images-pullpolicy-patch.yaml here (unlike local-prom) — GKE pulls
+# images from Artifact Registry by SHA, the base policy (`Always`) is
+# correct for a remote registry.
+#
+# No local-secrets.yaml here (unlike local-prom) — GKE has Workload
+# Identity Federation to GSM, so ESO syncs real secrets from Secret
+# Manager. The ExternalSecret + SecretStore CRs from the base apply
+# unchanged.
+#
+# No `$patch: delete` ExternalSecret blocks here (unlike local-prom) —
+# the deletes only exist for kind, where ESO has no GSM path. On GKE
+# we want ESO to do its job.

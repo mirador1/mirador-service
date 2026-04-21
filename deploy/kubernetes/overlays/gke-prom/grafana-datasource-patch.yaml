@@ -1,0 +1,55 @@
+# =============================================================================
+# grafana-datasource-patch.yaml — adds the kube-prom Prometheus as a 5th
+# Grafana datasource in the lgtm pod (GKE).
+#
+# This file ships TWO objects:
+#   1. ConfigMap `grafana-extra-datasources` in `infra` ns — the new
+#      datasource provisioning YAML (loaded as a `resources:` entry in
+#      kustomization.yaml).
+#   2. (NOT here, see lgtm-mount-patch.yaml in the same directory)
+#      Deployment patch that mounts the ConfigMap into the lgtm pod's
+#      provisioning/datasources/ directory.
+#
+# Why the split? kustomize rejects `resources:` files that contain an
+# object with the same {apiVersion, kind, name, namespace} as one
+# already in the base — the base ships the lgtm Deployment, so a
+# Deployment in the resources list collides. The mount patch lives in
+# `patches:` instead, where strategic-merge is the explicit semantics.
+#
+# Identical to local-prom's grafana-datasource-patch.yaml — the path
+# (`infra` ns → `monitoring/prometheus-stack-kube-prom-prometheus:9090`)
+# is the same on GKE as on kind, because both clusters use the same
+# base/observability lgtm Deployment.
+#
+# The new datasource UID is `prometheus-kps` so dashboards that explicitly
+# target it (e.g. a "Cluster overview" dashboard built on
+# kube-state-metrics) won't collide with the default `prometheus` UID
+# that points at lgtm's Mimir.
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-extra-datasources
+  namespace: infra
+  labels:
+    app.kubernetes.io/name: lgtm
+    app.kubernetes.io/component: grafana-datasources
+data:
+  kubeprom-datasource.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus (kube-prom-stack)
+        type: prometheus
+        # Distinct UID so Grafana exposes BOTH datasources side by side.
+        # Default `prometheus` UID stays bound to lgtm's Mimir (OTel-pushed
+        # app metrics + the kubeletstats / k8s_cluster receivers).
+        uid: prometheus-kps
+        # Cross-namespace service URL — Grafana lives in `infra`, the
+        # kube-prom Prometheus service lives in `monitoring`.
+        url: http://prometheus-stack-kube-prom-prometheus.monitoring.svc.cluster.local:9090
+        editable: true
+        # Default to lgtm's Mimir — the kube-prom one is "additional",
+        # picked explicitly when querying ksm/node-exporter metrics.
+        isDefault: false
+        jsonData:
+          timeInterval: 30s
