@@ -71,6 +71,9 @@ resources:
   # matches if it's ever tightened. See file header for the silent-ignore
   # trap.
   - mirador-servicemonitor.yaml
+  # Mirador alert + recording rules (Phase 3 O2). Same base as local-prom —
+  # avoid duplicating rules in each overlay.
+  - ../../base/observability-prom
   # Adds the kube-prom Prometheus as a 5th Grafana datasource in lgtm's
   # provisioning. Two files:
   #   • grafana-datasource-patch.yaml — the ConfigMap (resource).

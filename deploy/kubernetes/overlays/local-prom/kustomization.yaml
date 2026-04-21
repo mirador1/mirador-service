@@ -55,6 +55,10 @@ resources:
   # Required label `release: prometheus-stack` so the operator's selector
   # matches. See file header for the silent-ignore trap.
   - mirador-servicemonitor.yaml
+  # Mirador alert + recording rules (Phase 3 O2). Only included here
+  # and in gke-prom/ — plain local/ lacks the PrometheusRule CRD.
+  # Rule file: base/observability-prom/mirador-alerts.yaml.
+  - ../../base/observability-prom
   # Re-use the local/ overlay's plain Secrets (ESO has no path to GCP
   # Secret Manager from a kind cluster). Kustomize forbids resource
   # paths above the overlay's own directory AND rejects symlinks that
