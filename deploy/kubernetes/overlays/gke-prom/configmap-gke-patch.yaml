@@ -1,0 +1,47 @@
+# =============================================================================
+# ConfigMap patch — gke-prom overlay values (identical to gke/configmap-gke-patch.yaml)
+#
+# The base configmap uses `${PLACEHOLDER}` tokens that were historically
+# substituted by `envsubst` in the `deploy:gke` CI job. Now that Argo CD
+# is the deploy path (ADR-0015), those tokens are never substituted —
+# Kustomize doesn't do envsubst. This patch hard-codes the 3 affected
+# values for the current GKE cluster.
+#
+# Why duplicated rather than imported from gke/?
+# Kustomize forbids resource paths above the overlay's own directory AND
+# rejects symlinks that resolve outside it (LoadRestrictionsRootOnly
+# default), so the file is COPIED from ../gke/configmap-gke-patch.yaml.
+# Keep the two in sync by hand — both files have the same comment header
+# and the gke/ file is the source of truth (this is the mirror).
+#
+# To change them: edit BOTH files in the same MR, commit, let Argo CD
+# reconcile (Argo would pick whichever overlay is configured for the
+# current Application).
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mirador-config
+  namespace: app
+data:
+  # OTLP export goes to the in-cluster LGTM stack (grafana/otel-lgtm,
+  # deployed from base/observability). Grafana UI at lgtm.infra:3000.
+  # The kube-prom Prometheus added by THIS overlay is a separate scrape
+  # path that does NOT receive OTLP push — same OTLP wiring as gke/.
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://lgtm.infra.svc.cluster.local:4318"
+  MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED: "true"
+  MANAGEMENT_OTLP_TRACING_EXPORT_ENABLED: "true"
+
+  # Auth0 issuer — empty so the fallback `${KEYCLOAK_URL:}/realms/...`
+  # branch in application.yml is taken. The in-cluster Keycloak at
+  # keycloak.infra.svc.cluster.local provides the OIDC path.
+  AUTH0_ISSUER_URI: ""
+  KEYCLOAK_URL: "http://keycloak.infra.svc.cluster.local:8080"
+
+  # CORS allowlist. Since ADR-0025 the UI runs only on the developer
+  # laptop (compose port 4200 or the built dist served via `ng serve` /
+  # http-server). Requests to the cluster go through kubectl port-forward
+  # which presents the backend at http://localhost:18080 — same-origin
+  # relative to the UI, so CORS is only needed as a safety net for
+  # Swagger UI + Postman + ad-hoc testing from the laptop.
+  CORS_ALLOWED_ORIGINS: "http://localhost:4200,http://localhost:4300"

@@ -222,21 +222,92 @@ worst-case ceiling.
   Acceptable for a developer laptop with 16 GiB+ RAM; no regression
   on the default `local` overlay.
 
+## GKE deployment (added 2026-04-21)
+
+The same dual-mode pattern now exists on GKE: `deploy/kubernetes/overlays/gke/`
+keeps the lgtm-only architecture (the default for ephemeral demos), and
+`deploy/kubernetes/overlays/gke-prom/` adds kube-prometheus-stack
+alongside it for the few cases where a real Prometheus + ksm + node-
+exporter is needed.
+
+### When to pick which GKE overlay
+
+| Concern | `gke/` (default) | `gke-prom/` |
+|---|---|---|
+| Pod count (Autopilot, ≥2 nodes) | ~10 | ~14-16 (1 node-exporter per node) |
+| Steady-state RAM requested | ~1.5 GiB | ~2.4 GiB |
+| Persistent storage | None (lgtm: emptyDir) | 10Gi `standard-rwo` PVC |
+| Prometheus retention | N/A (Mimir ~24h on emptyDir) | **7 days** persisted |
+| Cost delta vs `gke/` | baseline | +€0.04/h compute + €0.40/month PVC |
+
+Pick `gke-prom/` when:
+- A reviewer/stakeholder expects to see ksm + node-exporter natively.
+- The demo will run for >24h and metric history must survive lgtm restart.
+- Evaluating Grafana.com community dashboards built on Prometheus-community naming.
+
+The two overlays are **mutually exclusive** at apply time on the same
+cluster (both target the `app/infra/observability/monitoring` namespaces),
+but the architectural choice is preserved in git so reviewers can diff
+the two with `diff -ur gke/ gke-prom/`.
+
+### What's GKE-specific in `gke-prom/` (vs `local-prom/`)
+
+The two overlays share 90% of their YAML (same chart pin, same Operator
++ ksm + node-exporter shape, same 6 ServiceMonitors, same Mirador
+ServiceMonitor, same NetworkPolicy extras, same Grafana datasource
+patch). The deltas:
+
+| Concern | `local-prom/` | `gke-prom/` |
+|---|---|---|
+| Storage | emptyDir | 10Gi `standard-rwo` PVC |
+| Retention | 2d | 7d |
+| Prometheus memory limit | 800Mi | 1500Mi |
+| ImagePullPolicy patch | Yes (`Never`) | No (Artifact Registry by SHA) |
+| Plain Secret stand-ins | Yes | No (ESO syncs from GSM) |
+| ExternalSecret deletes | Yes | No |
+| ConfigMap envsubst patch | No | Yes (mirrors `gke/`) |
+
+### Decisions intentionally NOT changed for GKE
+
+- **kubeControllerManager / kubeScheduler / kubeProxy / kubeEtcd stay
+  disabled** on GKE Autopilot. The Autopilot control plane is fully
+  managed and does NOT expose these to workloads — re-enabling would
+  create permanently-DOWN scrape targets, noise in alerts, no signal.
+  (On GKE Standard these can be exposed via headless Services targeting
+  the control-plane node IPs, but Standard is out of scope per ADR-0023
+  — we stay on Autopilot.)
+- **kubelet ServiceMonitor with `insecureSkipVerify=true`** on each of
+  the 3 endpoints. GKE kubelets serve a cert signed by the kubelet-CA,
+  not by the cluster root CA reachable from a workload pod's
+  `/var/run/secrets/.../ca.crt`. Verifying it requires injecting the
+  kubelet CA from a Secret (1 extra apply step, fragile across upgrades)
+  — chose to leave the verification off and document the residual MITM
+  surface (cluster-internal scrape only, GKE L3 isolation already
+  enforces). Tracked as a follow-up; not blocking for the demo.
+- **node-exporter stays as a privileged DaemonSet** (NOT skipped on
+  Autopilot). GKE Autopilot DOES allow privileged DaemonSets in
+  privileged-PSS namespaces — verified empirically. Scaled to one pod
+  per Autopilot worker node (typically 2-3 on the demo cluster).
+
+### Cost gotcha — PVC orphan
+
+The 10Gi `standard-rwo` PVC backing Prometheus is NOT destroyed by
+`terraform destroy` (GKE leaves PVCs orphaned by default to avoid silent
+data loss). Each orphan bills €0.40/month until reclaimed. The
+`bin/budget/gcp-cost-audit.sh` cron catches this drift weekly; manual
+cleanup also documented in `deploy/kubernetes/overlays/gke-prom/README.md`.
+
 ## Future work
 
 Tracked in TASKS.md, each independent:
 
-- **`gke-prom/` overlay** — same idea for the GKE Autopilot cluster.
-  Different defaults (no `insecure_skip_verify`, kubeControllerManager
-  re-enabled, scrape config tightened, retention bumped to 7 d).
 - **`test:k8s-apply-prom` CI job** — copy of `test:k8s-apply` but
   applies `local-prom/`. Catches Prometheus Operator manifest drift.
-- **Mirador `ServiceMonitor`** — declares the `mirador` Service as a
-  scrape target for the chart's Prometheus. With this in place,
-  Prometheus would scrape Mirador's `/actuator/prometheus` endpoint
-  natively (Prometheus naming) AND lgtm would still receive the
-  Micrometer OTLP push (OTel naming) — same data, two surfaces. Useful
-  for benchmarking which path has lower scrape overhead.
+- **kubelet CA injection** — mount the GKE kubelet CA from a Secret so
+  kubelet ServiceMonitor scrape can verify (`insecureSkipVerify=false`).
+  Requires one extra `kubectl get secret` step at apply time + a
+  per-cluster Secret reference, not bake-able into the static manifest
+  without a wrapper script.
 - **Chart Grafana dashboards re-evaluation** — bring in 2-3 of the
   chart's bundled dashboards that we'd otherwise have to write
   ourselves (Cluster overview, Node Exporter Full, K8s API server).
