@@ -10,8 +10,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
-import java.util.Locale;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -66,7 +66,11 @@ public class ChaosService {
      *         surfaces as {@code 500}.
      */
     public String trigger(ChaosExperiment experiment) {
-        String name = "mirador-" + experiment.slug() + "-" + Instant.now().getEpochSecond();
+        // Millisecond precision in the suffix — second-precision would fail
+        // with a 409 Conflict on two rapid clicks of the same button. Users
+        // demoing the chaos UI click repeatedly to see the impact monitor
+        // update, so this is a real edge case.
+        String name = "mirador-" + experiment.slug() + "-" + Instant.now().toEpochMilli();
 
         GenericKubernetesResource cr = new GenericKubernetesResourceBuilder()
                 .withApiVersion(API_VERSION)
