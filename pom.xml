@@ -1123,7 +1123,13 @@
             <configuration>
                 <skip>true</skip>
                 <failOnViolation>false</failOnViolation>
-                <printFailingErrors>false</printFailingErrors>
+                <!-- Flipped true 2026-04-21 Phase A quality audit: violations
+                     now appear in Maven build output + CI log so reviewers see
+                     them at a glance. Build still passes (failOnViolation=false)
+                     — Phase C flips both to true once Phase B refactors clear
+                     the legacy outliers. See docs/audit/quality-thresholds-
+                     2026-04-21.md for the full phase sequencing. -->
+                <printFailingErrors>true</printFailingErrors>
                 <targetJdk>21</targetJdk>
                 <outputDirectory>${project.build.directory}</outputDirectory>
                 <format>xml</format>
@@ -1168,10 +1174,19 @@
                 <skip>true</skip>
                 <failsOnError>false</failsOnError>
                 <failOnViolation>false</failOnViolation>
-                <consoleOutput>false</consoleOutput>
+                <!-- Flipped to true 2026-04-21 Phase A follow-up (same rationale
+                     as the PMD flip in the sibling maven-pmd-plugin block). -->
+                <consoleOutput>true</consoleOutput>
                 <outputFileFormat>xml</outputFileFormat>
                 <outputFile>${project.build.directory}/checkstyle-result.xml</outputFile>
-                <configLocation>google_checks.xml</configLocation>
+                <!-- Swapped from google_checks.xml to custom config 2026-04-21.
+                     Google omits FileLength/MethodLength/LineLength by design;
+                     custom file imports Google's import + naming checks and
+                     adds the size-related ones with industry thresholds
+                     (FileLength 1000, MethodLength 100, LineLength 120,
+                     ParameterNumber 7). See docs/audit/quality-thresholds-
+                     2026-04-21.md for the full rule table. -->
+                <configLocation>config/checkstyle.xml</configLocation>
                 <suppressionsLocation></suppressionsLocation>
                 <includeTestSourceDirectory>false</includeTestSourceDirectory>
             </configuration>
