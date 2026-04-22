@@ -204,4 +204,127 @@ class AuthControllerTest {
 
         verify(loginAttempts).isBlocked("10.0.0.1");
     }
+
+    // ── Refresh ───────────────────────────────────────────────────────────────
+
+    @Test
+    void refresh_validRefreshToken_rotatesTokenAndReturnsNewPair() {
+        var refreshReq = new AuthController.RefreshRequest("refresh-abc");
+        var oldRefreshToken = new RefreshToken();
+        oldRefreshToken.setUsername("alice");
+        when(jwt.validateRefreshToken("refresh-abc")).thenReturn(oldRefreshToken);
+        when(userDetailsService.loadUserByUsername("alice"))
+                .thenReturn(sampleUser("alice", "ROLE_USER"));
+        when(jwt.generateToken("alice", "ROLE_USER")).thenReturn("new-access");
+        when(jwt.generateRefreshToken("alice")).thenReturn("new-refresh");
+
+        ResponseEntity<Object> response = controller.refresh(refreshReq);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> body = (Map<String, Object>) response.getBody();
+        assertThat(body).containsEntry("accessToken", "new-access")
+                .containsEntry("refreshToken", "new-refresh");
+        // Critical: old refresh token MUST be deleted (single-use to prevent
+        // replay attacks). Pinned because losing this delete would let an
+        // attacker who captured a refresh token use it indefinitely.
+        verify(jwt).deleteRefreshToken(oldRefreshToken);
+        verify(auditEventPort).recordEvent("alice", "TOKEN_REFRESH",
+                "Refresh token rotated", null);
+    }
+
+    @Test
+    void refresh_invalidRefreshToken_returns401WithMessage() {
+        var refreshReq = new AuthController.RefreshRequest("expired-or-fake");
+        when(jwt.validateRefreshToken("expired-or-fake"))
+                .thenThrow(new IllegalArgumentException("Refresh token expired"));
+
+        ResponseEntity<Object> response = controller.refresh(refreshReq);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> body = (Map<String, Object>) response.getBody();
+        assertThat(body).containsEntry("error", "Refresh token expired");
+        // No new tokens issued on failure
+        verify(jwt, never()).generateToken(anyString(), anyString());
+    }
+
+    @Test
+    void refresh_picksUpRoleFromDbNotFromOldToken() {
+        // Critical: role MUST come from the current DB state, not the old
+        // token. Without this, a user demoted from ADMIN to USER would
+        // keep their ADMIN access until they manually re-logged in.
+        var refreshReq = new AuthController.RefreshRequest("refresh-xyz");
+        var oldToken = new RefreshToken();
+        oldToken.setUsername("bob");
+        when(jwt.validateRefreshToken("refresh-xyz")).thenReturn(oldToken);
+        // DB now says ROLE_READER (was ADMIN previously)
+        when(userDetailsService.loadUserByUsername("bob"))
+                .thenReturn(sampleUser("bob", "ROLE_READER"));
+        when(jwt.generateToken("bob", "ROLE_READER")).thenReturn("new-access-with-reader");
+        when(jwt.generateRefreshToken("bob")).thenReturn("new-refresh");
+
+        controller.refresh(refreshReq);
+
+        verify(jwt).generateToken("bob", "ROLE_READER");
+        verify(jwt, never()).generateToken("bob", "ROLE_ADMIN");
+    }
+
+    // ── Logout ────────────────────────────────────────────────────────────────
+
+    @Test
+    void logout_blacklistsAccessTokenAndDeletesRefreshTokens() {
+        var principal = sampleUser("alice", "ROLE_ADMIN");
+
+        ResponseEntity<Object> response = controller.logout(
+                "Bearer access-token-abc", principal);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        verify(jwt).blacklistToken("access-token-abc");
+        verify(jwt).deleteRefreshTokensByUsername("alice");
+        verify(auditEventPort).recordEvent("alice", "LOGOUT",
+                "JWT blacklisted, refresh tokens deleted", null);
+    }
+
+    @Test
+    void logout_noAuthHeader_stillSucceedsButDoesNotBlacklist() {
+        // Edge case: principal exists but Authorization header is missing
+        // (unusual but possible). Logout MUST still proceed for the principal
+        // (delete refresh tokens) — denying logout because of a missing
+        // header would be hostile UX.
+        var principal = sampleUser("alice", "ROLE_USER");
+
+        ResponseEntity<Object> response = controller.logout(null, principal);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        verify(jwt, never()).blacklistToken(anyString());
+        verify(jwt).deleteRefreshTokensByUsername("alice");
+    }
+
+    @Test
+    void logout_noAuthHeaderAndNoPrincipal_succeedsAsNoOp() {
+        // Both null — request would have been rejected upstream for any
+        // protected route, but /logout is reachable per the security config.
+        // Must succeed cleanly (200 OK with the standard message).
+        ResponseEntity<Object> response = controller.logout(null, null);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        verify(jwt, never()).blacklistToken(anyString());
+        verify(jwt, never()).deleteRefreshTokensByUsername(anyString());
+        verify(auditEventPort, never()).recordEvent(anyString(), anyString(),
+                anyString(), anyString());
+    }
+
+    @Test
+    void logout_nonBearerAuthHeader_doesNotAttemptBlacklist() {
+        // Wrong auth scheme (e.g. "Basic ..." carried over from another
+        // session). Must not extract garbage as a token and pass it to
+        // blacklistToken (which would pollute the Redis blacklist).
+        var principal = sampleUser("alice", "ROLE_USER");
+
+        controller.logout("Basic abc:def", principal);
+
+        verify(jwt, never()).blacklistToken(anyString());
+        verify(jwt).deleteRefreshTokensByUsername("alice");
+    }
 }
