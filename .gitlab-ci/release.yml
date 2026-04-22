@@ -1,0 +1,83 @@
+# .gitlab-ci/release.yml — extracted 2026-04-22 from .gitlab-ci.yml
+# Phase B-2 CI modularisation (ADR-0050). Contains: pages, release-please.
+# The parent `.gitlab-ci.yml` keeps only workflow/stages/default/
+# variables/cache/include. See docs/adr/0050-ci-yaml-modularisation-plan.md.
+
+pages:
+  stage: pages
+  image: alpine:3.20
+  interruptible: false
+  script:
+    - echo "Publishing public/ to GitLab Pages"
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - "public/**/*"
+        - ".gitlab-ci.yml"
+
+release-please:
+  stage: deploy
+  image: node:22-alpine
+  tags:
+    - macbook-local
+  needs: []        # independent — runs in parallel with deploys
+  rules:
+    # DISABLED 2026-04-22 — googleapis/release-please is GitHub-API-only; 401
+    # Bad Credentials on api.github.com/graphql with GitLab PAT (see pipeline
+    # #660). See TASKS.md "Release automation — tool swap" for the follow-up.
+    - when: never
+  before_script:
+    - apk add --no-cache git
+  script:
+    # --token passes the PAT; --repo-url points at this project.
+    # The CLI reads config/release-please-config.json + .release-please-manifest.json
+    # from the working tree. (config file moved out of repo root on
+    # 2026-04-20 per root-hygiene rule; the CLI accepts any path via
+    # --config-file, no tool default to preserve.)
+    - |
+      npx --yes release-please release-pr \
+        --token "$RELEASE_PLEASE_TOKEN" \
+        --repo-url "$CI_PROJECT_URL" \
+        --target-branch "$CI_DEFAULT_BRANCH" \
+        --config-file config/release-please-config.json \
+        --manifest-file .release-please-manifest.json
+      npx --yes release-please github-release \
+        --token "$RELEASE_PLEASE_TOKEN" \
+        --repo-url "$CI_PROJECT_URL" \
+        --target-branch "$CI_DEFAULT_BRANCH" \
+        --config-file config/release-please-config.json \
+        --manifest-file .release-please-manifest.json
+  # Shield removed 2026-04-21 — the job is already gated on
+  # `$RELEASE_PLEASE_TOKEN` at line 446 (rule does not match when the
+  # token is unset → `when: never`), so the shield was protecting a job
+  # that genuinely cannot run. When the token is provisioned, a real
+  # release-please error SHOULD block the deploy stage; that's the
+  # whole point of the tag step. To re-shield during a transition,
+  # add `allow_failure: true` back here with a dated TODO per CLAUDE.md
+  # → "Pipelines stay green".
+
+# ── stage: integration ────────────────────────────────────────────────────────
+
+# Integration tests (*ITest) via maven-failsafe, with Docker socket binding for Testcontainers.
+# Testcontainers spins up real PostgreSQL 17, Redis, Kafka and Keycloak containers.
+#
+# WHY NOT DinD: DinD creates an isolated Docker daemon inside a service container. When
+# Testcontainers starts inner containers, their ports are bound on the DinD container's
+# bridge network (172.17.0.1), which is NOT accessible from the CI job container. Setting
+# TESTCONTAINERS_HOST_OVERRIDE=docker doesn't help because the DinD container only publishes
+# port 2375 (the Docker API) — inner container ports are trapped inside DinD.
+#
+# FIX: Use Docker socket binding instead. GitLab SaaS shared runners mount the host Docker
+# socket at /var/run/docker.sock. Testcontainers uses this socket to start containers on
+# the HOST Docker daemon. Container ports are on the Docker bridge (172.17.0.1), which IS
+# accessible from the CI job container (it's the container's default gateway).
+#
+# At the verify phase Maven also runs:
+#   • SpotBugs:check   — static bytecode analysis (fails on Medium+ findings)
+#   • JaCoCo:merge     — merges jacoco.exec (unit, from artifact) + jacoco-it.exec (IT)
+#   • JaCoCo:check     — fails if merged instruction coverage < 60 %
+#
+# The unit-test artifact (target/jacoco.exec) is pulled automatically via `needs`.

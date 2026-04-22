@@ -1,0 +1,316 @@
+# .gitlab-ci/quality.yml — extracted 2026-04-22 from .gitlab-ci.yml
+# Phase B-2 CI modularisation (ADR-0050). Contains: sonar-analysis, code-quality, generate-reports.
+# The parent `.gitlab-ci.yml` keeps only workflow/stages/default/
+# variables/cache/include. See docs/adr/0050-ci-yaml-modularisation-plan.md.
+
+sonar-analysis:
+  stage: sonar
+  variables:
+    # Allow JVM to self-attach (Mockito byte-buddy requirement on Java 25)
+    MAVEN_OPTS: >-
+      -XX:+EnableDynamicAgentLoading
+      -Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository
+  script:
+    # Compile first so target/classes/ exists — SonarScanner's Java analyzer
+    # requires compiled bytecode via sonar.java.binaries.
+    # The integration-test artifacts contain jacoco-it.xml + spotbugs report
+    # but NOT target/classes/ (would bloat artifacts beyond what GitLab allows).
+    # Skip tests: already validated in unit-test + integration-test stages.
+    - mvn $MAVEN_CLI_OPTS compile -DskipTests -Djacoco.skip=true
+    # target/site/jacoco-it/jacoco.xml comes from integration-test artifacts
+    # so SonarCloud merges unit + IT coverage (matches pom.xml xmlReportPaths).
+    - mvn $MAVEN_CLI_OPTS sonar:sonar
+      -Dsonar.token="$SONAR_TOKEN"
+      -Dsonar.host.url="https://sonarcloud.io"
+  needs:
+    - job: integration-test
+      artifacts: true   # inherit target/ artifacts (JaCoCo XML, bytecode) from integration stage
+    # Optional SARIF sources — Sonar silently skips missing
+    # sarifReportPaths entries, so sonar-analysis still runs on MR
+    # pipelines where trivy didn't fire. When trivy runs (main / tags),
+    # Sonar absorbs its findings as External Issues.
+    #
+    # semgrep SARIF is NOT chained here because semgrep lives in the
+    # `reports` stage (downstream of `sonar`) so it produces the SARIF
+    # after sonar-analysis has finished. The semgrep-report.sarif is
+    # still published to SonarCloud manually during the daily report
+    # schedule by running semgrep BEFORE the sonar step in that job —
+    # tracked as a follow-up if we want continuous semgrep coverage.
+    - job: trivy:scan
+      artifacts: true
+      optional: true
+    # spectral-report.sarif from openapi-lint (path-filtered: only fires
+    # when *.java / pom.xml / .spectral.yaml change). When openapi-lint
+    # didn't run, the SARIF file is missing and Sonar silently skips it
+    # via the `optional: true` semantics on the artifact dependency
+    # combined with `sonar.sarifReportPaths` accepting missing files.
+    - job: openapi-lint
+      artifacts: true
+      optional: true
+  rules:
+    # MAIN ONLY — SonarCloud free tier does NOT support PR/MR analysis
+    # (the "Project not found" error you see if you try). Branch+MR
+    # decoration requires the paid Developer Edition. Keeping the MR
+    # rule was masked for months by `allow_failure: true` (now removed
+    # 2026-04-21); see [pipeline #570 sonar-analysis trace](https://gitlab.com/mirador1/mirador-service/-/jobs/14011853839)
+    # for the failure shape. Main-branch analysis is the source of
+    # truth for the SonarCloud quality gate; per-MR feedback comes
+    # from `code-quality` (PMD/Checkstyle/SpotBugs annotations).
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    # Skip entirely if SONAR_TOKEN is not configured (avoids failing new environments)
+    - if: '$SONAR_TOKEN == null || $SONAR_TOKEN == ""'
+      when: never
+  # Shield removed 2026-04-21 — sonar-analysis now main-only, where it
+  # has a clean 7/7 success record. The only realistic break is a
+  # SonarCloud 5xx; if that happens we WANT main to go red so we know
+  # to re-run later rather than silently merging without a fresh quality
+  # scan. The MR-rule removal above eliminated the "Project not found"
+  # 404 that was failing every MR pipeline — investigated 2026-04-21
+  # via [pipeline #570](https://gitlab.com/mirador1/mirador-service/-/pipelines/2467312321).
+  cache:
+    key: "$CI_COMMIT_REF_SLUG"
+    paths:
+      - .m2/repository
+  timeout: 10 minutes
+
+# ── stage: sonar — GitLab Code Quality artifact ──────────────────────────────
+#
+# Produces the GitLab Code Quality artifact (gl-code-quality-report.json) by:
+#
+#   1. Running PMD + Checkstyle via Maven with Java 21.
+#      Both tools crash on Java 25 pattern-matching syntax; -Dcompat activates the
+#      Java 21 source overlay so the analysis completes cleanly.
+#      -Preport-static enables PMD and Checkstyle (both skipped in the default build).
+#
+#   2. Using the SpotBugs XML from the integration-test artifacts (already produced
+#      by mvn verify in that stage — no need to rerun bytecode analysis here).
+#
+#   3. Converting all three XML reports to the GitLab Code Quality JSON format.
+#      GitLab reads gl-code-quality-report.json to annotate MR diffs inline —
+#      violations appear on the exact changed lines, no separate plugin required.
+#
+# Severity mapping:
+#   SpotBugs  priority 1 → blocker, 2 → critical, 3 → major, 4 → minor, 5 → info
+#   PMD       priority 1 → blocker, 2 → critical, 3 → major, 4 → minor, 5 → info
+#   Checkstyle error → major, warning → minor, info → info
+#
+# Format spec: https://docs.gitlab.com/ee/ci/testing/code_quality.html#implement-a-custom-tool
+code-quality:
+  stage: sonar
+  # Java 21 image: same as compat-* jobs — required for PMD + Checkstyle to parse
+  # Java 25 pattern-matching syntax (both tools use their own parser, not javac).
+  image: maven:3.9.14-eclipse-temurin-21-noble
+  needs:
+    - job: integration-test
+      artifacts: true   # provides target/spotbugsXml.xml (bytecode analysis already done)
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  # Shield removed 2026-04-21 — ran green 7/7 on main (pipelines #557→
+  # #565). PMD/Checkstyle/SpotBugs annotations are deterministic on
+  # the Java 21 overlay and there is no severity gate enforced — so
+  # the only way the job fails is if the report-generation step itself
+  # breaks (Python conversion script, missing artifact, malformed XML).
+  # That IS something a reviewer wants to see as a red — silent
+  # breakage of the GitLab MR Code Quality widget is the worst case.
+  variables:
+    MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+  before_script:
+    # python3 is required for the XML→JSON conversion below but isn't in the
+    # maven:noble image. apt-get install is ~1s since we only need the minimal package.
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends python3
+  script:
+    # Step 1 — Generate PMD + Checkstyle XML reports.
+    # -Dcompat: activates the Java 21 source overlay (ScopedValue → ThreadLocal shim)
+    # -Preport-static: enables maven-pmd-plugin and maven-checkstyle-plugin (both skip=true by default)
+    # -DskipTests -DskipITs: tests already validated in earlier stages
+    # -Djacoco.skip: no coverage measurement needed here
+    # SpotBugs is NOT in -Preport-static so it stays skipped; we use the XML from integration-test.
+    - mvn $MAVEN_CLI_OPTS verify
+        -Dcompat -Preport-static
+        -DskipTests -DskipITs
+        -Djacoco.skip=true
+    # Step 2 — Convert SpotBugs + PMD + Checkstyle XML → gl-code-quality-report.json.
+    - |
+      python3 - <<'PYEOF'
+      import xml.etree.ElementTree as ET, json, hashlib, os
+
+      # SpotBugs priority 1=HIGH…5=INFO → GitLab severity labels
+      SMAP_SB  = {1: 'blocker', 2: 'critical', 3: 'major', 4: 'minor', 5: 'info'}
+      # PMD priority string '1'=HIGH…'5'=INFO
+      SMAP_PMD = {'1': 'blocker', '2': 'critical', '3': 'major', '4': 'minor', '5': 'info'}
+      issues = []
+
+      def rel_path(abs_path):
+          """Strip everything before src/main/java/ to get a project-relative path."""
+          idx = abs_path.find('src/main/java/')
+          return abs_path[idx:] if idx >= 0 else abs_path
+
+      # ── SpotBugs ─────────────────────────────────────────────────────────────
+      sb_path = 'target/spotbugsXml.xml'
+      if os.path.exists(sb_path):
+          root = ET.parse(sb_path).getroot()
+          n = 0
+          for bug in root.findall('.//BugInstance'):
+              priority = int(bug.get('priority', '5'))
+              src = bug.find('.//SourceLine[@primary="true"]') or bug.find('.//SourceLine')
+              if src is None:
+                  continue
+              sp = src.get('sourcepath', '')
+              line = int(src.get('start', '1'))
+              btype = bug.get('type', 'UNKNOWN')
+              cat   = bug.get('category', '')
+              path  = ('src/main/java/' + sp) if sp else 'src/main/java/unknown'
+              desc  = '[SpotBugs] ' + btype + (' [' + cat + ']' if cat else '')
+              lm = bug.find('.//LongMessage')
+              if lm is not None and lm.text:
+                  desc += ': ' + lm.text.strip()[:200]
+              fp = hashlib.md5(f"sb:{path}:{line}:{btype}".encode()).hexdigest()
+              issues.append({"description": desc, "fingerprint": fp,
+                             "severity": SMAP_SB.get(priority, 'info'),
+                             "location": {"path": path, "lines": {"begin": line}}})
+              n += 1
+          print(f"SpotBugs: {n} findings")
+      else:
+          print("SpotBugs: no report found (target/spotbugsXml.xml missing)")
+
+      # ── PMD ──────────────────────────────────────────────────────────────────
+      pmd_path = 'target/pmd.xml'
+      if os.path.exists(pmd_path):
+          root = ET.parse(pmd_path).getroot()
+          n = 0
+          for fnode in root.findall('.//file'):
+              fpath = fnode.get('name', '')
+              rel   = rel_path(fpath)
+              for v in fnode.findall('violation'):
+                  line     = int(v.get('beginline', '1'))
+                  rule     = v.get('rule', 'Unknown')
+                  ruleset  = v.get('ruleset', '')
+                  priority = v.get('priority', '3')
+                  msg      = (v.text or '').strip()[:200]
+                  desc = '[PMD] ' + rule + (f' ({ruleset})' if ruleset else '') + ': ' + msg
+                  fp = hashlib.md5(f"pmd:{rel}:{line}:{rule}".encode()).hexdigest()
+                  issues.append({"description": desc, "fingerprint": fp,
+                                 "severity": SMAP_PMD.get(priority, 'major'),
+                                 "location": {"path": rel, "lines": {"begin": line}}})
+                  n += 1
+          print(f"PMD: {n} findings")
+      else:
+          print("PMD: no report found (target/pmd.xml missing)")
+
+      # ── Checkstyle ───────────────────────────────────────────────────────────
+      cs_path = 'target/checkstyle-result.xml'
+      if os.path.exists(cs_path):
+          root = ET.parse(cs_path).getroot()
+          n = 0
+          for fnode in root.findall('.//file'):
+              fpath = fnode.get('name', '')
+              rel   = rel_path(fpath)
+              for err in fnode.findall('error'):
+                  line   = int(err.get('line', '1'))
+                  sev    = err.get('severity', 'warning')
+                  msg    = err.get('message', '')[:200]
+                  source = err.get('source', '').split('.')[-1]
+                  gl_sev = 'major' if sev == 'error' else 'minor' if sev == 'warning' else 'info'
+                  desc = '[Checkstyle] ' + source + ': ' + msg
+                  fp = hashlib.md5(f"cs:{rel}:{line}:{source}:{msg[:50]}".encode()).hexdigest()
+                  issues.append({"description": desc, "fingerprint": fp,
+                                 "severity": gl_sev,
+                                 "location": {"path": rel, "lines": {"begin": line}}})
+                  n += 1
+          print(f"Checkstyle: {n} findings")
+      else:
+          print("Checkstyle: no report found (target/checkstyle-result.xml missing)")
+
+      with open('gl-code-quality-report.json', 'w') as f:
+          json.dump(issues, f, indent=2)
+      print(f"✓ Total {len(issues)} findings → gl-code-quality-report.json")
+      PYEOF
+  artifacts:
+    reports:
+      # GitLab reads this key to populate the Code Quality widget in MR diffs.
+      # Violations appear as inline annotations on the changed lines — no plugin needed.
+      codequality: gl-code-quality-report.json
+    paths:
+      - gl-code-quality-report.json   # also browsable as a raw JSON pipeline artifact
+    expire_in: 1 week
+
+# ── stage: package ────────────────────────────────────────────────────────────
+
+# Generate the Maven site with quality reports (Surefire, JaCoCo, SpotBugs, Javadoc).
+# Maven site generation — moved to the dedicated reports stage (REPORT_PIPELINE=true schedule).
+# Removed from the regular pipeline to keep push feedback fast (mvn site takes ~3 min).
+# The generate-reports job below does this + commits the result to the reports/ branch.
+
+# Build the executable Spring Boot fat JAR.
+# Tests are skipped here — they already passed in the test + integration stages.
+# The JAR is stored as a pipeline artifact for deployment or manual download.
+generate-reports:
+  stage: reports
+  # Only run on the dedicated report schedule (distinguished by REPORT_PIPELINE=true).
+  # NEVER runs on regular push pipelines or the native-build schedule.
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $REPORT_PIPELINE == "true"
+      when: on_success
+    - when: never
+  # No `needs:` — the reports schedule runs independently of regular pipeline jobs.
+  # The code on main is already tested by the regular pipeline; this job just generates docs.
+  script:
+    # Run tests first so JaCoCo + SpotBugs data files exist for the site reports.
+    # -q suppresses verbose output; the reports are what matter, not the build log.
+    - mvn $MAVEN_CLI_OPTS verify -q
+    # Generate the full Maven site (Surefire, Failsafe, JaCoCo, SpotBugs, Javadoc).
+    # PMD / Checkstyle / JXR are intentionally excluded — they crash on Java 25 pattern guards.
+    - mvn $MAVEN_CLI_OPTS site
+    # Push the generated site to the `reports/` branch so it is browsable in GitLab
+    # and can be served by the nginx container in docker-compose.yml.
+    # GITLAB_REPORTS_TOKEN must be a project access token (Reporter, write_repository).
+    - |
+      git config user.email "ci-reports@mirador-service"
+      git config user.name "CI Reports Bot"
+      # Create or reset the reports/ branch to an orphan (no history — keeps the branch small).
+      git fetch origin reports || true
+      git checkout -B reports origin/reports 2>/dev/null || git checkout --orphan reports
+      # Clear everything except the generated site and keep a README at the root.
+      git rm -rf . --quiet 2>/dev/null || true
+      cp -r target/site/* .
+      echo "# Mirador Service — Generated Reports" > README.md
+      echo "" >> README.md
+      echo "Generated: $(date -u '+%Y-%m-%d %H:%M UTC') from commit [\`${CI_COMMIT_SHORT_SHA}\`](${CI_PROJECT_URL}/-/commit/${CI_COMMIT_SHA}) on \`${CI_COMMIT_BRANCH}\`." >> README.md
+      echo "" >> README.md
+      echo "Browse: Surefire · Failsafe · JaCoCo · SpotBugs · Javadoc" >> README.md
+      git add -A
+      git diff --cached --quiet && echo "No changes to reports — skipping commit" && exit 0
+      git commit -m "chore(reports): regenerate quality site [skip ci]"
+      git remote set-url origin "https://ci-reports:${GITLAB_REPORTS_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+      git push origin reports
+  # Also expose the generated site as a pipeline artifact for direct browsing.
+  artifacts:
+    name: "reports-${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - target/site/    # Full Maven site HTML — browsable via "Browse" in pipeline artifacts
+    expire_in: 30 days
+    when: always
+
+# ── stage: reports — Semgrep static analysis ─────────────────────────────────
+#
+# Runs Semgrep on the Java source code using public OSS rulesets.
+# No account, no token, no service — the rulesets are fetched from the public
+# Semgrep registry (registry.semgrep.dev) at runtime.
+#
+# Rulesets used:
+#   p/java        — general Java bugs: null deref, resource leaks, bad equals, …
+#   p/spring      — Spring-specific: missing @Transactional, wrong @Autowired, …
+#   p/owasp-top-ten — injection, XSS, insecure crypto, path traversal, …
+#   p/secrets     — hardcoded credentials, API keys in source
+#
+# Output formats:
+#   gl-sast-report.json    → GitLab Security Dashboard (SAST widget in MRs)
+#   semgrep-report.json    → full JSON for manual inspection or downstream tooling
+#
+# Why Semgrep instead of Qodana?
+#   Qodana requires a JetBrains account even on the free tier (token activation).
+#   Semgrep OSS rules are fully public — no registration, no vendor lock-in.
+#   Analysis takes ~1-2 min vs ~10 min for Qodana.

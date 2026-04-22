@@ -1,0 +1,302 @@
+# .gitlab-ci/test.yml — extracted 2026-04-22 from .gitlab-ci.yml
+# Phase B-2 CI modularisation (ADR-0050). Contains: unit-test, integration-test, integration-test, .compat-job, mutation-test.
+# The parent `.gitlab-ci.yml` keeps only workflow/stages/default/
+# variables/cache/include. See docs/adr/0050-ci-yaml-modularisation-plan.md.
+
+unit-test:
+  stage: test
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - when: on_success
+  script:
+    # surefire-report:report-only removed — it requires maven-site skin config which GitLab
+    # runners don't have. GitLab reads JUnit XML directly from target/surefire-reports/*.xml.
+    - mvn $MAVEN_CLI_OPTS test
+  artifacts:
+    when: always    # upload even on test failure so the JUnit report is always available for diagnosis
+    reports:
+      junit: target/surefire-reports/*.xml    # populates the "Tests" tab in the MR and pipeline view
+    paths:
+      - target/jacoco.exec      # binary coverage data — forwarded to integration-test for JaCoCo merge
+      - target/site/jacoco/     # HTML unit coverage report (browsable in the job artifacts panel)
+    expire_in: 1 week    # short-lived: only needed until the integration job completes and the MR is merged
+
+# GitLab SAST — static application security testing.
+# Runs semgrep rules against the source code to detect: injection flaws,
+# insecure deserialization, weak crypto, path traversal, XSS patterns, etc.
+# Results appear in Security > Vulnerability Report.
+#
+# Currently skipped (when: never) because on GitLab.com free-tier the template
+# is a configuration stub that intentionally exits 1, producing a pipeline warning
+# (orange ⚠️) on every run — even with allow_failure: true.
+#
+# To enable: requires GitLab Ultimate or a self-managed runner with the
+# GitLab Security Scanner image. Replace `when: never` with `when: on_success`.
+integration-test:
+  stage: integration
+  # No runner tag — runs on any available runner (local Mac or SaaS Linux).
+  # TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal makes Testcontainers connect to
+  # published container ports via the Docker host hostname instead of 172.17.0.1.
+  #
+  # Why this is needed on Mac Docker Desktop:
+  #   Testcontainers auto-detects the host as 172.17.0.1 (Docker bridge gateway inside
+  #   the LinuxKit VM). But on Mac, published ports are bound to 127.0.0.1 (Mac host),
+  #   not 172.17.0.1 — causing ContainerLaunchException.
+  #   `host.docker.internal` is injected into every container by Docker Desktop and
+  #   resolves to the Mac host where the published ports ARE accessible.
+  #
+  # On GitLab SaaS Linux runners (native Docker):
+  #   Docker 20.10+ also injects `host.docker.internal` (resolves to 172.17.0.1 on Linux).
+  #   So the same override works correctly on both platforms.
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - when: on_success
+  variables:
+    # Use Unix socket directly — no global DOCKER_HOST override to clear.
+    DOCKER_HOST: ""
+    # Tell Testcontainers to check published ports on host.docker.internal instead of
+    # auto-detected 172.17.0.1. Works on both Mac Docker Desktop and Linux Docker 20.10+.
+    TESTCONTAINERS_HOST_OVERRIDE: "host.docker.internal"
+  needs:
+    - job: unit-test
+      artifacts: true   # downloads target/jacoco.exec so JaCoCo:merge can combine unit + IT coverage
+  # Testcontainers container startup on a cold runner is the #1 transient
+  # flake: a Keycloak + Postgres + Kafka + Redis pull happens fresh on
+  # every new CI worker. Retry once on `runner_system_failure` (Docker
+  # daemon hiccup) — real test failures still surface via exit 1 and
+  # won't loop. Paired with the 5-min `withStartupTimeout` bumped on
+  # KeycloakAuthITest in 2026-Q2.
+  retry:
+    max: 1
+    when: runner_system_failure
+  # ADR-0034 option A applied: KeycloakAuthITest is now `@Tag("keycloak-heavy")`
+  # and excluded by default via `<excludedGroups>` in the failsafe-plugin
+  # config in pom.xml. The remaining ITs fit comfortably under the
+  # macbook-local 4 GB Docker Desktop VM, so `allow_failure: true` is
+  # no longer needed — the per-MR signal on integration-test is back.
+  # Keycloak coverage runs in the `integration-test:keycloak` job below
+  # (weekly schedule + manual trigger).
+  # No DinD service — Testcontainers uses /var/run/docker.sock mounted by the runner
+  script:
+    # -Dsurefire.skip=true: unit tests already validated in the previous stage,
+    # no need to repeat them. Failsafe, SpotBugs and JaCoCo still run at verify.
+    - mvn $MAVEN_CLI_OPTS verify -Dsurefire.skip=true
+  artifacts:
+    when: always    # upload even on test failure so the JUnit + SpotBugs reports are always available
+    reports:
+      junit: target/failsafe-reports/*.xml    # populates the "Tests" tab with integration test results
+    paths:
+      - target/site/jacoco-it/       # HTML integration coverage report (browsable in the job artifacts panel)
+      - target/site/jacoco-it/jacoco.xml  # IT coverage XML — read by sonar-analysis alongside target/site/jacoco/jacoco.xml
+      - target/spotbugsXml.xml       # SpotBugs XML — parseable by GitLab Code Quality widget
+      - target/reports/failsafe.html # HTML integration test report (browsable in the job artifacts panel)
+    expire_in: 1 week
+
+# ── Keycloak-heavy ITs — weekly schedule (ADR-0034 option A) ─────────────────
+#
+# KeycloakAuthITest (and any other `@Tag("keycloak-heavy")` IT) is excluded
+# from the per-MR `integration-test` job because the Quarkus container
+# busts the macbook-local Docker Desktop VM memory tier. This job opts in
+# via `-Dgroups=keycloak-heavy` and runs only on a weekly schedule (set
+# the GitLab schedule's `KEYCLOAK_NIGHTLY=1` variable) or manual trigger.
+# Coverage still flows into JaCoCo/Sonar via the `target/site/jacoco-it/`
+# artefact when the job runs.
+integration-test:keycloak:
+  stage: integration
+  variables:
+    DOCKER_HOST: ""
+    TESTCONTAINERS_HOST_OVERRIDE: "host.docker.internal"
+  needs:
+    - job: unit-test
+      artifacts: true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $KEYCLOAK_NIGHTLY == "1"
+    - if: $CI_PIPELINE_SOURCE == "web"
+      when: manual
+      allow_failure: true
+  retry:
+    max: 1
+    when: runner_system_failure
+  script:
+    # Opt INTO the keycloak-heavy group (excluded from default failsafe run).
+    - mvn $MAVEN_CLI_OPTS verify -Dsurefire.skip=true -Dgroups=keycloak-heavy
+  artifacts:
+    when: always
+    reports:
+      junit: target/failsafe-reports/*.xml
+    paths:
+      - target/site/jacoco-it/
+      - target/reports/failsafe.html
+    expire_in: 1 week
+
+# ── stage: sonar ──────────────────────────────────────────────────────────────
+
+# SonarCloud static analysis — runs after integration so JaCoCo XML is available.
+# SonarCloud is the SaaS version of SonarQube — free for public repos on sonarcloud.io.
+#
+# Prerequisites (one-time setup):
+#   1. Create org at https://sonarcloud.io (log in with GitLab → import mirador1 group)
+#   2. Import the mirador-service project
+#   3. Generate a token at https://sonarcloud.io/account/security
+#   4. Set SONAR_TOKEN in GitLab group CI/CD variables (mirador1 → Settings → CI/CD)
+#
+# sonar.organization and sonar.projectKey are set in pom.xml sonar properties.
+.compat-job: &compat-job
+  stage: compat
+  variables:
+    DOCKER_HOST: ""
+    TESTCONTAINERS_HOST_OVERRIDE: "host.docker.internal"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $RUN_COMPAT == "true"
+      when: on_success
+    - when: manual
+      allow_failure: true
+  allow_failure: true
+
+compat-sb4-java21:
+  <<: *compat-job
+  image: maven:3.9.14-eclipse-temurin-21-noble
+  variables:
+    MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+  script:
+    - mvn $MAVEN_CLI_OPTS verify -Dcompat
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - target/surefire-reports/*.xml
+        - target/failsafe-reports/*.xml
+    expire_in: 1 week
+
+compat-sb4-java17:
+  <<: *compat-job
+  image: maven:3.9.14-eclipse-temurin-17-noble
+  variables:
+    MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+  script:
+    - mvn $MAVEN_CLI_OPTS verify -Dcompat -Djava17
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - target/surefire-reports/*.xml
+        - target/failsafe-reports/*.xml
+    expire_in: 1 week
+
+compat-sb3-java21:
+  <<: *compat-job
+  image: maven:3.9.14-eclipse-temurin-21-noble
+  variables:
+    MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+  script:
+    - mvn $MAVEN_CLI_OPTS verify -Dsb3
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - target/surefire-reports/*.xml
+        - target/failsafe-reports/*.xml
+    expire_in: 1 week
+
+compat-sb3-java17:
+  <<: *compat-job
+  image: maven:3.9.14-eclipse-temurin-17-noble
+  variables:
+    MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+  script:
+    - mvn $MAVEN_CLI_OPTS verify -Dsb3 -Djava17
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - target/surefire-reports/*.xml
+        - target/failsafe-reports/*.xml
+    expire_in: 1 week
+
+# ── stage: reports ────────────────────────────────────────────────────────────
+
+# Generates the full quality report suite and pushes it to the `reports/` branch.
+#
+# Why a separate scheduled pipeline?
+#   `mvn site` + TypeDoc take ~3-5 minutes; running them on every push would double
+#   the pipeline time and block the fast-feedback loop for developers. Instead this
+#   job runs once a day (or on demand) so the reports are always fresh without
+#   slowing regular code-review pipelines.
+#
+# How to enable:
+#   1. In GitLab → Settings → CI/CD → Project Access Tokens, create a token with:
+#        Role: Reporter, Scopes: api + write_repository, Expiry: 90 days
+#      Save the token value as CI variable GITLAB_REPORTS_TOKEN (masked, protected).
+#   2. In GitLab → CI/CD → Schedules, add a new schedule:
+#        Description: "Daily report generation"
+#        Cron: 0 2 * * *   (02:00 UTC — low-traffic hour)
+#        Branch: main
+#        Variable: REPORT_PIPELINE = true
+#
+# What it generates:
+#   - Maven site: Surefire, Failsafe, JaCoCo, SpotBugs, Javadoc (target/site/)
+#   - These are pushed to the `reports/` branch as static files browsable via GitLab
+#     Pages or served by the optional nginx container in docker-compose.yml.
+#
+# TypeDoc (Angular/TypeScript docs) is a future addition tracked in TASKS.md —
+# the Angular frontend repo needs `typedoc` added to its package.json first.
+mutation-test:
+  stage: reports
+  image: maven:3.9.14-eclipse-temurin-25-noble
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $REPORT_PIPELINE == "true"
+      when: on_success
+    - when: manual
+      allow_failure: true
+  needs:
+    - job: unit-test
+      artifacts: true     # PIT runs under the same JaCoCo classpath
+  variables:
+    # The PIT ITs need Postgres/Kafka/Redis running for SpringBoot
+    # context tests. Drop to skip-tests if the timeout becomes an issue.
+    PIT_THREADS: 4
+  script:
+    # `pitest:mutationCoverage` is a separate goal, NOT part of `verify`.
+    # See ADR-0034 — Keycloak ITs are tag-gated and excluded here too.
+    # IMPORTANT: keep this on one line. Backslash-newline continuations
+    # in GitLab CI YAML script entries are NOT interpreted by the shell —
+    # they're passed verbatim, which means Maven sees `\` as a separate
+    # arg and the next ` -D…` as an unknown phase. Pipeline #500 died
+    # this way before we collapsed the line.
+    - mvn $MAVEN_CLI_OPTS test-compile pitest:mutationCoverage -DexcludedGroups=keycloak-heavy -Dpit.threads=$PIT_THREADS
+  artifacts:
+    when: always
+    paths:
+      - target/pit-reports/    # HTML mutation report — browse via job's "Browse" button
+    expire_in: 30 days
+
+# ── stage: native ─────────────────────────────────────────────────────────────
+
+# Build a GraalVM native image and push it to the GitLab Container Registry.
+#
+# Why native?
+#   Native images start in ~50 ms (vs ~3–5 s for JVM) and use ~50 MB RSS
+#   (vs ~250 MB for JVM), making them ideal for serverless, Kubernetes with
+#   tight memory limits, or Lambda-style deployments.
+#
+# Build pipeline (Dockerfile.native):
+#   Stage 1 — ghcr.io/graalvm/native-image-community:25
+#     1. Spring Boot AOT processing (process-aot): generates reflection hints,
+#        proxy classes and resource configuration under target/spring-aot/.
+#     2. native:compile: invokes GraalVM native-image on the AOT output,
+#        producing a statically-linked binary at target/customerservice.
+#   Stage 2 — debian:bookworm-slim (no JDK)
+#     Copies only the binary — no JVM, no Maven, no source code.
+#
+# Tags pushed:
+#   native-$CI_COMMIT_SHA      — immutable pointer for deployments
+#   native-$CI_COMMIT_REF_SLUG — moving pointer (e.g. "native-main")
+#
+# Runs only on the default branch and on tags; skipped on every MR because
+# the build takes 5–15 minutes and is not needed for code review feedback.
+#
+# [GraalVM Community 25 / Spring Boot 4 AOT] — -Pnative profile in pom.xml.

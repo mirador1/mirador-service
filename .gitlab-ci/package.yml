@@ -1,0 +1,84 @@
+# .gitlab-ci/package.yml — extracted 2026-04-22 from .gitlab-ci.yml
+# Phase B-2 CI modularisation (ADR-0050). Contains: build-jar, docker-build.
+# The parent `.gitlab-ci.yml` keeps only workflow/stages/default/
+# variables/cache/include. See docs/adr/0050-ci-yaml-modularisation-plan.md.
+
+build-jar:
+  stage: package
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - when: on_success
+  needs:
+    - job: unit-test        # both test gates must pass before producing the artifact
+    - job: integration-test
+  script:
+    - mvn $MAVEN_CLI_OPTS -DskipTests package    # tests already passed — skip to save time
+  artifacts:
+    paths:
+      - target/*.jar    # Spring Boot fat JAR (includes embedded Tomcat + all dependencies)
+    expire_in: 1 week   # short-lived: for manual download or downstream deploy jobs
+
+# ── k8s stage ────────────────────────────────────────────────────────────────
+# Spin up a local kind cluster, `kubectl apply -k overlays/local`, and wait
+# for the core infra pods (PG/Redis/Kafka/LGTM/Keycloak) to be Ready.
+#
+# Purpose (ADR-0028): catch K8s-specific bugs the compose path misses —
+# PodSecurity admission, NetworkPolicy default-deny, CRD shape drift,
+# kustomize overlay patches that silently miss their target, probe timing.
+# These all fail at `kubectl apply` time or during pod boot, long before
+# GKE would see them.
+#
+# Path-filtered — runs only when the manifests or their direct deps change.
+# Most MRs skip it entirely, so the added latency is <1 min/week in aggregate.
+#
+# The mirador backend pod is deliberately NOT in the Ready-wait list: its
+# image is built amd64-only via buildx, and the macbook-local runner is
+# arm64 kind (exec format error on load). GKE remains the source of truth
+# for the app pod itself; this job validates the cluster wiring around it.
+docker-build:
+  # Build an amd64 image via Docker buildx + QEMU on the local macbook runner.
+  # Uses the host's Docker Desktop socket (mounted by the runner config) instead
+  # of a DinD service, which doesn't work reliably on Docker Desktop Mac — the
+  # DinD container can't be resolved by name from the job container on Docker
+  # Desktop's virtualised network.
+  # Kaniko was dropped: it isn't a cross-compiler, so arm64 host → arm64 image
+  # which fails on GKE amd64 nodes with "exec format error".
+  # SaaS runner alternative (saas-linux-medium-amd64) works but burns paid quota.
+  stage: package
+  interruptible: false # Expensive build. Don't restart mid-run on a new push.
+  tags:
+    - macbook-local # Only this runner has buildx + QEMU + host Docker socket.
+  image: docker:28
+  needs:
+    - job: unit-test
+    - job: integration-test
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+  before_script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+    # Ensure QEMU is registered for cross-compilation (idempotent).
+    - docker run --privileged --rm tonistiigi/binfmt --install amd64 || true
+    - docker buildx create --name multi --use 2>/dev/null || docker buildx use multi
+  script:
+    - |
+      # On main: also tag :latest so Argo CD can auto-pull without pinning
+      # to a SHA. On MR branches: only :$CI_COMMIT_SHA + :$CI_COMMIT_REF_SLUG.
+      LATEST_TAG=""
+      if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
+        LATEST_TAG="--tag $CI_REGISTRY_IMAGE/backend:latest"
+      fi
+      docker buildx build \
+        --platform linux/amd64 \
+        --tag "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA" \
+        --tag "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_REF_SLUG" \
+        $LATEST_TAG \
+        --label "org.opencontainers.image.revision=$CI_COMMIT_SHA" \
+        --label "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        --cache-from "type=registry,ref=$CI_REGISTRY_IMAGE/backend:cache" \
+        --cache-to "type=registry,ref=$CI_REGISTRY_IMAGE/backend:cache,mode=max" \
+        --push \
+        .
