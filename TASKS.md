@@ -9,23 +9,24 @@ adding/starting/finishing a task. Delete when empty (per CLAUDE.md).
 
 Last meaningful checkpoints:
 
-- **`stable-v1.0.10`** (2026-04-22) — Phase A quality enforcement layer
-  - Audit doc `docs/audit/quality-thresholds-2026-04-21.md` (40+ rules)
-  - `section_file_length` in stability-check.sh (≥ 1500 BLOCK)
-  - PMD industry thresholds (NcssCount class 1500→750, etc.)
-  - Custom Checkstyle config replacing google_checks (FileLength 1000,
-    MethodLength 100, LineLength 120, ParameterNumber 7)
-  - UI ESLint size + complexity rules at WARN
-  - UI workflow path filter — eslint.config.mjs + .gitleaks.toml + .prettierrc
-- **`stable-v1.0.9`** (2026-04-21) — Phase 2 + Phase 3 (alerts + load + 2 demos)
-  - Phase 2: cosign re-verify, exemplars Grafana→Tempo, OpenAPI→TS types,
-    axe-core a11y, jqwik property-based, Hurl smoke, guided tour, ADR graph
-  - Phase 3: PrometheusRule + 6 runbooks + ADR-0048 + promtool CI,
-    k6 load.js + nightly schedule, /find-the-bug, /incident-anatomy
-- **`stable-v1.0.6` to `v1.0.8`** (2026-04-21) — CI hygiene wave (sonar
-  scope-out, mermaid lint, ADR proposed-aging gate, lighthouse abs thresholds)
-
-For commit-level granularity: `git log --oneline stable-v1.0.6..stable-v1.0.10`.
+- **`stable-v1.0.16`** (2026-04-22) — Phase B-2 CI modularisation (svc)
+  - `.gitlab-ci.yml` 2609 → 173 LOC + 9 includes under `.gitlab-ci/`
+  - Dead duplicate `hadolint:` (floating `:latest` tag) removed
+  - `.config/lefthook.yml` gitlab-ci-lint uses `--ref <branch> --dry-run`
+    so local includes resolve against current branch state
+  - ADR-0050 flipped Proposed → Accepted
+- **`stable-v1.0.15`** (2026-04-22) — Q-2b (closes ADR-0052)
+  + Phase B-4 CI modularisation (UI)
+  - Q-2b: `MetricsSectionProvider` moves last runtime JaCoCo CSV read to
+    build-time. `QualityReportEndpoint` 646 → 469 LOC (-76% since session
+    start 1934). 17 dead K_ constants + 6 dead imports + 16 dead CP_/DEV_
+    path constants cleaned up.
+  - B-4: UI `.gitlab-ci.yml` 1086 → 144 LOC + 7 includes (lint, test,
+    build, security, quality, deploy, release). `.install:` stays in
+    parent (used via `extends:` by 10+ jobs across includes).
+- **`stable-v1.0.10`** through **v1.0.14** — Phase A quality enforcement
+  layer + Keycloak migration + release-please tool-mismatch discovery.
+  See `git log --oneline stable-v1.0.10..stable-v1.0.16` for details.
 
 ---
 
@@ -69,7 +70,17 @@ threshold. 9 non-parser sections remain inline — see B-1b below.
 All XXE-hardened DocumentBuilder factories preserved; test suite
 (QualityReportHelpersTest 18/18) green.
 
-### B-2 — `.gitlab-ci.yml` svc 2619 → 9 includes (~3 h, fresh session)
+### B-2 — `.gitlab-ci.yml` svc 2619 → 173 + 9 includes [DONE 2026-04-22]
+
+Shipped in MR !142 (commits e7dccf8 + 7d3907a). Parent shrinks 2609 →
+173 LOC (-93%). 9 local includes under `.gitlab-ci/`:
+`lint.yml` (238), `test.yml` (302), `security.yml` (512), `quality.yml`
+(316), `package.yml` (84), `native.yml` (75), `k8s.yml` (420),
+`deploy.yml` (434), `release.yml` (103). See commit for the design notes
+(anchor scoping, `!reference` cross-file tolerance, lefthook hook
+update to use `--ref <branch> --dry-run`).
+
+**Legacy plan below kept for reference**:
 
 Split into `ci/includes/{lint,test,security,k8s,quality,package,native,
 deploy,release}.yml` + a thin orchestrator. **Validate via `glab ci config
@@ -112,9 +123,13 @@ Recommended approach for a fresh session:
 4. Repeat for each category.
 5. Final: validate full pipeline runs on a test MR before merging.
 
-### B-4 — `.gitlab-ci.yml` UI 1067 → 6 includes (~2 h)
+### B-4 — `.gitlab-ci.yml` UI 1086 → 144 + 7 includes [DONE 2026-04-22]
 
-Same pattern as B-2. Files: validate, test, build, e2e, quality, security.
+Shipped in MR !77 (mirador-ui). Parent shrinks 1086 → 144 LOC (-87%).
+7 local includes: lint.yml (159), test.yml (217), build.yml (85),
+security.yml (237), quality.yml (98), deploy.yml (143),
+release.yml (48). `.install:` hidden job stays in the parent because
+10+ jobs depend on it via `extends:` across includes.
 
 ### B-5 — `quality.component.html` 1742 → `QualityPanel*` children (~4 h)
 
@@ -130,26 +145,30 @@ CodeQualitySummary, DockerControls, etc. **Pattern confirmed 2026-04-22** — 1
 widget = 1 file (see `~/.claude/CLAUDE.md` → "File length hygiene" rule #6
 + UI `CLAUDE.md` → "1 widget / 1 panel = 1 file").
 
-### B-7 — seconde passe: 10 fichiers additionnels (~12 h)
+### B-7 — seconde passe: 10 fichiers additionnels (partial 2026-04-22)
 
 Scan 2026-04-22 identifie 10 offenders ≥ 700 LOC hors Phase B-1..6 :
 
-| # | Fichier | LOC | Pattern |
-|---|---|---|---|
-| 1 | `ui/quality.component.scss`    | 1206 | 1 panel SCSS/file (pair avec B-5) |
-| 2 | `ui/customers.component.ts`    |  904 | 1 tab/file (list, CRUD, import/export, bio, todos, enrich) |
-| 3 | `ui/customers.component.scss`  |  820 | pair avec ↑ |
-| 4 | `ui/security.component.scss`   |  828 | 1 demo/file |
-| 5 | `ui/about.component.scss`      |  813 | section-scoped SCSS |
-| 6 | `ui/quality.component.ts`      |  806 | presque thin après B-5 children |
-| 7 | `svc/CustomerController.java`  |  782 | `CustomerReadController` + `CustomerWriteController` + `CustomerExportController` |
-| 8 | `svc/run.sh`                   |  763 | 29 cases → `bin/run/cases/<case>.sh` + thin dispatcher (1 case = 1 file) |
-| 9 | `ui/diagnostic.component.ts`   |  711 | panels inside — 1 diag/file |
-| 10 | `ui/settings.component.scss`  |  688 | just under 700 — watch for drift |
+| # | Fichier | LOC avant | LOC après | Status |
+|---|---|---|---|---|
+| 1 | `ui/quality.component.scss`    | 1206 | — | pending B-7-1 (pair avec B-5) |
+| 2 | `ui/customers.component.ts`    |  904 | — | pending B-7-2 |
+| 3 | `ui/customers.component.scss`  |  820 | — | pending B-7-3 |
+| 4 | `ui/security.component.scss`   |  828 | — | pending B-7-4 |
+| 5 | `ui/about.component.scss`      |  813 | — | pending B-7-5 |
+| 6 | `ui/quality.component.ts`      |  806 | — | pending B-7-6 (après B-5) |
+| 7 | `svc/CustomerController.java`  |  782 |  705 | **partial** B-7-7 — CustomerDiagnosticsController extracted (stream/slow-query/export). Remaining: bio/todos/enrich → CustomerEnrichmentController (tracked) |
+| 8 | `svc/run.sh`                   |  763 |   46 | **DONE** B-7-8 — split into 31 `bin/run/<case>.sh` + dispatcher + 2 alias symlinks (MR !143) |
+| 9 | `ui/diagnostic.component.ts`   |  711 | — | pending B-7-9 |
+| 10 | `ui/settings.component.scss`  |  688 | — | watch for drift |
 
-Ordre proposé (gain/risque ↑): **B-7-8 run.sh (fastest, biggest relative gain),
-B-7-7 CustomerController, B-7-5/4/3/2 SCSS batches, B-7-1/6 quality component
-parts after B-5, B-7-9 diagnostic**.
+**B-7-7 next step** (~30 min) — extract `bio/todos/enrich` endpoints to a
+`CustomerEnrichmentController` (3 endpoints + bio/todoService deps +
+customerEnrichTimer). Would bring CustomerController to ~550 LOC.
+
+**B-7-8 done details**: `run.sh` 763→46 dispatcher + `bin/run/_preamble.sh`
+(84 shared helpers) + 31 case scripts (flat layout intentional — dispatcher
+discovers scripts dynamically, `ls bin/run/` IS the UX).
 
 ### B-1b (follow-up) — non-parser sections of QualityReportEndpoint
 
@@ -197,14 +216,19 @@ prepare-package` via `exec-maven-plugin`, writes
 `target/classes/META-INF/quality-build-report.json`. Endpoint loads
 the JSON instead of parsing tool outputs at runtime.
 
-Cumulative impact: `QualityReportEndpoint` 1934 → 646 LOC (−66 %).
-Backend runtime no longer depends on Jackson / javax.xml.parsers /
-HttpClient on the `/actuator/quality` hot path.
+### Q-2b — MetricsSectionProvider (closes ADR-0052) [DONE 2026-04-22]
 
-**Q-2b follow-up (remaining runtime file-reader)** — `buildMetricsSection`
-still reads JaCoCo CSV at runtime (~120 LOC). Moving it to build-time
-would fully close ADR-0052's "no tool parsing at runtime" intent.
-Estimated ~45 min.
+Shipped in MR !141. `MetricsSectionProvider` extracted (171 LOC);
+JaCoCo CSV aggregation (per-package complexity, top-10 classes,
+untested set) moves to build-time. `QualityReportEndpoint` 646 →
+469 LOC (-27%).
+
+Cumulative impact since ADR-0052 started: **1934 → 469 LOC (-76%)**.
+Backend runtime reads ONE opaque classpath resource
+(`META-INF/quality-build-report.json`) for all build-time sections;
+zero awareness of tool output shapes at request time. 17 dead K_
+constants + 6 dead imports + 16 dead CP_/DEV_ path constants cleaned
+up along the way.
 
 ### Q-3 — (optional, open) if dashboard ever needs Sonar/GitLab data inline
 
@@ -213,7 +237,7 @@ REST call. New ADR rather than reopen ADR-0052.
 
 ---
 
-## 🚦 Phase C — flip enforcement (~30 min, post-Phase-B)
+## 🚦 Phase C — flip enforcement (blocked on violation inventory)
 
 Once Phase B brings the current outliers below the new thresholds:
 
@@ -223,7 +247,17 @@ Once Phase B brings the current outliers below the new thresholds:
 - `eslint.config.mjs` : `warn` → `error` on the 6 size/complexity rules
 - Suppression baseline files (created during B if needed) → delete
 
-After Phase C: every new violation fails the MR. Tag `stable-v1.0.11`.
+**Pre-requisite inventory step (~30 min, do first)**: enable PMD +
+Checkstyle at build time with `failOnViolation=false` + `skip=false`,
+run `mvn verify`, count violations per rule. If < ~20 violations
+total → flip `failOnViolation=true` in the same MR and fix as we go.
+If > 20 → create a suppressions baseline and decide per-rule what's
+worth fixing before flipping.
+
+Blockers right now: B-5 (quality.component.html) and B-6 (dashboard)
+still carry > 1500 LOC which WILL trigger the FileLength rule →
+flipping before those land = immediate red MR. Sequence: B-5 → B-6 →
+Phase C inventory → Phase C flip. Then tag the next stable-vX.Y.Z.
 
 ---
 
