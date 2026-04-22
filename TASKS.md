@@ -33,11 +33,13 @@ For commit-level granularity: `git log --oneline stable-v1.0.6..stable-v1.0.10`.
 
 Order picked by gain/risk ratio (lowest risk first inside each tier).
 
-### B-3 — `bin/dev/stability-check.sh` 1457 → sections/* + driver [~2 h, easy]
+### B-3 — `bin/dev/stability-check.sh` 1457 → sections/* + driver [DONE 2026-04-22]
 
-30 sections currently in one file. Split into thematic groups (preflight,
-ci, code, docs, adr, infra, manual, delta) + a thin driver. Bash refactor,
-no behaviour change.
+Shipped in MR !138. 30 section_* functions moved into `bin/dev/sections/`:
+preflight.sh, ci.sh, code.sh, docs.sh, adr.sh, infra.sh, security.sh,
+perf.sh, manual.sh, delta.sh (10 files). Driver shrunk 1457 → 272 LOC.
+All 10 section files under the 400 LOC "container smell" threshold.
+Zero behaviour change (same main() orchestration, same section names).
 
 ### B-1 — `QualityReportEndpoint.java` 1934 → 7 parsers + thin aggregator [~2 h]
 
@@ -67,11 +69,48 @@ threshold. 9 non-parser sections remain inline — see B-1b below.
 All XXE-hardened DocumentBuilder factories preserved; test suite
 (QualityReportHelpersTest 18/18) green.
 
-### B-2 — `.gitlab-ci.yml` svc 2619 → 9 includes (~3 h)
+### B-2 — `.gitlab-ci.yml` svc 2619 → 9 includes (~3 h, fresh session)
 
 Split into `ci/includes/{lint,test,security,k8s,quality,package,native,
-deploy,release}.yml` + a thin orchestrator. **Validate via `glab ci config`
-diff before/after** to ensure no job lost or duplicated.
+deploy,release}.yml` + a thin orchestrator. **Validate via `glab ci config
+compile` diff before/after** to ensure no job lost or duplicated.
+
+**Scope notes** (2026-04-22 scan):
+- ~35-40 top-level jobs in `.gitlab-ci.yml`, mostly self-contained.
+- Only 1 YAML anchor block (`.compat-job:` + 4 `<<: *compat-job` uses)
+  — all within the same file; no cross-file anchor risk.
+- `extends:` work across includes natively; `rules:`/`default:`
+  inheritance is preserved.
+
+**Mapping plan**:
+| Include file | Jobs |
+|---|---|
+| `ci/includes/lint.yml` | hadolint, openapi-lint, renovate-lint, promtool-check-rules |
+| `ci/includes/test.yml` | unit-test, integration-test, integration-test:keycloak, mutation-test |
+| `ci/includes/security.yml` | sast, dependency_scanning, owasp-dependency-check, secret-scan, trivy:scan, grype:scan, dockle, cosign:sign, cosign:verify, sbom:syft, semgrep |
+| `ci/includes/k8s.yml` | test:k8s-apply, test:k8s-apply-prom, smoke-test |
+| `ci/includes/quality.yml` | sonar-analysis, code-quality, generate-reports |
+| `ci/includes/package.yml` | build-jar, docker-build |
+| `ci/includes/native.yml` | build-native |
+| `ci/includes/deploy.yml` | terraform-plan, terraform-apply, deploy:eks, deploy:aks, deploy:fly, (gke/k8s variants) |
+| `ci/includes/release.yml` | release-please, pages |
+
+Main `.gitlab-ci.yml` keeps: workflow, stages, default, variables,
+cache, `.compat-job` anchor block + 4 compat jobs (they share the
+anchor — keep together), `include:` directives for the 9 files.
+Target: main file ≈ 300 LOC (variables + anchor + includes + small
+compat block).
+
+Recommended approach for a fresh session:
+1. Capture baseline: `glab ci config compile > /tmp/ci-before.yml`
+2. Extract one include file at a time (smallest first: release.yml,
+   then native.yml).
+3. After each extraction, `glab ci config compile > /tmp/ci-after.yml`
+   + `diff /tmp/ci-before.yml /tmp/ci-after.yml` → should be identical
+   order-of-jobs and identical per-job content. If differences,
+   investigate before continuing.
+4. Repeat for each category.
+5. Final: validate full pipeline runs on a test MR before merging.
 
 ### B-4 — `.gitlab-ci.yml` UI 1067 → 6 includes (~2 h)
 
@@ -81,12 +120,36 @@ Same pattern as B-2. Files: validate, test, build, e2e, quality, security.
 
 10+ panels (coverage, SpotBugs, Pitest, OWASP, PMD, Checkstyle, Sonar,
 test results, …) → 1 child component per panel + parent template ~150 lines.
-Largest UI refactor; touch only when fresh.
+Largest UI refactor; touch only when fresh. **Pattern**: 1 panel = 1 file
+(see ~/.claude/CLAUDE.md → "File length hygiene" rule #6).
 
 ### B-6 — `dashboard.component` (.ts 1022 + .scss 1258) → 1 widget/file (~4 h)
 
 Split by widget: ArchitectureMap, HealthProbes, ErrorTimeline, BundleTreemap,
-CodeQualitySummary, DockerControls, etc.
+CodeQualitySummary, DockerControls, etc. **Pattern confirmed 2026-04-22** — 1
+widget = 1 file (see `~/.claude/CLAUDE.md` → "File length hygiene" rule #6
++ UI `CLAUDE.md` → "1 widget / 1 panel = 1 file").
+
+### B-7 — seconde passe: 10 fichiers additionnels (~12 h)
+
+Scan 2026-04-22 identifie 10 offenders ≥ 700 LOC hors Phase B-1..6 :
+
+| # | Fichier | LOC | Pattern |
+|---|---|---|---|
+| 1 | `ui/quality.component.scss`    | 1206 | 1 panel SCSS/file (pair avec B-5) |
+| 2 | `ui/customers.component.ts`    |  904 | 1 tab/file (list, CRUD, import/export, bio, todos, enrich) |
+| 3 | `ui/customers.component.scss`  |  820 | pair avec ↑ |
+| 4 | `ui/security.component.scss`   |  828 | 1 demo/file |
+| 5 | `ui/about.component.scss`      |  813 | section-scoped SCSS |
+| 6 | `ui/quality.component.ts`      |  806 | presque thin après B-5 children |
+| 7 | `svc/CustomerController.java`  |  782 | `CustomerReadController` + `CustomerWriteController` + `CustomerExportController` |
+| 8 | `svc/run.sh`                   |  763 | 29 cases → `bin/run/cases/<case>.sh` + thin dispatcher (1 case = 1 file) |
+| 9 | `ui/diagnostic.component.ts`   |  711 | panels inside — 1 diag/file |
+| 10 | `ui/settings.component.scss`  |  688 | just under 700 — watch for drift |
+
+Ordre proposé (gain/risque ↑): **B-7-8 run.sh (fastest, biggest relative gain),
+B-7-7 CustomerController, B-7-5/4/3/2 SCSS batches, B-7-1/6 quality component
+parts after B-5, B-7-9 diagnostic**.
 
 ### B-1b (follow-up) — non-parser sections of QualityReportEndpoint
 
@@ -127,26 +190,21 @@ injections. Backend no longer makes outbound HTTPS to sonarcloud.io
 or gitlab.com at `/actuator/quality` request time. UI dashboard
 links out instead. Endpoint 1179 → 1004 LOC.
 
-### Q-2 — move file-based parsers to build-time JSON (~3-4 h)
+### Q-2 — move file-based parsers to build-time JSON [DONE 2026-04-22]
 
-Eliminates the remaining tool coupling: the backend still parses
-Surefire XML / JaCoCo CSV / SpotBugs XML / PMD XML / Checkstyle XML
-/ OWASP JSON / PIT XML at runtime through the extracted parsers. Q-2
-moves this to a Maven `prepare-package` execution.
+Shipped in MR !138. `QualityReportGenerator` CLI runs at `mvn
+prepare-package` via `exec-maven-plugin`, writes
+`target/classes/META-INF/quality-build-report.json`. Endpoint loads
+the JSON instead of parsing tool outputs at runtime.
 
-- Create `com.mirador.observability.quality.QualityReportGenerator`
-  with `public static void main(String[] args)` — instantiates the 7
-  parsers + 2 file-based providers (deps, licenses), writes
-  `target/classes/META-INF/quality-build-report.json`.
-- Remove `@Component` from the 7 parsers + the 2 file-based providers
-  (pure POJOs invoked by the generator).
-- Add `exec-maven-plugin` binding to `prepare-package`.
-- `QualityReportEndpoint`: file-based sections become a single
-  classpath-resource read (~10 KB opaque JSON) merged into the
-  response; no parsing logic at runtime.
-- Endpoint shrinks ~1000 → ~250 LOC (true thin aggregator).
-- Maven Central deps-update lookup in `buildDependenciesSection`
-  also moves to build-time (kill the last runtime HTTP call).
+Cumulative impact: `QualityReportEndpoint` 1934 → 646 LOC (−66 %).
+Backend runtime no longer depends on Jackson / javax.xml.parsers /
+HttpClient on the `/actuator/quality` hot path.
+
+**Q-2b follow-up (remaining runtime file-reader)** — `buildMetricsSection`
+still reads JaCoCo CSV at runtime (~120 LOC). Moving it to build-time
+would fully close ADR-0052's "no tool parsing at runtime" intent.
+Estimated ~45 min.
 
 ### Q-3 — (optional, open) if dashboard ever needs Sonar/GitLab data inline
 
@@ -237,6 +295,37 @@ pattern already in use in tour-overlay, find-the-bug, and the auth interceptor.
 
 Currently ~47%. Hot zones: chaos package (recently added, low coverage),
 auth (JWT + Auth0 paths), Flyway migrations (no tests).
+
+---
+
+## 🧭 Ideas pour plus tard (scope à confirmer)
+
+### GitLab Observability integration (potentiel 2e OTLP exporter)
+
+User signalait 2026-04-22 l'URL <https://gitlab.com/groups/mirador1/-/observability/setup>
+— GitLab a une feature Observability intégrée (OTLP ingest avec auth
+group-level, cf. [docs.gitlab.com/ee/operations/tracing.html](https://docs.gitlab.com/ee/operations/tracing.html)).
+
+**Ce que ça apporterait** : telemetry visualisable DIRECTEMENT dans
+l'UI GitLab (pas besoin de démarrer Grafana/Tempo localement pour un
+reviewer), + conservation cross-session sans coûter de VM GCP.
+
+**Questions à trancher avant d'implémenter** :
+- Disponibilité sur free tier ? (`plan: None` sur le groupe = free
+  tier probablement ; API `observability_config` retourne 404).
+- Format d'auth (Bearer token group-level ? deploy token ?).
+- Dual-export depuis l'OTel Collector (actuel → LGTM local + GitLab)
+  ou exporter directement depuis Spring Boot ?
+- Cohabitation avec ADR-0010 "OTLP push to Collector, not Prometheus
+  scrape" — OK en complément, pas en remplacement.
+
+**Estimation rough** : si faisable sur free tier, ~3-4 h : OTel
+Collector config (pipeline dual), env vars GitLab token, ADR
+documentant le flow.
+
+**Prérequis user** : valider la dispo free tier en ouvrant
+<https://gitlab.com/groups/mirador1/-/observability/setup> et
+reportant ce qui est proposé (tokens, endpoints, plan-lock).
 
 ---
 

@@ -1,50 +1,26 @@
 package com.mirador.observability;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.mirador.observability.quality.parsers.CheckstyleReportParser;
-import com.mirador.observability.quality.parsers.JacocoReportParser;
-import com.mirador.observability.quality.parsers.OwaspReportParser;
-import com.mirador.observability.quality.parsers.PitestReportParser;
-import com.mirador.observability.quality.parsers.PmdReportParser;
 import com.mirador.observability.quality.parsers.ReportParsers;
-import com.mirador.observability.quality.parsers.SpotBugsReportParser;
-import com.mirador.observability.quality.parsers.SurefireReportParser;
 import com.mirador.observability.quality.providers.ApiSectionProvider;
 import com.mirador.observability.quality.providers.BuildInfoSectionProvider;
-import com.mirador.observability.quality.providers.LicensesSectionProvider;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.net.URI;
-import java.net.URLEncoder;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Set;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
-import javax.xml.XMLConstants;
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.parsers.ParserConfigurationException;
 import java.lang.management.ManagementFactory;
 import org.springframework.boot.actuate.endpoint.annotation.Endpoint;
 import org.springframework.boot.actuate.endpoint.annotation.ReadOperation;
@@ -100,7 +76,6 @@ import org.w3c.dom.NodeList;
 public class QualityReportEndpoint {
 
     private static final DateTimeFormatter TS_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     // Classpath paths (inside packaged JAR)
     private static final String CP_JACOCO = "META-INF/build-reports/jacoco.csv";
@@ -195,49 +170,25 @@ public class QualityReportEndpoint {
     private final Environment environment;
     private final StartupTimeTracker startupTimeTracker;
     /**
-     * Phase B-1 split (2026-04-22): section builders are being extracted to
-     * {@link com.mirador.observability.quality.parsers}. Order of extraction
-     * from biggest XML-parsing surface down: Surefire → Jacoco → SpotBugs →
-     * PMD → Checkstyle → OWASP → Pitest.
+     * Runtime section providers — kept as Spring beans because they need
+     * live JVM / framework state (Environment, RequestMappingHandlerMapping).
+     * Build-time sections (tests, coverage, bugs, pmd, checkstyle, owasp,
+     * pitest, dependencies, licenses) no longer need injection — they come
+     * from the pre-generated classpath JSON under ADR-0052 Phase Q-2.
      */
-    private final SurefireReportParser surefireReportParser;
-    private final JacocoReportParser jacocoReportParser;
-    private final SpotBugsReportParser spotBugsReportParser;
-    private final PmdReportParser pmdReportParser;
-    private final CheckstyleReportParser checkstyleReportParser;
-    private final OwaspReportParser owaspReportParser;
-    private final PitestReportParser pitestReportParser;
-    // Phase B-1b: non-parser section providers.
     private final BuildInfoSectionProvider buildInfoSectionProvider;
     private final ApiSectionProvider apiSectionProvider;
-    private final LicensesSectionProvider licensesSectionProvider;
 
     public QualityReportEndpoint(RequestMappingHandlerMapping requestMappingHandlerMapping,
                                  Environment environment,
                                  StartupTimeTracker startupTimeTracker,
-                                 SurefireReportParser surefireReportParser,
-                                 JacocoReportParser jacocoReportParser,
-                                 SpotBugsReportParser spotBugsReportParser,
-                                 PmdReportParser pmdReportParser,
-                                 CheckstyleReportParser checkstyleReportParser,
-                                 OwaspReportParser owaspReportParser,
-                                 PitestReportParser pitestReportParser,
                                  BuildInfoSectionProvider buildInfoSectionProvider,
-                                 ApiSectionProvider apiSectionProvider,
-                                 LicensesSectionProvider licensesSectionProvider) {
+                                 ApiSectionProvider apiSectionProvider) {
         this.requestMappingHandlerMapping = requestMappingHandlerMapping;
         this.environment = environment;
         this.startupTimeTracker = startupTimeTracker;
-        this.surefireReportParser = surefireReportParser;
-        this.jacocoReportParser = jacocoReportParser;
-        this.spotBugsReportParser = spotBugsReportParser;
-        this.pmdReportParser = pmdReportParser;
-        this.checkstyleReportParser = checkstyleReportParser;
-        this.owaspReportParser = owaspReportParser;
-        this.pitestReportParser = pitestReportParser;
         this.buildInfoSectionProvider = buildInfoSectionProvider;
         this.apiSectionProvider = apiSectionProvider;
-        this.licensesSectionProvider = licensesSectionProvider;
     }
 
     /**
@@ -255,48 +206,65 @@ public class QualityReportEndpoint {
     public Map<String, Object> report() {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("generatedAt", LocalDateTime.now().format(TS_FMT));
-        result.put(K_TESTS,        buildTestsSection());
-        result.put(K_COVERAGE,     buildCoverageSection());
-        result.put("bugs",         buildBugsSection());
-        result.put("pmd",          buildPmdSection());
-        result.put("checkstyle",   buildCheckstyleSection());
-        result.put("owasp",        buildOwaspSection());
-        result.put("pitest",       buildPitestSection());
+
+        // Build-time sections — pre-generated at mvn prepare-package by
+        // QualityReportGenerator (see ADR-0052 Phase Q-2). The backend no
+        // longer parses XML/CSV tool outputs at HTTP request time; it just
+        // reads one opaque classpath resource.
+        // Sections covered: tests, coverage, bugs, pmd, checkstyle, owasp,
+        //                   pitest, dependencies, licenses.
+        Map<String, Object> buildTime = loadBuildTimeReport();
+        for (String key : BUILD_TIME_KEYS) {
+            Object val = buildTime.get(key);
+            result.put(key, val != null ? val : Map.of(K_AVAILABLE, false,
+                    K_REASON, "build-time report not generated yet (run `mvn prepare-package`)"));
+        }
+
         // `sonar` + `pipeline` removed 2026-04-22 per ADR-0052 — the UI
         // dashboard links out to sonarcloud.io + gitlab.com directly.
-        result.put("build",        buildBuildSection());
+
+        // Runtime sections — genuine JVM / Spring / local-git state.
+        result.put("build",        buildInfoSectionProvider.parse());
         result.put("git",          buildGitSection());
-        result.put("api",          buildApiSection());
-        result.put(K_DEPENDENCIES, buildDependenciesSection());
-        result.put("licenses",     buildLicensesSection());
+        result.put("api",          apiSectionProvider.parse());
         result.put("metrics",      buildMetricsSection());
         result.put("runtime",      buildRuntimeSection());
         result.put(K_BRANCHES,     buildBranchesSection());
         return result;
     }
 
-    // -------------------------------------------------------------------------
-    // Tests section
-    // -------------------------------------------------------------------------
+    /** The 9 file-based section keys that live in the pre-generated JSON. */
+    private static final List<String> BUILD_TIME_KEYS = List.of(
+            K_TESTS, K_COVERAGE, "bugs", "pmd", "checkstyle", "owasp",
+            "pitest", K_DEPENDENCIES, "licenses");
 
-    // Delegates to the extracted SurefireReportParser — Phase B-1 split.
-    private Map<String, Object> buildTestsSection() {
-        return surefireReportParser.parse();
+    private static final String QUALITY_BUILD_REPORT = "META-INF/quality-build-report.json";
+
+    /**
+     * Loads the build-time quality report written by {@link
+     * com.mirador.observability.quality.QualityReportGenerator} during
+     * {@code mvn prepare-package}. Returns an empty map when the resource
+     * is absent (e.g. running from IDE without a full Maven build) — the
+     * caller fills each missing section with {@code {available: false}}.
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> loadBuildTimeReport() {
+        ClassPathResource res = new ClassPathResource(QUALITY_BUILD_REPORT);
+        if (!res.exists()) return Map.of();
+        try (InputStream is = res.getInputStream()) {
+            return (Map<String, Object>) BUILD_TIME_MAPPER.readValue(is, Map.class);
+        } catch (Exception _) {
+            return Map.of();
+        }
     }
 
-    // Delegates to the extracted parsers — Phase B-1 split.
-    private Map<String, Object> buildCoverageSection() {
-        return jacocoReportParser.parse();
-    }
+    private static final com.fasterxml.jackson.databind.ObjectMapper BUILD_TIME_MAPPER =
+            new com.fasterxml.jackson.databind.ObjectMapper();
 
-    private Map<String, Object> buildBugsSection() {
-        return spotBugsReportParser.parse();
-    }
-
-    // priorityLabel moved inside PmdReportParser (Phase B-1 split complete for PMD).
-
-    // Delegates — Phase B-1b.
-    private Map<String, Object> buildBuildSection() { return buildInfoSectionProvider.parse(); }
+    // Tests / coverage / bugs / pmd / checkstyle / owasp / pitest / deps /
+    // licenses sections moved to build-time per ADR-0052 Phase Q-2 —
+    // loaded via loadBuildTimeReport() from META-INF/quality-build-report.json
+    // generated at mvn prepare-package by QualityReportGenerator.
 
     // -------------------------------------------------------------------------
     // Git section
@@ -366,273 +334,15 @@ public class QualityReportEndpoint {
         }
     }
 
-    private Map<String, Object> buildApiSection() { return apiSectionProvider.parse(); }
-
-    // -------------------------------------------------------------------------
-    // Dependencies section
-    // -------------------------------------------------------------------------
-
-    /**
-     * Parses direct dependencies from pom.xml, resolves {@code ${property}} version references,
-     * then checks Maven Central for each pinned dependency to see if a newer version is available.
-     *
-     * <p>Freshness checks use the Maven Central Solr API in parallel (up to 20 deps, 8 s total timeout).
-     * Managed dependencies ({@code version = "(managed)"}) are skipped — their version is controlled
-     * by the Spring Boot BOM and upgrading them is a Spring Boot upgrade, not a direct dep change.
-     *
-     * @apiNote The total wall-clock time is bounded by 8 seconds regardless of how many deps are checked.
-     *          Partial results are returned if some futures time out; those entries will lack
-     *          {@code latestVersion} and {@code outdated} fields.
-     */
-    // S3776+S135+S6541: cognitive complexity + "brain method" flag are inherent
-    // to the pom XML walk plus parallel HTTP freshness lookups; several
-    // early-loop-skips handle parent references, dependencyManagement imports and
-    // excluded scopes. Decomposing further would spread the data-accumulation
-    // across several helpers without improving readability.
-    @SuppressWarnings({"java:S3776", "java:S135", "java:S6541"})
-    private Map<String, Object> buildDependenciesSection() {
-        InputStream is = ReportParsers.loadResource(CP_POM, "pom.xml");
-        if (is == null) return Map.of(K_AVAILABLE, false);
-
-        // Step 1: Parse pom.xml — extract properties + direct dependencies
-        Map<String, String> pomProperties = new HashMap<>();
-        List<Map<String,Object>> deps = new ArrayList<>();
-        try (is) {
-            DocumentBuilder db = ReportParsers.secureNamespaceAwareDocumentBuilder();
-            Document doc = db.parse(is);
-
-            // Collect <properties> values to resolve ${property} version references
-            NodeList propNodes = doc.getElementsByTagName("properties");
-            for (int i = 0; i < propNodes.getLength(); i++) {
-                Element propsEl = (Element) propNodes.item(i);
-                // Only the top-level <properties> block (parent is <project>)
-                if (!"project".equals(propsEl.getParentNode().getNodeName())) continue;
-                NodeList children = propsEl.getChildNodes();
-                for (int j = 0; j < children.getLength(); j++) {
-                    if (children.item(j) instanceof Element propEl) {
-                        pomProperties.put(propEl.getTagName(), propEl.getTextContent().trim());
-                    }
-                }
-            }
-
-            // Collect direct dependencies
-            NodeList depNodes = doc.getElementsByTagName("dependency");
-            for (int i = 0; i < depNodes.getLength(); i++) {
-                Element dep = (Element) depNodes.item(i);
-                // Only direct dependencies (parent is <dependencies>, not <dependencyManagement>)
-                if (!K_DEPENDENCIES.equals(dep.getParentNode().getNodeName())) continue;
-                String groupId    = ReportParsers.getTagText(dep, K_GROUP_ID);
-                String artifactId = ReportParsers.getTagText(dep, K_ARTIFACT_ID);
-                String rawVersion = ReportParsers.getTagText(dep, K_VERSION);
-                String scope      = ReportParsers.getTagText(dep, "scope");
-                if (scope.isEmpty()) scope = "compile";
-
-                // Resolve ${property} references
-                String resolvedVersion = rawVersion;
-                if (rawVersion.startsWith("${") && rawVersion.endsWith("}")) {
-                    String key = rawVersion.substring(2, rawVersion.length() - 1);
-                    resolvedVersion = pomProperties.getOrDefault(key, rawVersion);
-                }
-
-                Map<String,Object> d = new LinkedHashMap<>();
-                d.put(K_GROUP_ID, groupId);
-                d.put(K_ARTIFACT_ID, artifactId);
-                d.put(K_VERSION, resolvedVersion.isEmpty() ? "(managed)" : resolvedVersion);
-                d.put("scope", scope);
-                deps.add(d);
-            }
-        } catch (Exception e) {
-            return Map.of(K_AVAILABLE, false, K_ERROR, e.getMessage());
-        }
-
-        // Step 2: Check Maven Central for each dep with a resolvable version (skip managed + properties)
-        // Limit to first 25 deps to keep total latency manageable
-        HttpClient freshClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(3))
-                .build();
-
-        // Use a single shared log instance to avoid Sonar S1312 per-call
-        List<CompletableFuture<Void>> futures = new ArrayList<>();
-        for (Map<String,Object> dep : deps) {
-            String version = (String) dep.get(K_VERSION);
-            // Skip: managed by BOM, unresolved property reference, or non-release versions
-            if (version == null || version.startsWith("(") || version.startsWith("${")) continue;
-            if (futures.size() >= 25) break; // cap to avoid excessive parallel calls
-
-            String g = (String) dep.get(K_GROUP_ID);
-            String a = (String) dep.get(K_ARTIFACT_ID);
-            String url = "https://search.maven.org/solrsearch/select?rows=1&wt=json&q="
-                    + URLEncoder.encode("g:" + g + " AND a:" + a, StandardCharsets.UTF_8);
-
-            CompletableFuture<Void> f = CompletableFuture.runAsync(() -> {
-                try {
-                    HttpRequest req = HttpRequest.newBuilder()
-                            .uri(URI.create(url))
-                            .timeout(Duration.ofSeconds(5))
-                            .header("Accept", "application/json")
-                            .GET()
-                            .build();
-                    HttpResponse<String> resp = freshClient.send(req, HttpResponse.BodyHandlers.ofString());
-                    if (resp.statusCode() == 200) {
-                        JsonNode root = MAPPER.readTree(resp.body());
-                        JsonNode docs = root.path("response").path("docs");
-                        if (docs.isArray() && !docs.isEmpty()) {
-                            String latest = docs.get(0).path("latestVersion").asText("");
-                            if (!latest.isBlank()) {
-                                dep.put("latestVersion", latest);
-                                // Outdated = current version differs from latest AND current is not a SNAPSHOT/milestone
-                                boolean outdated = !latest.equals(version)
-                                        && !version.contains("SNAPSHOT")
-                                        && !version.contains("-M")
-                                        && !version.contains("-RC")
-                                        && !version.contains("-alpha")
-                                        && !version.contains("-beta");
-                                dep.put("outdated", outdated);
-                            }
-                        }
-                    }
-                } catch (InterruptedException _) {
-                    Thread.currentThread().interrupt();
-                } catch (Exception _) {
-                    // Freshness check failure is non-critical — dep appears without latestVersion field
-                }
-            });
-            futures.add(f);
-        }
-
-        // Wait up to 8 s for all freshness checks (partial results if some time out)
-        try {
-            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
-                    .get(8, TimeUnit.SECONDS);
-        } catch (InterruptedException _) {
-            Thread.currentThread().interrupt();
-        } catch (Exception _) {
-            // Timeout or interruption — return whatever was collected so far
-        }
-
-        long outdatedCount = deps.stream()
-                .filter(d -> Boolean.TRUE.equals(d.get("outdated")))
-                .count();
-
-        // Step 3: Dependency tree (generated by maven-dependency-plugin:tree at build time)
-        Map<String,Object> treeResult = null;
-        InputStream treeIs = ReportParsers.loadResource(CP_DEP_TREE, "target/dependency-tree.txt");
-        if (treeIs != null) {
-            try (BufferedReader br = new BufferedReader(new InputStreamReader(treeIs, StandardCharsets.UTF_8))) {
-                List<String> lines = new ArrayList<>();
-                String line;
-                while ((line = br.readLine()) != null) {
-                    lines.add(line);
-                }
-                String rawTree = String.join("\n", lines);
-                treeResult = new LinkedHashMap<>();
-                treeResult.put(K_AVAILABLE, true);
-                treeResult.put("tree", rawTree);
-                // Transitive lines start with space/pipe/backslash/plus in the text tree format
-                long transitiveCount = lines.stream()
-                        .filter(l -> l.startsWith("   ") || l.startsWith("\\-") || l.startsWith("+"))
-                        .count();
-                treeResult.put("totalTransitive", transitiveCount);
-            } catch (IOException _) {
-                // tree unavailable — report without it
-            }
-        }
-
-        // Step 4: Dependency analysis (maven-dependency-plugin:analyze-only) — used-undeclared
-        //         and unused-declared dependencies. Helps identify dependency hygiene issues.
-        Map<String,Object> analyzeResult = parseDependencyAnalysis();
-
-        Map<String,Object> r = new LinkedHashMap<>();
-        r.put(K_AVAILABLE, true);
-        r.put(K_TOTAL, deps.size());
-        r.put("outdatedCount", outdatedCount);
-        if (treeResult != null) r.put("dependencyTree", treeResult);
-        if (analyzeResult != null) r.put("dependencyAnalysis", analyzeResult);
-        r.put(K_DEPENDENCIES, deps);
-        return r;
-    }
-
-    /**
-     * Parses the output of {@code maven-dependency-plugin:analyze-only} packaged at
-     * {@value #CP_DEP_ANALYZE}. The file contains two sections separated by blank lines:
-     * <pre>
-     *   Used undeclared dependencies found:
-     *      group:artifact:jar:version:scope
-     *   Unused declared dependencies found:
-     *      group:artifact:jar:version:scope
-     * </pre>
-     *
-     * @return map with {@code usedUndeclared} and {@code unusedDeclared} lists, or {@code null}
-     *         if the file is absent (not generated yet / build skipped analyze phase).
-     */
-    // S1168: null is semantically distinct from Map.of() here — the caller uses it
-    // to decide whether to include the "dependencyAnalysis" key in the report at all.
-    // Returning an empty map would emit `"dependencyAnalysis": {}` even when the
-    // source file is missing, misleading the UI.
-    @SuppressWarnings({"java:S3776", "java:S1168"})
-    private Map<String,Object> parseDependencyAnalysis() {
-        InputStream is = ReportParsers.loadResource(CP_DEP_ANALYZE, "target/dependency-analysis.txt");
-        if (is == null) return null;
-
-        List<String> usedUndeclared = new ArrayList<>();
-        List<String> unusedDeclared = new ArrayList<>();
-        try (BufferedReader br = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
-            String section = null;
-            String line;
-            while ((line = br.readLine()) != null) {
-                String trimmed = line.trim();
-                if (trimmed.isEmpty()) continue;
-                if (trimmed.contains("Used undeclared")) {
-                    section = "used";
-                } else if (trimmed.contains("Unused declared")) {
-                    section = "unused";
-                } else if (trimmed.startsWith("com.") || trimmed.startsWith("org.") ||
-                           trimmed.startsWith("io.") || trimmed.startsWith("net.") ||
-                           trimmed.startsWith("jakarta.") || trimmed.startsWith("javax.") ||
-                           trimmed.startsWith("ch.") || trimmed.startsWith("de.")) {
-                    // Dependency coordinate line: group:artifact:jar:version:scope
-                    if ("used".equals(section))   usedUndeclared.add(trimmed);
-                    if ("unused".equals(section)) unusedDeclared.add(trimmed);
-                }
-            }
-        } catch (IOException _) {
-            return null;
-        }
-
-        Map<String,Object> result = new LinkedHashMap<>();
-        result.put(K_AVAILABLE, true);
-        result.put("usedUndeclared", usedUndeclared);
-        result.put("usedUndeclaredCount", usedUndeclared.size());
-        result.put("unusedDeclared", unusedDeclared);
-        result.put("unusedDeclaredCount", unusedDeclared.size());
-        return result;
-    }
-
-    // getTagText moved to ReportParsers (Phase B-1 split).
+    // API / Dependencies / Licenses delegates removed — the first is inlined
+    // at the report() call site via apiSectionProvider.parse(); the others
+    // ship from build-time JSON (Phase Q-2).
 
     // -------------------------------------------------------------------------
     // Licenses section
     // -------------------------------------------------------------------------
 
-    /**
-     * Parses the THIRD-PARTY.txt generated by {@code license-maven-plugin:add-third-party}
-     * (packaged at {@value #CP_THIRD_PARTY}). Each line has the format:
-     * <pre>
-     *   (License Name) groupId:artifactId:version - Display Name
-     * </pre>
-     *
-     * <p>Returns a map with:
-     * <ul>
-     *   <li>{@code total} — total number of third-party dependencies listed</li>
-     *   <li>{@code licenses} — list of {@code {license, count, incompatible}} grouped by license name</li>
-     *   <li>{@code incompatibleCount} — count of GPL/AGPL/CDDL/EPL dependencies</li>
-     *   <li>{@code dependencies} — flat list of each dep with {@code group}, {@code artifact},
-     *       {@code version}, {@code license}, {@code incompatible}</li>
-     * </ul>
-     *
-     * <p>Incompatible licenses for commercial projects: GPL, AGPL, LGPL, CDDL, EPL.
-     */
-    private Map<String, Object> buildLicensesSection() { return licensesSectionProvider.parse(); }
+    // Licenses section moved to build-time per ADR-0052 Phase Q-2.
 
     // -------------------------------------------------------------------------
     // Metrics section
@@ -770,16 +480,8 @@ public class QualityReportEndpoint {
         return r;
     }
 
-    // -------------------------------------------------------------------------
-    // PMD section
-    // -------------------------------------------------------------------------
-
-    // Delegates to extracted parsers — Phase B-1 split.
-    private Map<String, Object> buildPmdSection()        { return pmdReportParser.parse(); }
-    private Map<String, Object> buildCheckstyleSection() { return checkstyleReportParser.parse(); }
-    private Map<String, Object> buildOwaspSection()      { return owaspReportParser.parse(); }
-
-    private Map<String, Object> buildPitestSection()     { return pitestReportParser.parse(); }
+    // PMD / Checkstyle / OWASP / Pitest sections moved to build-time per
+    // ADR-0052 Phase Q-2. Loaded at runtime from META-INF/quality-build-report.json.
 
     // `buildSonarSection` + `ratingLabel` removed 2026-04-22 per ADR-0052 —
     // the SonarCloud REST call moved out of the runtime path. UI dashboard
