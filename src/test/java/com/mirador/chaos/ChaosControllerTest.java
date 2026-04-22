@@ -104,7 +104,7 @@ class ChaosControllerTest {
         // controller maps that to 503 Service Unavailable (not 500)
         // because the fix is environmental, not a code bug.
         doThrow(new IllegalStateException(
-                "Chaos Mesh CRDs not installed. Run `bin/cluster/demo-up.sh` (full mode) or install Chaos Mesh manually."))
+                "Chaos Mesh CRDs not installed. Run `bin/cluster/demo/up.sh` (full mode) or install Chaos Mesh manually."))
                 .when(chaosService).trigger(any());
 
         ResponseEntity<Map<String, Object>> response = controller.trigger("pod-kill");
@@ -113,7 +113,7 @@ class ChaosControllerTest {
         String errorMsg = (String) response.getBody().get("error");
         assertThat(errorMsg)
                 .contains("Chaos Mesh CRDs not installed")
-                .contains("demo-up.sh");
+                .contains("bin/cluster/demo/up.sh");
     }
 
     @Test

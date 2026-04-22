@@ -47,6 +47,26 @@ becomes a thin aggregator wired via Spring `List<QualitySection>`. Keeps
 the 9 non-parser sections (build-info, git, api, deps, metrics, sonar,
 pipeline, branches, runtime) inline for B-1b follow-up.
 
+**Completed 2026-04-22** — 7 parsers + shared helpers now live in
+`com.mirador.observability.quality.parsers`:
+
+- ✅ `ReportParsers` (static utility: parseIntOrNull, parseDoubleOrNull,
+  round1, intAttr, doubleAttr, parseDurationSeconds, getTagText,
+  secureDocumentBuilder, secureNamespaceAwareDocumentBuilder, loadResource).
+- ✅ `SurefireReportParser` (buildTestsSection + ParsedSuite + parseOneSuite).
+- ✅ `JacocoReportParser` (buildCoverageSection + counterMap).
+- ✅ `SpotBugsReportParser` (buildBugsSection + priorityLabel).
+- ✅ `PmdReportParser` (buildPmdSection + priorityLabel).
+- ✅ `CheckstyleReportParser` (buildCheckstyleSection).
+- ✅ `OwaspReportParser` (buildOwaspSection + cleanCveId + cleanCveDescription).
+- ✅ `PitestReportParser` (buildPitestSection).
+
+Endpoint shrunk 1934 → 1218 LOC (−716, −37%). Below 1500 BLOCK
+threshold. 9 non-parser sections remain inline — see B-1b below.
+
+All XXE-hardened DocumentBuilder factories preserved; test suite
+(QualityReportHelpersTest 18/18) green.
+
 ### B-2 — `.gitlab-ci.yml` svc 2619 → 9 includes (~3 h)
 
 Split into `ci/includes/{lint,test,security,k8s,quality,package,native,
@@ -74,6 +94,25 @@ After B-1, the endpoint will be ~1300 lines (still > 1000). Second pass
 extracts build-info/git/api/deps/metrics/sonar/pipeline/branches/runtime
 into `com.mirador.observability.quality.providers`. Brings the endpoint
 under ~250 lines (true thin aggregator).
+
+**Started 2026-04-22**:
+
+- ✅ `BuildInfoSectionProvider` — reads META-INF/build-info.properties.
+- ✅ `ApiSectionProvider` — walks RequestMappingHandlerMapping.
+- Endpoint 1218 → 1179 LOC (−39).
+
+**Remaining 7 providers** (priority order — smallest self-contained first):
+
+- `GitSectionProvider` (+ `fetchGitRemoteUrl` helper, needs `GIT_BIN` static)
+- `RuntimeSectionProvider` (+ `buildJarLayersSection`, needs Environment + StartupTimeTracker)
+- `PipelineSectionProvider` (GitLab API call, needs HttpClient + @Value config)
+- `BranchesSectionProvider` (git for-each-ref, needs GIT_BIN)
+- `LicensesSectionProvider` (reads THIRD-PARTY.txt)
+- `SonarSectionProvider` (SonarCloud REST call, needs @Value config)
+- `MetricsSectionProvider` (walks Micrometer registry)
+- `DependenciesSectionProvider` (+ `parseDependencyAnalysis`, reads pom.xml + dependency-tree.txt)
+
+Target: endpoint ≈ 250 LOC (true thin aggregator).
 
 ---
 

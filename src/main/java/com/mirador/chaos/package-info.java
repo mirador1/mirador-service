@@ -25,7 +25,7 @@
  * without a cluster (lazy connection). If the application runs on a
  * laptop without a kubeconfig, the first {@code POST /chaos/...} fails
  * with {@code 503 Service Unavailable} and a message pointing at
- * {@code bin/cluster/demo-up.sh}. The bean never throws at startup.
+ * {@code bin/cluster/demo/up.sh}. The bean never throws at startup.
  *
  * <h2>Security</h2>
  *

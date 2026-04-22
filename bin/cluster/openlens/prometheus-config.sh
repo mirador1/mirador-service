@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
+# moved 2026-04-22 from bin/cluster/openlens-prometheus-config.sh — per ~/.claude/CLAUDE.md subdirectory hygiene
 # =============================================================================
-# bin/cluster/openlens-prometheus-config.sh
+# bin/cluster/openlens/prometheus-config.sh
 #
 # Wires OpenLens's "Metrics" feature to whichever Prometheus is currently
 # deployed in the kind-mirador-local cluster:
@@ -25,10 +26,10 @@
 # If the get succeeds (exit 0), use kube-prom; else fall back to lgtm.
 #
 # Usage:
-#   bin/cluster/openlens-prometheus-config.sh                  # auto-detect
-#   bin/cluster/openlens-prometheus-config.sh --force-lgtm     # always lgtm
-#   bin/cluster/openlens-prometheus-config.sh --force-kubeprom # always kube-prom
-#   bin/cluster/openlens-prometheus-config.sh kind-other       # other context
+#   bin/cluster/openlens/prometheus-config.sh                  # auto-detect
+#   bin/cluster/openlens/prometheus-config.sh --force-lgtm     # always lgtm
+#   bin/cluster/openlens/prometheus-config.sh --force-kubeprom # always kube-prom
+#   bin/cluster/openlens/prometheus-config.sh kind-other       # other context
 #
 # Prerequisite:
 #   - OpenLens is installed and has been opened at least once (so the

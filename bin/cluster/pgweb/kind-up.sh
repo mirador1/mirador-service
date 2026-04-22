@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
+# moved 2026-04-22 from bin/cluster/pgweb-kind-up.sh — per ~/.claude/CLAUDE.md subdirectory hygiene
 # =============================================================================
-# bin/cluster/pgweb-kind-up.sh — start the "Kind" pgweb container (port 8082).
+# bin/cluster/pgweb/kind-up.sh — start the "Kind" pgweb container (port 8082).
 #
-# Mirror of bin/cluster/pgweb-prod-up.sh targeting the KIND cluster instead of GKE.
+# Mirror of bin/cluster/pgweb/prod-up.sh targeting the KIND cluster instead of GKE.
 # Kind uses the +10000 port offset, so the Postgres tunnel is on localhost:15432
 # (see docs/architecture/environments-and-flows.md).
 #
 # Pre-requisites:
 #   1. kind cluster up (`kind create cluster --name mirador-local …`)
-#   2. bin/cluster/pf-kind.sh --daemon           — tunnels open (we need 15432 here)
+#   2. bin/cluster/port-forward/kind.sh --daemon           — tunnels open (we need 15432 here)
 #
 # Usage:
-#   bin/cluster/pgweb-kind-up.sh            # start pgweb-kind on localhost:8082
-#   bin/cluster/pgweb-kind-up.sh --down      # stop the container
+#   bin/cluster/pgweb/kind-up.sh            # start pgweb-kind on localhost:8082
+#   bin/cluster/pgweb/kind-up.sh --down      # stop the container
 # =============================================================================
 
 set -eu
@@ -34,7 +35,7 @@ fi
 
 # Sanity 2: the Postgres tunnel is open on the host (kind = +10000).
 if ! { nc -z -G 1 localhost 15432 2>/dev/null || nc -z -w 1 localhost 15432 2>/dev/null; }; then
-  echo "❌  localhost:15432 is not open. Run bin/cluster/pf-kind.sh --daemon first." >&2
+  echo "❌  localhost:15432 is not open. Run bin/cluster/port-forward/kind.sh --daemon first." >&2
   exit 1
 fi
 

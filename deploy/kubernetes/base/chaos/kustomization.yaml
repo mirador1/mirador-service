@@ -1,7 +1,7 @@
 # =============================================================================
 # chaos/ — Chaos Mesh experiments (CRs, not the operator).
 #
-# Chaos Mesh controller itself is installed by `bin/cluster/demo-up.sh` (full mode),
+# Chaos Mesh controller itself is installed by `bin/cluster/demo/up.sh` (full mode),
 # which applies https://mirrors.chaos-mesh.org/v2.7.2/install.sh outputs into
 # the `chaos-mesh` namespace. This kustomize module only declares the
 # *experiments* — the CRs that describe which failure to inject.

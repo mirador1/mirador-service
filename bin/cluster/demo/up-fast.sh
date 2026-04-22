@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
+# moved 2026-04-22 from bin/cluster/demo-up-fast.sh — per ~/.claude/CLAUDE.md subdirectory hygiene
 # =============================================================================
-# demo-up-fast.sh — minimal cluster bring-up for "verify that a change works".
+# bin/cluster/demo/up-fast.sh — minimal cluster bring-up for "verify that a change works".
 #
 # Skips Kyverno, Argo Rollouts and Chaos Mesh operators. Useful for:
 #   - CI pre-merge smoke tests that just need mirador + Postgres + ESO
@@ -19,12 +20,12 @@
 # Total cold start: ~10 min vs ~13-15 min for the full demo-up.sh.
 #
 # Access pattern (ADR-0025 — no public surface):
-#   bin/cluster/pf-prod.sh                # starts all tunnels
+#   bin/cluster/port-forward/prod.sh                # starts all tunnels
 #   curl http://localhost:18080/actuator/health
 # =============================================================================
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+REPO_ROOT="$(git rev-parse --show-toplevel)"  # robust against location changes (bin/cluster/demo/X.sh moved 2026-04-22 uncovered a pre-existing `../` depth bug)
 TF_DIR="$REPO_ROOT/deploy/terraform/gcp"
 PROJECT_ID="${TF_VAR_project_id:-project-8d6ea68c-33ac-412b-8aa}"
 REGION="${TF_VAR_region:-europe-west1}"
@@ -123,10 +124,10 @@ cat <<EOF
 ⚡ demo-up-fast complete
 ---
 Access (ADR-0025 — cluster has no public surface, prod uses +20000 offset):
-  bin/cluster/pf-prod.sh --daemon           # starts all tunnels in background
+  bin/cluster/port-forward/prod.sh --daemon           # starts all tunnels in background
   curl http://localhost:28080/actuator/health
   open http://localhost:28081       # Argo CD (admin / $ARGOCD_PWD)
 
 Skipped (vs demo-up.sh): Kyverno, Argo Rollouts, Chaos Mesh.
-Shut down with: bin/cluster/pf-stop.sh && bin/cluster/demo-down.sh
+Shut down with: bin/cluster/port-forward/stop.sh && bin/cluster/demo/down.sh
 EOF

@@ -147,11 +147,11 @@ class ChaosServiceTest {
 
         assertThatThrownBy(() -> service.trigger(ChaosExperiment.POD_KILL))
                 .isInstanceOf(IllegalStateException.class)
-                // The message must point the caller at `demo-up.sh` — that's
-                // the actionable fix. A generic "not found" would make the
-                // error look like a bug in Mirador.
+                // The message must point the caller at the demo up-script —
+                // that's the actionable fix. A generic "not found" would make
+                // the error look like a bug in Mirador.
                 .hasMessageContaining("Chaos Mesh CRDs not installed")
-                .hasMessageContaining("demo-up.sh")
+                .hasMessageContaining("bin/cluster/demo/up.sh")
                 .hasCauseInstanceOf(KubernetesClientException.class);
     }
 

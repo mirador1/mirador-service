@@ -2,6 +2,16 @@ package com.mirador.observability;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mirador.observability.quality.parsers.CheckstyleReportParser;
+import com.mirador.observability.quality.parsers.JacocoReportParser;
+import com.mirador.observability.quality.parsers.OwaspReportParser;
+import com.mirador.observability.quality.parsers.PitestReportParser;
+import com.mirador.observability.quality.parsers.PmdReportParser;
+import com.mirador.observability.quality.parsers.ReportParsers;
+import com.mirador.observability.quality.parsers.SpotBugsReportParser;
+import com.mirador.observability.quality.parsers.SurefireReportParser;
+import com.mirador.observability.quality.providers.ApiSectionProvider;
+import com.mirador.observability.quality.providers.BuildInfoSectionProvider;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
@@ -202,13 +212,47 @@ public class QualityReportEndpoint {
     private final RequestMappingHandlerMapping requestMappingHandlerMapping;
     private final Environment environment;
     private final StartupTimeTracker startupTimeTracker;
+    /**
+     * Phase B-1 split (2026-04-22): section builders are being extracted to
+     * {@link com.mirador.observability.quality.parsers}. Order of extraction
+     * from biggest XML-parsing surface down: Surefire → Jacoco → SpotBugs →
+     * PMD → Checkstyle → OWASP → Pitest.
+     */
+    private final SurefireReportParser surefireReportParser;
+    private final JacocoReportParser jacocoReportParser;
+    private final SpotBugsReportParser spotBugsReportParser;
+    private final PmdReportParser pmdReportParser;
+    private final CheckstyleReportParser checkstyleReportParser;
+    private final OwaspReportParser owaspReportParser;
+    private final PitestReportParser pitestReportParser;
+    // Phase B-1b: non-parser section providers.
+    private final BuildInfoSectionProvider buildInfoSectionProvider;
+    private final ApiSectionProvider apiSectionProvider;
 
     public QualityReportEndpoint(RequestMappingHandlerMapping requestMappingHandlerMapping,
                                  Environment environment,
-                                 StartupTimeTracker startupTimeTracker) {
+                                 StartupTimeTracker startupTimeTracker,
+                                 SurefireReportParser surefireReportParser,
+                                 JacocoReportParser jacocoReportParser,
+                                 SpotBugsReportParser spotBugsReportParser,
+                                 PmdReportParser pmdReportParser,
+                                 CheckstyleReportParser checkstyleReportParser,
+                                 OwaspReportParser owaspReportParser,
+                                 PitestReportParser pitestReportParser,
+                                 BuildInfoSectionProvider buildInfoSectionProvider,
+                                 ApiSectionProvider apiSectionProvider) {
         this.requestMappingHandlerMapping = requestMappingHandlerMapping;
         this.environment = environment;
         this.startupTimeTracker = startupTimeTracker;
+        this.surefireReportParser = surefireReportParser;
+        this.jacocoReportParser = jacocoReportParser;
+        this.spotBugsReportParser = spotBugsReportParser;
+        this.pmdReportParser = pmdReportParser;
+        this.checkstyleReportParser = checkstyleReportParser;
+        this.owaspReportParser = owaspReportParser;
+        this.pitestReportParser = pitestReportParser;
+        this.buildInfoSectionProvider = buildInfoSectionProvider;
+        this.apiSectionProvider = apiSectionProvider;
     }
 
     /**
@@ -250,318 +294,24 @@ public class QualityReportEndpoint {
     // Tests section
     // -------------------------------------------------------------------------
 
-    // Sonar java:S3776: cognitive complexity is intentionally above 15 here.
-    // This method parses multi-source test XML/CSV data with multiple conditional branches —
-    // extracting sub-methods would break the data-accumulation loop without improving clarity.
-    @SuppressWarnings("java:S3776")
+    // Delegates to the extracted SurefireReportParser — Phase B-1 split.
     private Map<String, Object> buildTestsSection() {
-        // Try classpath first
-        List<InputStream> streams = loadSurefireStreams();
-        if (streams.isEmpty()) {
-            return Map.of(K_AVAILABLE, false);
-        }
-
-        int totalTests = 0;
-        int totalFailures = 0;
-        int totalErrors = 0;
-        int totalSkipped = 0;
-        double totalTime = 0.0;
-        long lastModified = System.currentTimeMillis();
-        List<Map<String, Object>> suites = new ArrayList<>();
-        List<double[]> allTestCases = new ArrayList<>();
-        List<String> allTestCaseNames = new ArrayList<>();
-        // Deduplicate by simple class name — stale reports from old packages
-        // (after a rename without mvn clean) would otherwise double-count.
-        java.util.Set<String> seenShortNames = new java.util.LinkedHashSet<>();
-
-        DocumentBuilder docBuilder;
-        try {
-            docBuilder = secureDocumentBuilder();
-        } catch (Exception e) {
-            return Map.of(K_AVAILABLE, false, K_ERROR, e.getMessage());
-        }
-        for (InputStream is : streams) {
-            ParsedSuite p = parseOneSuite(is, docBuilder);
-            if (p == null || !seenShortNames.add(p.shortName())) continue;  // malformed or duplicate
-            totalTests    += p.tests();
-            totalFailures += p.failures();
-            totalErrors   += p.errors();
-            totalSkipped  += p.skipped();
-            totalTime     += p.time();
-            suites.add(p.display());
-            allTestCases.addAll(p.testCaseTimes());
-            allTestCaseNames.addAll(p.testCaseNames());
-        }
-
-        String runAt = LocalDateTime.ofInstant(
-                Instant.ofEpochMilli(lastModified), ZoneId.systemDefault()).format(TS_FMT);
-
-        boolean allPassed = totalFailures == 0 && totalErrors == 0;
-
-        // Build slowest tests list
-        List<Map<String,Object>> slowestTests = new ArrayList<>();
-        for (int i = 0; i < allTestCaseNames.size(); i++) {
-            Map<String,Object> tc = new LinkedHashMap<>();
-            tc.put("name", allTestCaseNames.get(i));
-            tc.put("time", String.format("%.3fs", allTestCases.get(i)[0]));
-            tc.put(K_TIME_MS, (long)(allTestCases.get(i)[0] * 1000));
-            slowestTests.add(tc);
-        }
-        slowestTests.sort((a, b) -> Long.compare((Long)b.get(K_TIME_MS), (Long)a.get(K_TIME_MS)));
-        if (slowestTests.size() > 10) slowestTests = slowestTests.subList(0, 10);
-
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put(K_AVAILABLE, true);
-        result.put(K_STATUS, allPassed ? "PASSED" : "FAILED");
-        result.put(K_TOTAL, totalTests);
-        result.put("passed", totalTests - totalFailures - totalErrors - totalSkipped);
-        result.put(K_FAILURES, totalFailures);
-        result.put(K_ERRORS, totalErrors);
-        result.put(K_SKIPPED, totalSkipped);
-        result.put("time", String.format("%.2fs", totalTime));
-        result.put("runAt", runAt);
-        result.put("suites", suites);
-        result.put("slowestTests", slowestTests);
-        return result;
+        return surefireReportParser.parse();
     }
 
-    // S3776: reads surefire reports from two locations (packaged classpath + dev fallback)
-    // with their own try/catch to keep the dev-loop fast — extracting would fragment the
-    // "prefer packaged, then local" fallback intent.
-    @SuppressWarnings("java:S3776")
-    private List<InputStream> loadSurefireStreams() {
-        List<InputStream> streams = new ArrayList<>();
-        // Try classpath (packaged JAR)
-        try {
-            PathMatchingResourcePatternResolver resolver = new PathMatchingResourcePatternResolver();
-            Resource[] resources = resolver.getResources("classpath:" + CP_SUREFIRE_PATTERN);
-            for (Resource r : resources) {
-                if (r.exists()) {
-                    streams.add(r.getInputStream());
-                }
-            }
-            if (!streams.isEmpty()) return streams;
-        } catch (IOException _) {
-            // fall through to dev fallback
-        }
-        // Fallback: local target/ directory
-        File dir = new File(DEV_SUREFIRE_DIR);
-        if (dir.exists() && dir.isDirectory()) {
-            File[] xmlFiles = dir.listFiles((d, name) -> name.startsWith("TEST-") && name.endsWith(".xml"));
-            if (xmlFiles != null) {
-                for (File f : xmlFiles) {
-                    try {
-                        streams.add(new java.io.FileInputStream(f));
-                    } catch (IOException _) {
-                        // skip unreadable files
-                    }
-                }
-            }
-        }
-        return streams;
-    }
-
-    // -------------------------------------------------------------------------
-    // Coverage section
-    // -------------------------------------------------------------------------
-
-    // S1141 + S135: the inner try/catch and several `continue` statements are
-    // idiomatic for "skip malformed CSV row, aggregate the rest" — restructuring
-    // to one exit point would hide the data-validation cliff.
-    @SuppressWarnings({"java:S3776", "java:S1141", "java:S135"})
+    // Delegates to the extracted parsers — Phase B-1 split.
     private Map<String, Object> buildCoverageSection() {
-        // Prefer the merged report (unit + IT). In dev, fall through to
-        // the unit-only CSV when the merged one was not produced (e.g.
-        // `mvn verify -DskipITs`).
-        InputStream is = loadResource(CP_JACOCO, DEV_JACOCO);
-        if (is == null) {
-            is = loadResource(CP_JACOCO, DEV_JACOCO_UNIT);
-        }
-        if (is == null) {
-            return Map.of(K_AVAILABLE, false);
-        }
-
-        long instrCovered = 0;
-        long instrTotal = 0;
-        long branchCovered = 0;
-        long branchTotal = 0;
-        long lineCovered = 0;
-        long lineTotal = 0;
-        long methodCovered = 0;
-        long methodTotal = 0;
-
-        // Map<packageName, [lineCovered, lineTotal, instrCovered, instrTotal]>
-        Map<String, long[]> pkgData = new LinkedHashMap<>();
-
-        try (BufferedReader br = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
-            String line;
-            boolean header = true;
-            while ((line = br.readLine()) != null) {
-                if (header) { header = false; continue; } // skip header row
-                // CSV columns: GROUP,PACKAGE,CLASS,INSTRUCTION_MISSED,INSTRUCTION_COVERED,
-                //              BRANCH_MISSED,BRANCH_COVERED,LINE_MISSED,LINE_COVERED,
-                //              COMPLEXITY_MISSED,COMPLEXITY_COVERED,METHOD_MISSED,METHOD_COVERED
-                String[] cols = line.split(",", -1);
-                if (cols.length < 13) continue;
-                try {
-                    long iMissed = Long.parseLong(cols[3].trim());
-                    long iCovered = Long.parseLong(cols[4].trim());
-                    long bMissed = Long.parseLong(cols[5].trim());
-                    long bCovered = Long.parseLong(cols[6].trim());
-                    long lMissed = Long.parseLong(cols[7].trim());
-                    long lCovered = Long.parseLong(cols[8].trim());
-                    long mMissed = Long.parseLong(cols[11].trim());
-                    long mCovered = Long.parseLong(cols[12].trim());
-
-                    instrCovered += iCovered;
-                    instrTotal += iMissed + iCovered;
-                    branchCovered += bCovered;
-                    branchTotal += bMissed + bCovered;
-                    lineCovered += lCovered;
-                    lineTotal += lMissed + lCovered;
-                    methodCovered += mCovered;
-                    methodTotal += mMissed + mCovered;
-
-                    // Aggregate by package (col[1]), strip leading path segments for display
-                    String pkg = cols[1].trim();
-                    String pkgShort = pkg.isEmpty() ? "(default)" : pkg.replace('/', '.');
-                    // Use last segment for display
-                    String[] pkgParts = pkgShort.split("\\.");
-                    String pkgDisplay = pkgParts[pkgParts.length - 1];
-
-                    pkgData.merge(pkgDisplay, new long[]{lCovered, lMissed + lCovered, iCovered, iMissed + iCovered},
-                            (a, b) -> new long[]{a[0] + b[0], a[1] + b[1], a[2] + b[2], a[3] + b[3]});
-                } catch (NumberFormatException _) {
-                    // skip malformed lines
-                }
-            }
-        } catch (IOException e) {
-            return Map.of(K_AVAILABLE, false, K_ERROR, e.getMessage());
-        }
-
-        List<Map<String, Object>> packages = new ArrayList<>();
-        for (Map.Entry<String, long[]> entry : pkgData.entrySet()) {
-            long[] d = entry.getValue();
-            double instrPct = d[3] > 0 ? round1(100.0 * d[2] / d[3]) : 0.0;
-            double linePct  = d[1] > 0 ? round1(100.0 * d[0] / d[1]) : 0.0;
-            Map<String, Object> pkg = new LinkedHashMap<>();
-            pkg.put("name", entry.getKey());
-            pkg.put("instructionPct", instrPct);
-            pkg.put("linePct", linePct);
-            packages.add(pkg);
-        }
-
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put(K_AVAILABLE, true);
-        result.put("instructions", counterMap(instrCovered, instrTotal));
-        result.put(K_BRANCHES, counterMap(branchCovered, branchTotal));
-        result.put("lines", counterMap(lineCovered, lineTotal));
-        result.put(K_METHODS, counterMap(methodCovered, methodTotal));
-        result.put("packages", packages);
-        return result;
+        return jacocoReportParser.parse();
     }
-
-    private Map<String, Object> counterMap(long covered, long total) {
-        Map<String, Object> m = new LinkedHashMap<>();
-        m.put("covered", covered);
-        m.put(K_TOTAL, total);
-        m.put("pct", total > 0 ? round1(100.0 * covered / total) : 0.0);
-        return m;
-    }
-
-    // -------------------------------------------------------------------------
-    // Bugs section
-    // -------------------------------------------------------------------------
 
     private Map<String, Object> buildBugsSection() {
-        InputStream is = loadResource(CP_SPOTBUGS, DEV_SPOTBUGS);
-        if (is == null) {
-            return Map.of(K_AVAILABLE, false);
-        }
-
-        List<Map<String, Object>> items = new ArrayList<>();
-        Map<String, Integer> byCategory = new LinkedHashMap<>();
-        Map<String, Integer> byPriority = new LinkedHashMap<>();
-
-        try (is) {
-            DocumentBuilder docBuilder = secureDocumentBuilder();
-            Document doc = docBuilder.parse(is);
-            NodeList bugInstances = doc.getElementsByTagName("BugInstance");
-            for (int i = 0; i < bugInstances.getLength(); i++) {
-                Element bug = (Element) bugInstances.item(i);
-                String category = bug.getAttribute("category");
-                String priority  = bug.getAttribute(K_PRIORITY);
-                String type      = bug.getAttribute("type");
-
-                // Extract class name from nested <Class> element
-                String className = "";
-                NodeList classes = bug.getElementsByTagName("Class");
-                if (classes.getLength() > 0) {
-                    className = ((Element) classes.item(0)).getAttribute("classname");
-                    // Short name
-                    if (className.contains(".")) {
-                        className = className.substring(className.lastIndexOf('.') + 1);
-                    }
-                }
-
-                Map<String, Object> item = new LinkedHashMap<>();
-                item.put("category", category);
-                item.put(K_PRIORITY, priority);
-                item.put("type", type);
-                item.put("className", className);
-                items.add(item);
-
-                byCategory.merge(category, 1, Integer::sum);
-                byPriority.merge(priorityLabel(priority), 1, Integer::sum);
-            }
-        } catch (Exception e) {
-            return Map.of(K_AVAILABLE, false, K_ERROR, e.getMessage());
-        }
-
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put(K_AVAILABLE, true);
-        result.put(K_TOTAL, items.size());
-        result.put("byCategory", byCategory);
-        result.put("byPriority", byPriority);
-        result.put("items", items);
-        return result;
+        return spotBugsReportParser.parse();
     }
 
-    private String priorityLabel(String priority) {
-        return switch (priority) {
-            case "1" -> "High";
-            case "2" -> "Normal";
-            case "3" -> "Low";
-            default -> priority;
-        };
-    }
+    // priorityLabel moved inside PmdReportParser (Phase B-1 split complete for PMD).
 
-    // -------------------------------------------------------------------------
-    // Build section
-    // -------------------------------------------------------------------------
-
-    private Map<String, Object> buildBuildSection() {
-        ClassPathResource res = new ClassPathResource(CP_BUILD_INFO);
-        if (!res.exists()) {
-            return Map.of(K_AVAILABLE, false);
-        }
-
-        Properties props = new Properties();
-        try (InputStream is = res.getInputStream()) {
-            props.load(is);
-        } catch (IOException e) {
-            return Map.of(K_AVAILABLE, false, K_ERROR, e.getMessage());
-        }
-
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put(K_AVAILABLE, true);
-        result.put("artifact", props.getProperty("build.artifact", K_UNKNOWN));
-        result.put(K_VERSION, props.getProperty("build.version", K_UNKNOWN));
-        result.put("time", props.getProperty("build.time", K_UNKNOWN));
-        result.put("javaVersion", System.getProperty("java.version", K_UNKNOWN));
-        result.put("springBootVersion", props.getProperty("build.version", K_UNKNOWN));
-        return result;
-    }
+    // Delegates — Phase B-1b.
+    private Map<String, Object> buildBuildSection() { return buildInfoSectionProvider.parse(); }
 
     // -------------------------------------------------------------------------
     // Git section
@@ -631,31 +381,7 @@ public class QualityReportEndpoint {
         }
     }
 
-    // -------------------------------------------------------------------------
-    // API section
-    // -------------------------------------------------------------------------
-
-    private Map<String, Object> buildApiSection() {
-        List<Map<String,Object>> endpoints = new ArrayList<>();
-        requestMappingHandlerMapping.getHandlerMethods().forEach((info, method) -> {
-            Set<String> patterns = info.getPatternValues();
-            Set<org.springframework.web.bind.annotation.RequestMethod> methods = info.getMethodsCondition().getMethods();
-            for (String pattern : patterns) {
-                Map<String,Object> ep = new LinkedHashMap<>();
-                ep.put("path", pattern);
-                ep.put(K_METHODS, methods.isEmpty() ? List.of("GET") : methods.stream().map(Enum::name).sorted().toList());
-                ep.put("handler", method.getBeanType().getSimpleName() + "." + method.getMethod().getName());
-                endpoints.add(ep);
-            }
-        });
-        // Sort by path then method
-        endpoints.sort((a, b) -> ((String)a.get("path")).compareTo((String)b.get("path")));
-        Map<String,Object> r = new LinkedHashMap<>();
-        r.put(K_AVAILABLE, true);
-        r.put(K_TOTAL, endpoints.size());
-        r.put("endpoints", endpoints);
-        return r;
-    }
+    private Map<String, Object> buildApiSection() { return apiSectionProvider.parse(); }
 
     // -------------------------------------------------------------------------
     // Dependencies section
@@ -680,14 +406,14 @@ public class QualityReportEndpoint {
     // across several helpers without improving readability.
     @SuppressWarnings({"java:S3776", "java:S135", "java:S6541"})
     private Map<String, Object> buildDependenciesSection() {
-        InputStream is = loadResource(CP_POM, "pom.xml");
+        InputStream is = ReportParsers.loadResource(CP_POM, "pom.xml");
         if (is == null) return Map.of(K_AVAILABLE, false);
 
         // Step 1: Parse pom.xml — extract properties + direct dependencies
         Map<String, String> pomProperties = new HashMap<>();
         List<Map<String,Object>> deps = new ArrayList<>();
         try (is) {
-            DocumentBuilder db = secureNamespaceAwareDocumentBuilder();
+            DocumentBuilder db = ReportParsers.secureNamespaceAwareDocumentBuilder();
             Document doc = db.parse(is);
 
             // Collect <properties> values to resolve ${property} version references
@@ -710,10 +436,10 @@ public class QualityReportEndpoint {
                 Element dep = (Element) depNodes.item(i);
                 // Only direct dependencies (parent is <dependencies>, not <dependencyManagement>)
                 if (!K_DEPENDENCIES.equals(dep.getParentNode().getNodeName())) continue;
-                String groupId    = getTagText(dep, K_GROUP_ID);
-                String artifactId = getTagText(dep, K_ARTIFACT_ID);
-                String rawVersion = getTagText(dep, K_VERSION);
-                String scope      = getTagText(dep, "scope");
+                String groupId    = ReportParsers.getTagText(dep, K_GROUP_ID);
+                String artifactId = ReportParsers.getTagText(dep, K_ARTIFACT_ID);
+                String rawVersion = ReportParsers.getTagText(dep, K_VERSION);
+                String scope      = ReportParsers.getTagText(dep, "scope");
                 if (scope.isEmpty()) scope = "compile";
 
                 // Resolve ${property} references
@@ -805,7 +531,7 @@ public class QualityReportEndpoint {
 
         // Step 3: Dependency tree (generated by maven-dependency-plugin:tree at build time)
         Map<String,Object> treeResult = null;
-        InputStream treeIs = loadResource(CP_DEP_TREE, "target/dependency-tree.txt");
+        InputStream treeIs = ReportParsers.loadResource(CP_DEP_TREE, "target/dependency-tree.txt");
         if (treeIs != null) {
             try (BufferedReader br = new BufferedReader(new InputStreamReader(treeIs, StandardCharsets.UTF_8))) {
                 List<String> lines = new ArrayList<>();
@@ -860,7 +586,7 @@ public class QualityReportEndpoint {
     // source file is missing, misleading the UI.
     @SuppressWarnings({"java:S3776", "java:S1168"})
     private Map<String,Object> parseDependencyAnalysis() {
-        InputStream is = loadResource(CP_DEP_ANALYZE, "target/dependency-analysis.txt");
+        InputStream is = ReportParsers.loadResource(CP_DEP_ANALYZE, "target/dependency-analysis.txt");
         if (is == null) return null;
 
         List<String> usedUndeclared = new ArrayList<>();
@@ -897,13 +623,7 @@ public class QualityReportEndpoint {
         return result;
     }
 
-    private String getTagText(Element parent, String tag) {
-        NodeList nl = parent.getElementsByTagName(tag);
-        if (nl.getLength() > 0 && nl.item(0).getParentNode() == parent) {
-            return nl.item(0).getTextContent().trim();
-        }
-        return "";
-    }
+    // getTagText moved to ReportParsers (Phase B-1 split).
 
     // -------------------------------------------------------------------------
     // Licenses section
@@ -929,7 +649,7 @@ public class QualityReportEndpoint {
      */
     @SuppressWarnings({"java:S3776", "java:S135"})   // THIRD-PARTY.txt parsing: multiple early-skip branches for header and malformed rows
     private Map<String,Object> buildLicensesSection() {
-        InputStream is = loadResource(CP_THIRD_PARTY, "target/THIRD-PARTY.txt");
+        InputStream is = ReportParsers.loadResource(CP_THIRD_PARTY, "target/THIRD-PARTY.txt");
         if (is == null) return Map.of(K_AVAILABLE, false);
 
         // Licenses that may be incompatible with proprietary/commercial use
@@ -1014,9 +734,9 @@ public class QualityReportEndpoint {
     @SuppressWarnings({"java:S1141", "java:S135", "java:S3776"})
     private Map<String, Object> buildMetricsSection() {
         // Same merged-first / unit-fallback strategy as buildCoverageSection.
-        InputStream is = loadResource(CP_JACOCO, DEV_JACOCO);
+        InputStream is = ReportParsers.loadResource(CP_JACOCO, DEV_JACOCO);
         if (is == null) {
-            is = loadResource(CP_JACOCO, DEV_JACOCO_UNIT);
+            is = ReportParsers.loadResource(CP_JACOCO, DEV_JACOCO_UNIT);
         }
         if (is == null) return Map.of(K_AVAILABLE, false);
 
@@ -1131,274 +851,12 @@ public class QualityReportEndpoint {
     // PMD section
     // -------------------------------------------------------------------------
 
-    // Sonar java:S3776: cognitive complexity is intentionally above 15 here.
-    // Parses PMD XML with nested file→violation loops and multiple classification branches.
-    // Extracting sub-methods would split the violation-accumulation logic across multiple methods
-    // without making the code clearer.
-    @SuppressWarnings("java:S3776")
-    private Map<String, Object> buildPmdSection() {
-        InputStream is = loadResource(CP_PMD, DEV_PMD);
-        if (is == null) return Map.of(K_AVAILABLE, false);
+    // Delegates to extracted parsers — Phase B-1 split.
+    private Map<String, Object> buildPmdSection()        { return pmdReportParser.parse(); }
+    private Map<String, Object> buildCheckstyleSection() { return checkstyleReportParser.parse(); }
+    private Map<String, Object> buildOwaspSection()      { return owaspReportParser.parse(); }
 
-        int total = 0;
-        Map<String, Integer> byRuleset  = new LinkedHashMap<>();
-        Map<String, Integer> byPriority = new LinkedHashMap<>();
-        Map<String, Integer> byRule     = new LinkedHashMap<>();
-        List<Map<String, Object>> violations = new ArrayList<>();
-
-        try (is) {
-            DocumentBuilder db = secureDocumentBuilder();
-            Document doc = db.parse(is);
-
-            NodeList files = doc.getElementsByTagName("file");
-            for (int i = 0; i < files.getLength(); i++) {
-                Element file = (Element) files.item(i);
-                String filename = file.getAttribute("name");
-                // Short class name from path
-                String shortFile = filename.contains("/")
-                    ? filename.substring(filename.lastIndexOf('/') + 1).replace(".java", "")
-                    : filename;
-
-                NodeList viols = file.getElementsByTagName("violation");
-                for (int j = 0; j < viols.getLength(); j++) {
-                    Element v = (Element) viols.item(j);
-                    String rule     = v.getAttribute("rule");
-                    String ruleset  = v.getAttribute("ruleset");
-                    String priority = v.getAttribute(K_PRIORITY);
-                    String msg      = v.getTextContent().trim();
-
-                    total++;
-                    byRuleset.merge(ruleset, 1, Integer::sum);
-                    byPriority.merge(priorityLabel(priority), 1, Integer::sum);
-                    byRule.merge(rule, 1, Integer::sum);
-
-                    if (violations.size() < 50) { // limit to first 50
-                        Map<String, Object> vmap = new LinkedHashMap<>();
-                        vmap.put("file",     shortFile);
-                        vmap.put("rule",     rule);
-                        vmap.put("ruleset",  ruleset);
-                        vmap.put(K_PRIORITY, priority);
-                        vmap.put(K_MESSAGE,  msg.length() > 120 ? msg.substring(0, 120) + "…" : msg);
-                        violations.add(vmap);
-                    }
-                }
-            }
-        } catch (Exception e) {
-            return Map.of(K_AVAILABLE, false, K_ERROR, e.getMessage());
-        }
-
-        // Sort byRule by count desc, keep top 10
-        List<Map<String, Object>> topRules = byRule.entrySet().stream()
-            .sorted((a, b) -> b.getValue() - a.getValue())
-            .limit(10)
-            .map(e -> { Map<String, Object> m = new LinkedHashMap<>(); m.put("rule", e.getKey()); m.put(K_COUNT, e.getValue()); return m; })
-            .toList();
-
-        Map<String, Object> r = new LinkedHashMap<>();
-        r.put(K_AVAILABLE, true);
-        r.put(K_TOTAL, total);
-        r.put("byRuleset",  byRuleset);
-        r.put("byPriority", byPriority);
-        r.put("topRules",   topRules);
-        r.put("violations", violations);
-        return r;
-    }
-
-    // -------------------------------------------------------------------------
-    // Checkstyle section
-    // -------------------------------------------------------------------------
-
-    // Sonar java:S3776: cognitive complexity is intentionally above 15 here.
-    // Parses Checkstyle XML with nested file→error loops and severity/checker classification.
-    @SuppressWarnings("java:S3776")
-    private Map<String, Object> buildCheckstyleSection() {
-        InputStream is = loadResource(CP_CHECKSTYLE, DEV_CHECKSTYLE);
-        if (is == null) return Map.of(K_AVAILABLE, false);
-
-        int total = 0;
-        Map<String, Integer> bySeverity = new LinkedHashMap<>();
-        Map<String, Integer> byChecker  = new LinkedHashMap<>();
-        List<Map<String, Object>> violations = new ArrayList<>();
-
-        try (is) {
-            DocumentBuilder db = secureDocumentBuilder();
-            Document doc = db.parse(is);
-
-            NodeList files = doc.getElementsByTagName("file");
-            for (int i = 0; i < files.getLength(); i++) {
-                Element file = (Element) files.item(i);
-                String filename = file.getAttribute("name");
-                String shortFile = filename.contains("/")
-                    ? filename.substring(filename.lastIndexOf('/') + 1).replace(".java", "")
-                    : filename;
-
-                NodeList errors = file.getElementsByTagName(K_ERROR);
-                for (int j = 0; j < errors.getLength(); j++) {
-                    Element err = (Element) errors.item(j);
-                    String severity = err.getAttribute(K_SEVERITY);
-                    String source   = err.getAttribute("source");
-                    String message  = err.getAttribute(K_MESSAGE);
-                    String line     = err.getAttribute("line");
-
-                    // Short checker name: last segment of FQCN
-                    String checker = source.contains(".")
-                        ? source.substring(source.lastIndexOf('.') + 1)
-                        : source;
-
-                    total++;
-                    bySeverity.merge(severity, 1, Integer::sum);
-                    byChecker.merge(checker, 1, Integer::sum);
-
-                    if (violations.size() < 50) {
-                        Map<String, Object> vmap = new LinkedHashMap<>();
-                        vmap.put("file",     shortFile);
-                        vmap.put("line",     line);
-                        vmap.put(K_SEVERITY, severity);
-                        vmap.put("checker",  checker);
-                        vmap.put(K_MESSAGE,  message.length() > 100 ? message.substring(0, 100) + "…" : message);
-                        violations.add(vmap);
-                    }
-                }
-            }
-        } catch (Exception e) {
-            return Map.of(K_AVAILABLE, false, K_ERROR, e.getMessage());
-        }
-
-        List<Map<String, Object>> topCheckers = byChecker.entrySet().stream()
-            .sorted((a, b) -> b.getValue() - a.getValue())
-            .limit(10)
-            .map(e -> { Map<String, Object> m = new LinkedHashMap<>(); m.put("checker", e.getKey()); m.put(K_COUNT, e.getValue()); return m; })
-            .toList();
-
-        Map<String, Object> r = new LinkedHashMap<>();
-        r.put(K_AVAILABLE,   true);
-        r.put(K_TOTAL,       total);
-        r.put("bySeverity",  bySeverity);
-        r.put("topCheckers", topCheckers);
-        r.put("violations",  violations);
-        return r;
-    }
-
-    // -------------------------------------------------------------------------
-    // OWASP section
-    // -------------------------------------------------------------------------
-
-    private Map<String, Object> buildOwaspSection() {
-        InputStream is = loadResource(CP_OWASP, DEV_OWASP);
-        if (is == null) return Map.of(K_AVAILABLE, false);
-
-        int total = 0;
-        Map<String, Integer> bySeverity = new LinkedHashMap<>();
-        List<Map<String, Object>> vulns = new ArrayList<>();
-
-        try (is) {
-            JsonNode root = MAPPER.readTree(is);
-            JsonNode dependencies = root.path(K_DEPENDENCIES);
-            for (JsonNode dep : dependencies) {
-                JsonNode vulnerabilities = dep.path(K_VULNERABILITIES);
-                if (vulnerabilities.isEmpty()) continue;
-
-                String depName = dep.path("fileName").asText(K_UNKNOWN);
-                for (JsonNode vuln : vulnerabilities) {
-                    String rawName  = vuln.path("name").asText("?");
-                    String name     = cleanCveId(rawName, vuln.path("references"));
-                    String severity = vuln.path(K_SEVERITY).asText("UNKNOWN").toUpperCase();
-                    double score    = vuln.path("cvssv3").path("baseScore").asDouble(
-                                      vuln.path("cvssv2").path(K_SCORE).asDouble(0.0));
-                    String desc     = cleanCveDescription(
-                            vuln.path(K_DESCRIPTION).asText(rawName)); // fallback to name if no desc
-
-                    total++;
-                    bySeverity.merge(severity, 1, Integer::sum);
-
-                    Map<String, Object> v = new LinkedHashMap<>();
-                    v.put("cve",        name);
-                    v.put(K_SEVERITY,   severity);
-                    v.put(K_SCORE,      score);
-                    v.put("dependency", depName);
-                    v.put(K_DESCRIPTION, desc);
-                    vulns.add(v);
-                }
-            }
-            // Sort by score desc
-            vulns.sort((a, b) -> Double.compare((Double)b.get(K_SCORE), (Double)a.get(K_SCORE)));
-        } catch (Exception e) {
-            return Map.of(K_AVAILABLE, false, K_ERROR, e.getMessage());
-        }
-
-        Map<String, Object> r = new LinkedHashMap<>();
-        r.put(K_AVAILABLE,   true);
-        r.put(K_TOTAL,       total);
-        r.put("bySeverity",  bySeverity);
-        r.put(K_VULNERABILITIES, vulns.size() > 30 ? vulns.subList(0, 30) : vulns);
-        return r;
-    }
-
-    // -------------------------------------------------------------------------
-    // Pitest section
-    // -------------------------------------------------------------------------
-
-    private Map<String, Object> buildPitestSection() {
-        InputStream is = loadResource(CP_PITEST, DEV_PITEST);
-        if (is == null) return Map.of(K_AVAILABLE, false, "note", "Run: mvn test-compile pitest:mutationCoverage");
-
-        int total = 0;
-        int killed = 0;
-        int survived = 0;
-        int noCoverage = 0;
-        Map<String, Integer> byMutator  = new LinkedHashMap<>();
-        Map<String, Integer> byStatus   = new LinkedHashMap<>();
-        List<Map<String, Object>> surviving = new ArrayList<>();
-
-        try (is) {
-            DocumentBuilder db = secureDocumentBuilder();
-            Document doc = db.parse(is);
-
-            NodeList mutations = doc.getElementsByTagName("mutation");
-            for (int i = 0; i < mutations.getLength(); i++) {
-                Element m = (Element) mutations.item(i);
-                String status  = m.getAttribute(K_STATUS);
-                String mutator = m.getAttribute("mutator");
-                if (mutator.contains(".")) mutator = mutator.substring(mutator.lastIndexOf('.') + 1);
-
-                total++;
-                byStatus.merge(status, 1, Integer::sum);
-                byMutator.merge(mutator, 1, Integer::sum);
-
-                switch (status) {
-                    case "KILLED"      -> killed++;
-                    case "SURVIVED"    -> { survived++; if (surviving.size() < 20) {
-                        Map<String,Object> sm = new LinkedHashMap<>();
-                        sm.put("class",  getTagText(m, K_MUTATED_CLASS).contains(".")
-                            ? getTagText(m, K_MUTATED_CLASS).substring(getTagText(m, K_MUTATED_CLASS).lastIndexOf('.')+1)
-                            : getTagText(m, K_MUTATED_CLASS));
-                        sm.put("method", getTagText(m, "mutatedMethod"));
-                        sm.put("mutator", mutator);
-                        sm.put(K_DESCRIPTION, getTagText(m, K_DESCRIPTION));
-                        surviving.add(sm);
-                    }}
-                    case "NO_COVERAGE" -> noCoverage++;
-                    default            -> { /* TIMED_OUT, RUN_ERROR, etc. — count only */ }
-                }
-            }
-        } catch (Exception e) {
-            return Map.of(K_AVAILABLE, false, K_ERROR, e.getMessage());
-        }
-
-        double score = total > 0 ? round1(100.0 * killed / total) : 0.0;
-
-        Map<String, Object> r = new LinkedHashMap<>();
-        r.put(K_AVAILABLE,    true);
-        r.put(K_TOTAL,        total);
-        r.put("killed",       killed);
-        r.put("survived",     survived);
-        r.put("noCoverage",   noCoverage);
-        r.put(K_SCORE,        score);
-        r.put("byStatus",     byStatus);
-        r.put("byMutator",    byMutator);
-        r.put("survivingMutations", surviving);
-        return r;
-    }
+    private Map<String, Object> buildPitestSection()     { return pitestReportParser.parse(); }
 
     // -------------------------------------------------------------------------
     // SonarQube section
@@ -1462,12 +920,12 @@ public class QualityReportEndpoint {
             r.put(K_AVAILABLE,             true);
             r.put("projectKey",            sonarProjectKey);
             r.put("url",                   sonarHostUrl + "/dashboard?id=" + sonarProjectKey);
-            r.put("bugs",                  parseIntOrNull(raw.get("bugs")));
-            r.put(K_VULNERABILITIES,       parseIntOrNull(raw.get(K_VULNERABILITIES)));
-            r.put("codeSmells",            parseIntOrNull(raw.get("code_smells")));
-            r.put(K_COVERAGE,              parseDoubleOrNull(raw.get(K_COVERAGE)));
-            r.put("duplications",          parseDoubleOrNull(raw.get("duplicated_lines_density")));
-            r.put("linesOfCode",           parseIntOrNull(raw.get("ncloc")));
+            r.put("bugs",                  ReportParsers.parseIntOrNull(raw.get("bugs")));
+            r.put(K_VULNERABILITIES,       ReportParsers.parseIntOrNull(raw.get(K_VULNERABILITIES)));
+            r.put("codeSmells",            ReportParsers.parseIntOrNull(raw.get("code_smells")));
+            r.put(K_COVERAGE,              ReportParsers.parseDoubleOrNull(raw.get(K_COVERAGE)));
+            r.put("duplications",          ReportParsers.parseDoubleOrNull(raw.get("duplicated_lines_density")));
+            r.put("linesOfCode",           ReportParsers.parseIntOrNull(raw.get("ncloc")));
             r.put("reliabilityRating",     ratingLabel(raw.get("reliability_rating")));
             r.put("securityRating",        ratingLabel(raw.get("security_rating")));
             r.put("maintainabilityRating", ratingLabel(raw.get("sqale_rating")));
@@ -1496,195 +954,13 @@ public class QualityReportEndpoint {
         };
     }
 
-    private static Integer parseIntOrNull(String v) {
-        if (v == null || v.isBlank()) return null;
-        try { return Integer.parseInt(v.trim()); } catch (NumberFormatException _) { return null; }
-    }
+    // ─── Helpers extracted to com.mirador.observability.quality.parsers.ReportParsers ─
+    //     (Phase B-1 split, 2026-04-22 — parseIntOrNull, parseDoubleOrNull, round1,
+    //      intAttr, doubleAttr, parseDurationSeconds, secureDocumentBuilder,
+    //      secureNamespaceAwareDocumentBuilder, loadResource live there now.
+    //      Tests-section XML parsing moved to SurefireReportParser in the same package.)
 
-    private static Double parseDoubleOrNull(String v) {
-        if (v == null || v.isBlank()) return null;
-        try { return round1(Double.parseDouble(v.trim())); } catch (NumberFormatException _) { return null; }
-    }
-
-    // -------------------------------------------------------------------------
-    // Helpers
-    // -------------------------------------------------------------------------
-
-    /**
-     * Loads a resource from classpath first, falling back to a local file path.
-     * Returns null if neither is found.
-     */
-    private InputStream loadResource(String classpathPath, String devFallback) {
-        ClassPathResource res = new ClassPathResource(classpathPath);
-        if (res.exists()) {
-            try {
-                return res.getInputStream();
-            } catch (IOException _) {
-                // fall through
-            }
-        }
-        File devFile = new File(devFallback);
-        if (devFile.exists()) {
-            try {
-                return new java.io.FileInputStream(devFile);
-            } catch (IOException _) {
-                // fall through
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Parses an ISO-8601 start/finish pair and returns the number of whole seconds
-     * between them. Extracted so {@link #buildPipelineHistorySection()} doesn't need
-     * a nested try/catch (Sonar S1141). A malformed timestamp simply omits the field.
-     */
-    private static java.util.OptionalLong parseDurationSeconds(String startIso, String finishIso) {
-        try {
-            Instant start  = Instant.parse(startIso);
-            Instant finish = Instant.parse(finishIso);
-            return java.util.OptionalLong.of(Duration.between(start, finish).getSeconds());
-        } catch (Exception _) {
-            return java.util.OptionalLong.empty();
-        }
-    }
-
-    /**
-     * Parsed representation of one surefire/failsafe {@code TEST-*.xml} suite.
-     * Used by {@link #parseOneSuite(InputStream, DocumentBuilder)} so the caller
-     * doesn't need a second try/catch inside the loop (Sonar S1141).
-     */
-    private record ParsedSuite(String shortName, Map<String, Object> display,
-                                int tests, int failures, int errors, int skipped, double time,
-                                List<double[]> testCaseTimes, List<String> testCaseNames) {}
-
-    private static ParsedSuite parseOneSuite(InputStream is, DocumentBuilder docBuilder) {
-        try (is) {
-            Document doc = docBuilder.parse(is);
-            Element suite = doc.getDocumentElement();
-            int tests    = intAttr(suite, K_TESTS);
-            int failures = intAttr(suite, K_FAILURES);
-            int errors   = intAttr(suite, K_ERRORS);
-            int skipped  = intAttr(suite, K_SKIPPED);
-            double time  = doubleAttr(suite, "time");
-
-            String fullName = suite.getAttribute("name");
-            String shortName = fullName.contains(".")
-                    ? fullName.substring(fullName.lastIndexOf('.') + 1)
-                    : fullName;
-
-            Map<String, Object> suiteMap = new LinkedHashMap<>();
-            suiteMap.put("name", shortName);
-            suiteMap.put(K_TESTS, tests);
-            suiteMap.put(K_FAILURES, failures);
-            suiteMap.put(K_ERRORS, errors);
-            suiteMap.put(K_SKIPPED, skipped);
-            suiteMap.put("time", String.format("%.3fs", time));
-
-            NodeList testCases = doc.getElementsByTagName("testcase");
-            List<double[]> tcTimes = new ArrayList<>(testCases.getLength());
-            List<String>   tcNames = new ArrayList<>(testCases.getLength());
-            for (int k = 0; k < testCases.getLength(); k++) {
-                Element tc = (Element) testCases.item(k);
-                tcTimes.add(new double[]{doubleAttr(tc, "time")});
-                tcNames.add(tc.getAttribute("classname") + "." + tc.getAttribute("name"));
-            }
-            return new ParsedSuite(shortName, suiteMap, tests, failures, errors, skipped, time,
-                    tcTimes, tcNames);
-        } catch (Exception _) {
-            return null;  // malformed XML silently skipped
-        }
-    }
-
-    private static int intAttr(Element el, String attr) {
-        try {
-            return Integer.parseInt(el.getAttribute(attr));
-        } catch (NumberFormatException _) {
-            return 0;
-        }
-    }
-
-    private static double doubleAttr(Element el, String attr) {
-        try {
-            return Double.parseDouble(el.getAttribute(attr));
-        } catch (NumberFormatException _) {
-            return 0.0;
-        }
-    }
-
-    private static double round1(double v) {
-        return Math.round(v * 10.0) / 10.0;
-    }
-
-    /**
-     * Returns a short, displayable identifier for a vulnerability.
-     * Proper CVE IDs (CVE-YYYY-NNNNN) are returned as-is.
-     * RetireJS/GHSA advisories put the full Markdown description in the name field —
-     * for those we extract the GHSA-xxxx ID from references, or return a short summary.
-     */
-    static String cleanCveId(String rawName, JsonNode references) {
-        if (rawName == null || rawName.isBlank()) return "UNKNOWN";
-        // Proper CVE ID
-        if (rawName.matches("CVE-\\d{4}-\\d+")) return rawName;
-        // Look for GHSA-xxxx in references first
-        if (references != null) {
-            for (JsonNode ref : references) {
-                String url = ref.path("url").asText("");
-                java.util.regex.Matcher m = java.util.regex.Pattern
-                        .compile("(GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4})")
-                        .matcher(url);
-                if (m.find()) return m.group(1);
-            }
-        }
-        // Fallback: first non-empty, non-markdown line, truncated
-        String first = rawName.lines()
-                .map(String::trim)
-                .filter(l -> !l.isEmpty() && !l.startsWith("#") && !l.startsWith("```"))
-                .findFirst().orElse(rawName);
-        return first.length() > 40 ? first.substring(0, 40) + "…" : first;
-    }
-
-    /**
-     * Cleans a CVE description from the NVD JSON for display.
-     * Some descriptions contain full Markdown with HTML code examples
-     * (e.g. DOMPurify PoC descriptions). We extract only the first
-     * meaningful plain-text sentence/paragraph.
-     */
-    // S3776+S135: multi-step text cleaning with interleaved break/continue
-    // to skip headers, code fences and empty lines while preserving the first
-    // real paragraph — extracting further would obscure the flow.
-    @SuppressWarnings({"java:S3776", "java:S135"})
-    static String cleanCveDescription(String raw) {
-        if (raw == null || raw.isBlank()) return "";
-        // Strip markdown section headers (lines starting with #)
-        // and take content of the first non-empty, non-header paragraph
-        String[] lines = raw.split("\n");
-        StringBuilder first = new StringBuilder();
-        for (String line : lines) {
-            String trimmed = line.trim();
-            if (trimmed.startsWith("#") || trimmed.startsWith("```") || trimmed.startsWith("- ")) {
-                // If we already have content, stop here
-                if (!first.isEmpty()) break;
-                continue; // skip leading headers/code blocks
-            }
-            if (trimmed.isEmpty()) {
-                if (!first.isEmpty()) break; // end of first paragraph
-                continue;
-            }
-            if (!first.isEmpty()) first.append(" ");
-            first.append(trimmed);
-        }
-        String result = first.toString()
-                // Strip inline markdown: bold **x**, italic *x*, code `x`, links [text](url)
-                .replaceAll("\\*\\*([^*]+)\\*\\*", "$1")
-                .replaceAll("\\*([^*]+)\\*", "$1")
-                .replaceAll("`([^`]+)`", "$1")
-                .replaceAll("\\[([^]]+)]\\([^)]+\\)", "$1")
-                // Strip any residual HTML tags
-                .replaceAll("<[^>]+>", "")
-                .trim();
-        return result.length() > 200 ? result.substring(0, 200) + "…" : result;
-    }
+    // cleanCveId + cleanCveDescription moved to OwaspReportParser (Phase B-1 split).
 
     // -------------------------------------------------------------------------
     // Runtime section — active profiles, JVM uptime, Spring Boot startup time
@@ -1730,39 +1006,8 @@ public class QualityReportEndpoint {
         return (seconds / 3600) + "h " + ((seconds % 3600) / 60) + "m";
     }
 
-    /**
-     * Returns a DocumentBuilder hardened against XXE (XML External Entity) attacks.
-     * SonarQube BLOCKER rule java:S2755 — all XML parsing in this class uses this factory.
-     *
-     * <p>Disables DOCTYPE declarations entirely ({@code disallow-doctype-decl}); any XML document
-     * that contains a DOCTYPE declaration will throw a SAXParseException rather than silently
-     * loading external resources.  This is the recommended defence-in-depth strategy for
-     * read-only tooling parsers that never need entity resolution.
-     */
-    private static DocumentBuilder secureDocumentBuilder() throws ParserConfigurationException {
-        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-        // Disallow DOCTYPE — prevents all XXE, SSRF and billion-laughs variants.
-        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-        factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
-        factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
-        factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
-        factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
-        factory.setExpandEntityReferences(false);
-        return factory.newDocumentBuilder();
-    }
-
-    /** Variant that also enables namespace-aware mode (needed for pom.xml parsing). */
-    private static DocumentBuilder secureNamespaceAwareDocumentBuilder() throws ParserConfigurationException {
-        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-        factory.setNamespaceAware(false);
-        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-        factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
-        factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
-        factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
-        factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
-        factory.setExpandEntityReferences(false);
-        return factory.newDocumentBuilder();
-    }
+    // secureDocumentBuilder + secureNamespaceAwareDocumentBuilder moved to
+    // com.mirador.observability.quality.parsers.ReportParsers (Phase B-1 split).
 
     private List<Map<String, Object>> buildJarLayersSection() {
         // Spring Boot fat JARs contain BOOT-INF/layers.idx listing each layer.
@@ -1855,7 +1100,7 @@ public class QualityReportEndpoint {
                 if (!startedAt.isNull() && !finishedAt.isNull()
                         && !startedAt.isMissingNode() && !finishedAt.isMissingNode()) {
                     // Helper call avoids a nested try/catch in the outer HTTP try (Sonar S1141).
-                    parseDurationSeconds(startedAt.asText(), finishedAt.asText())
+                    ReportParsers.parseDurationSeconds(startedAt.asText(), finishedAt.asText())
                             .ifPresent(secs -> entry.put("durationSeconds", secs));
                 }
                 entry.put("webUrl", p.path("web_url").asText(""));

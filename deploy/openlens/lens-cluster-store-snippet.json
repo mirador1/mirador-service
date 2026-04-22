@@ -10,7 +10,7 @@
     "cluster's `preferences` block must look like for the Metrics tab to",
     "work against our two observability stacks.",
     "",
-    "The script `bin/cluster/openlens-prometheus-config.sh` reads which",
+    "The script `bin/cluster/openlens/prometheus-config.sh` reads which",
     "overlay is currently deployed (lgtm-only vs kube-prom-stack) and",
     "writes the right block automatically.",
     "",

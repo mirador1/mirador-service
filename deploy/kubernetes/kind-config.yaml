@@ -3,7 +3,7 @@
 #
 # Per ADR-0025 there is no nginx-ingress / no public surface — access to
 # services in the kind cluster goes through `kubectl port-forward` (or
-# `bin/cluster/pf-prod.sh` reusing the same tunnel map). The control-plane port
+# `bin/cluster/port-forward/prod.sh` reusing the same tunnel map). The control-plane port
 # mappings from the pre-ADR-0025 era are removed.
 #
 # The cluster is a single-node in-Docker Kubernetes — plenty for the demo

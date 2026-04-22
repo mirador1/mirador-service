@@ -133,7 +133,7 @@ spec:
 # allow-ingress-to-frontend removed with ADR-0025 — no UI Deployment in the
 # cluster anymore (UI runs on the developer laptop, accesses the cluster
 # through kubectl port-forward). The ingress-nginx controller itself is
-# also uninstalled by `bin/cluster/demo-up.sh`.
+# also uninstalled by `bin/cluster/demo/up.sh`.
 
 # ── 5. allow-backend-to-infra — app → postgres/redis/kafka ────────────────────
 ---

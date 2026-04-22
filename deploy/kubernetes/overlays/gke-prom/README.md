@@ -88,7 +88,7 @@ kubectl rollout restart deployment/lgtm -n infra
 
 # Then point OpenLens at the new Prometheus (script auto-detects
 # kube-prom service and falls back to lgtm Mimir if absent):
-bin/cluster/openlens-prometheus-config.sh
+bin/cluster/openlens/prometheus-config.sh
 ```
 
 Verify cluster metrics:
@@ -118,7 +118,7 @@ curl -s 'http://localhost:4040/api/apps' | jq 'length'
 ## Cost gotcha — PVC lifecycle vs cluster lifecycle
 
 The cluster is ephemeral (ADR-0022 — `terraform destroy` on
-`bin/cluster/demo-down.sh`). The 10Gi `standard-rwo` PVC backing
+`bin/cluster/demo/down.sh`). The 10Gi `standard-rwo` PVC backing
 Prometheus is **not** destroyed by `terraform destroy` — GKE leaves
 PVCs orphaned by default to avoid silent data loss.
 

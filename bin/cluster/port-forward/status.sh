@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
+# moved 2026-04-22 from bin/cluster/pf-status.sh — per ~/.claude/CLAUDE.md subdirectory hygiene
 # =============================================================================
-# bin/cluster/pf-status.sh — list active kind + prod tunnels and probe each.
+# bin/cluster/port-forward/status.sh — list active kind + prod tunnels and probe each.
 #
 # Three-environment policy (docs/architecture/environments-and-flows.md):
 #   Local compose = upstream ports
-#   Kind          = upstream + 10000   (bin/cluster/pf-kind.sh)
-#   Prod          = upstream + 20000   (bin/cluster/pf-prod.sh)
+#   Kind          = upstream + 10000   (bin/cluster/port-forward/kind.sh)
+#   Prod          = upstream + 20000   (bin/cluster/port-forward/prod.sh)
 # Compose is not listed here — those are regular docker containers, checked
 # with `docker compose ps`.
 # =============================================================================

@@ -151,8 +151,8 @@ Three environments, three port decades (compose = upstream, kind = +10000, prod 
 | Environment    | Admin plane (kubeconfig)                        | App services (port-forward)     |
 |----------------|-------------------------------------------------|----------------------------------|
 | **compose**    | n/a                                             | `./run.sh all` — upstream ports  |
-| **kind**       | `kubectl config use-context kind-mirador-local` | `bin/cluster/pf-kind.sh --daemon` — 1xxxx |
-| **GKE prod**   | `bin/cluster/connect-prod.sh`                           | `bin/cluster/pf-prod.sh --daemon` — 2xxxx |
+| **kind**       | `kubectl config use-context kind-mirador-local` | `bin/cluster/port-forward/kind.sh --daemon` — 1xxxx |
+| **GKE prod**   | `bin/cluster/connect-prod.sh`                           | `bin/cluster/port-forward/prod.sh --daemon` — 2xxxx |
 
 ### Concretely
 
@@ -163,17 +163,17 @@ Three environments, three port decades (compose = upstream, kind = +10000, prod 
 # kind (local K8s mirror)
 kind create cluster --name mirador-local --config deploy/kubernetes/kind-config.yaml
 kubectl apply -k deploy/kubernetes/overlays/local
-bin/cluster/pf-kind.sh --daemon            # tunnels on 1xxxx (18080, 13000, 14242, …)
-bin/cluster/pgweb-kind-up.sh               # optional: pgweb on 8082 for the UI's Database page
+bin/cluster/port-forward/kind.sh --daemon            # tunnels on 1xxxx (18080, 13000, 14242, …)
+bin/cluster/pgweb/kind-up.sh               # optional: pgweb on 8082 for the UI's Database page
 
 # GKE (ephemeral prod — ADR-0022)
-bin/cluster/demo-up.sh                     # ~13 min
+bin/cluster/demo/up.sh                     # ~13 min
 bin/cluster/connect-prod.sh                # gcloud credentials + open OpenLens
-bin/cluster/pf-prod.sh --daemon            # tunnels on 2xxxx (28080, 23000, 24242, …)
-bin/cluster/pgweb-prod-up.sh               # optional: pgweb on 8083
+bin/cluster/port-forward/prod.sh --daemon            # tunnels on 2xxxx (28080, 23000, 24242, …)
+bin/cluster/pgweb/prod-up.sh               # optional: pgweb on 8083
 # …work…
-bin/cluster/pf-stop.sh                     # stops both kind + prod tunnels
-bin/cluster/demo-down.sh
+bin/cluster/port-forward/stop.sh                     # stops both kind + prod tunnels
+bin/cluster/demo/down.sh
 ```
 
 ## Deep-link URIs (opt-in, for the UI)
@@ -198,8 +198,8 @@ registered app). Fails silently if the target app is not installed.
 ## Going further
 
 - `bin/cluster/connect-prod.sh` — one command to refresh GKE kubeconfig + open
-  OpenLens + reminder about `bin/cluster/pf-prod.sh`.
-- `bin/cluster/pf-prod.sh`, `bin/cluster/pf-status.sh`, `bin/cluster/pf-stop.sh` — the whole
+  OpenLens + reminder about `bin/cluster/port-forward/prod.sh`.
+- `bin/cluster/port-forward/prod.sh`, `bin/cluster/port-forward/status.sh`, `bin/cluster/port-forward/stop.sh` — the whole
   tunnel lifecycle for app services (per ADR-0025).
 - [ADR-0025](../adr/0025-ui-local-only-no-public-prod-ingress.md) —
   why prod has no public URL.

@@ -117,7 +117,7 @@ public class ChaosService {
             // Chaos Mesh operator). Translate to a clear actionable error.
             if (e.getCode() == 404) {
                 throw new IllegalStateException(
-                        "Chaos Mesh CRDs not installed. Run `bin/cluster/demo-up.sh` (full mode) "
+                        "Chaos Mesh CRDs not installed. Run `bin/cluster/demo/up.sh` (full mode) "
                                 + "or install Chaos Mesh manually — see README badge and "
                                 + "deploy/kubernetes/base/chaos/kustomization.yaml.", e);
             }

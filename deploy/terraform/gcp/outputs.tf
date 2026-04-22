@@ -5,20 +5,20 @@
 #   terraform output -json > /tmp/tf-out.json
 #
 # Consumed by:
-#   - bin/cluster/demo-up.sh — fetches cluster credentials + annotates K8s SAs
+#   - bin/cluster/demo/up.sh — fetches cluster credentials + annotates K8s SAs
 #   - .gitlab-ci.yml `deploy:gke` job — `gcloud container clusters get-credentials`
 #   - humans running `terraform output` for debugging
 # =============================================================================
 
 # =============================================================================
 # Role        : Cluster name, echoed for scripts that need it verbatim.
-# Why         : Avoids hardcoding `mirador-prod` in bin/cluster/demo-up.sh —
+# Why         : Avoids hardcoding `mirador-prod` in bin/cluster/demo/up.sh —
 #               the script reads this output so renaming the cluster via
 #               var.cluster_name propagates automatically.
 # Cost        : n/a (string)
 # Gotchas     : Not sensitive, but don't print it in public logs alongside
 #               the project ID — together they narrow a target identity.
-# Related     : var.cluster_name, bin/cluster/demo-up.sh.
+# Related     : var.cluster_name, bin/cluster/demo/up.sh.
 # =============================================================================
 output "gke_cluster_name" {
   description = "GKE Autopilot cluster name — use with: gcloud container clusters get-credentials"
@@ -47,7 +47,7 @@ output "gke_cluster_endpoint" {
 
 # =============================================================================
 # Role        : Workload Identity pool identifier (`<project>.svc.id.goog`).
-# Why         : Consumed by `bin/cluster/demo-up.sh` to re-annotate the
+# Why         : Consumed by `bin/cluster/demo/up.sh` to re-annotate the
 #               `external-secrets-operator` K8s ServiceAccount on every
 #               fresh cluster — the GCP-side binding outlives the cluster
 #               (per ADR-0022), but the K8s SA is new on each boot.
@@ -55,7 +55,7 @@ output "gke_cluster_endpoint" {
 # Gotchas     : Format is fixed by GCP (`<project>.svc.id.goog`). If GCP
 #               ever changes the format, `demo-up.sh` will need updating
 #               in lockstep.
-# Related     : ADR-0007, ADR-0016, bin/cluster/demo-up.sh.
+# Related     : ADR-0007, ADR-0016, bin/cluster/demo/up.sh.
 # =============================================================================
 output "workload_identity_pool" {
   description = "Workload Identity Pool — annotate K8s service accounts with this + GCP SA email"

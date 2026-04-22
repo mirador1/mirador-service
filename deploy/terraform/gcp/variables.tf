@@ -13,7 +13,7 @@
 # Related files:
 #   - main.tf                 — where these variables are consumed
 #   - terraform.tfvars.example — template showing the expected format
-#   - bin/cluster/demo-up.sh  — passes TF_VAR_* at runtime
+#   - bin/cluster/demo/up.sh  — passes TF_VAR_* at runtime
 # =============================================================================
 
 # =============================================================================

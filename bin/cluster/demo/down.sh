@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
+# moved 2026-04-22 from bin/cluster/demo-down.sh — per ~/.claude/CLAUDE.md subdirectory hygiene
 # =============================================================================
-# demo-down.sh — tear down the ephemeral mirador demo cluster.
+# bin/cluster/demo/down.sh — tear down the ephemeral mirador demo cluster.
 #
 # Runs `terraform destroy` on the GKE Autopilot cluster. After this, GCP
 # billing drops to ~€0/month — only the GCS state bucket (cents) and the
@@ -12,7 +13,7 @@
 # =============================================================================
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+REPO_ROOT="$(git rev-parse --show-toplevel)"  # robust against location changes (bin/cluster/demo/X.sh moved 2026-04-22 uncovered a pre-existing `../` depth bug)
 TF_DIR="$REPO_ROOT/deploy/terraform/gcp"
 PROJECT_ID="${TF_VAR_project_id:-project-8d6ea68c-33ac-412b-8aa}"
 REGION="${TF_VAR_region:-europe-west1}"
@@ -73,6 +74,6 @@ Surviving resources (intentional, ~€0/month):
   - GSM secrets: mirador-{db-password,jwt-secret,api-key,gitlab-api-token,keycloak-admin-password}
   - GCP SA external-secrets-operator@ (no cost)
 
-Bring everything back with: bin/cluster/demo-up.sh
+Bring everything back with: bin/cluster/demo/up.sh
 Standalone PVC audit:         bin/budget/gcp-cost-audit.sh
 EOF

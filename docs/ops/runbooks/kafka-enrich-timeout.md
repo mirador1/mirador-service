@@ -46,7 +46,7 @@ kubectl get networkchaos,podchaos,stresschaos -A
 
 # 4. Current rate of timeouts (Loki via Grafana Explore)
 #    {app="mirador"} |~ "kafka_enrich_timeout"
-#    Grafana: bin/cluster/pf-prod.sh then http://localhost:23000/explore
+#    Grafana: bin/cluster/port-forward/prod.sh then http://localhost:23000/explore
 
 # 5. The Golden Signals dashboard in Grafana has a Kafka panel.
 ```
@@ -77,4 +77,4 @@ config. At that point:
 2. Open a MR with the specific error trace from Tempo
    (`{service.name="mirador", http.route="/customers/*/enrich"}`).
 3. Destroy the ephemeral cluster if demo time is short:
-   `bin/cluster/demo-down.sh` then `bin/cluster/demo-up.sh`.
+   `bin/cluster/demo/down.sh` then `bin/cluster/demo/up.sh`.

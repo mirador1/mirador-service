@@ -112,7 +112,7 @@ before merging.
    - `pgweb-local`: port 8081 → `db:5432` (compose Postgres)
    - `pgweb-kind`  (profile `kind-tunnel`): port 8082 → `host.docker.internal:15432` (kind tunnel)
    - `pgweb-prod`  (profile `prod-tunnel`): port 8083 → `host.docker.internal:25432` (GKE tunnel)
-   - Helpers: `bin/cluster/pgweb-kind-up.sh`, `bin/cluster/pgweb-prod-up.sh` (the latter
+   - Helpers: `bin/cluster/pgweb/kind-up.sh`, `bin/cluster/pgweb/prod-up.sh` (the latter
      pulls the DB password from GSM via ESO).
 2. **EnvService** exposes `pgwebUrl` — `:8081` on Local, `:8082` on Prod
    tunnel. The Database page gates SQL Explorer + health checks behind

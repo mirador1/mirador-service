@@ -841,6 +841,25 @@
                         <exclude>com/mirador/observability/OtelLogbackInstaller.class</exclude>
                         <exclude>com/mirador/observability/PyroscopeConfig.class</exclude>
                         <!--
+                          Phase B-1 (2026-04-22) split the endpoint into 7 parser classes
+                          under observability.quality.parsers. Same I/O-heavy rationale as
+                          QualityReportEndpoint above — they parse tool output (Surefire
+                          XML, JaCoCo CSV, SpotBugs XML, PMD XML, Checkstyle XML, OWASP
+                          JSON, Pitest XML) and return a Map. Excluded as a package; smoke
+                          tests in QualityParsersSmokeTest lock the contract. Richer
+                          fixture-driven tests are tracked as Phase B-1 coverage follow-up
+                          in TASKS.md.
+                        -->
+                        <exclude>com/mirador/observability/quality/parsers/**/*.class</exclude>
+                        <!--
+                          Phase B-1b (2026-04-22) extends the split: non-parser
+                          section providers (build-info, api, git, deps, metrics,
+                          sonar, pipeline, branches, runtime) move to
+                          observability.quality.providers/. Same I/O-heavy rationale.
+                          Smoke tests lock the contract.
+                        -->
+                        <exclude>com/mirador/observability/quality/providers/**/*.class</exclude>
+                        <!--
                           4. Application bootstrap
                         -->
                         <exclude>com/mirador/MiradorApplication.class</exclude>

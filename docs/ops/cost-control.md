@@ -4,7 +4,7 @@ Operational reference for keeping the Mirador GCP bill under the
 [ADR-0022](../adr/0022-ephemeral-cluster.md) €2/month target.
 
 - **Budget alert** — tells you when you're drifting.
-- **`bin/cluster/demo-down.sh`** — cleans at the source after every demo.
+- **`bin/cluster/demo/down.sh`** — cleans at the source after every demo.
 - **`bin/budget/gcp-cost-audit.sh`** — safety net, catches what `demo-down`
   missed (crashed runs, out-of-band resource creation).
 
@@ -98,7 +98,7 @@ persistent disks**. `terraform destroy` tears down the GKE node pool
 before any `kubectl delete pvc` runs; the disks end up parent-less,
 still billed at €0.048/GB/month (PD-balanced, europe-west1).
 
-`bin/cluster/demo-down.sh` now appends a cleanup pass after `terraform destroy`:
+`bin/cluster/demo/down.sh` now appends a cleanup pass after `terraform destroy`:
 
 ```bash
 gcloud compute disks list \
@@ -252,5 +252,5 @@ Two levels:
 
 - [ADR-0022 — ephemeral cluster pattern](../adr/0022-ephemeral-cluster.md)
 - [ADR-0027 — declined service mesh (cost)](../adr/0027-decline-service-mesh-for-portfolio-demo.md)
-- [`bin/cluster/demo-up.sh`](../../bin/demo-up.sh) / [`bin/cluster/demo-down.sh`](../../bin/demo-down.sh)
+- [`bin/cluster/demo/up.sh`](../../bin/demo-up.sh) / [`bin/cluster/demo/down.sh`](../../bin/demo-down.sh)
 - [`bin/budget/gcp-cost-audit.sh`](../../bin/gcp-cost-audit.sh)

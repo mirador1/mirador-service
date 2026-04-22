@@ -10,7 +10,7 @@
 #     `kind load docker-image`, so a remote pull would 404.
 #
 # Access from the laptop is via `kubectl port-forward` the same way as
-# prod (see bin/cluster/pf-prod.sh). No Ingress anywhere — per ADR-0025.
+# prod (see bin/cluster/port-forward/prod.sh). No Ingress anywhere — per ADR-0025.
 # =============================================================================
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization

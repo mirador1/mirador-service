@@ -25,7 +25,7 @@ Two follow-up problems surfaced:
    probe sees no `up{job="kube-state-metrics"}=1` it disables metrics
    for the cluster regardless of what individual queries would return.
    Workaround: hardcode the OpenLens provider to `lens` and the service
-   to `infra/lgtm:9009` — bin/cluster/openlens-prometheus-config.sh
+   to `infra/lgtm:9009` — bin/cluster/openlens/prometheus-config.sh
    does this. Works, but it's a hack and confused two visiting
    reviewers.
 2. **No path to test "what does this look like with a real
@@ -165,7 +165,7 @@ kubectl apply --server-side --force-conflicts -k deploy/kubernetes/overlays/loca
 kubectl rollout restart deployment/prometheus-stack-kube-prom-operator -n monitoring
 
 # Then point OpenLens at the kube-prom Prometheus:
-bin/cluster/openlens-prometheus-config.sh
+bin/cluster/openlens/prometheus-config.sh
 ```
 
 The `openlens-prometheus-config.sh` script auto-detects which overlay
@@ -332,7 +332,7 @@ the right value automatically.
 ## References
 
 - `deploy/kubernetes/overlays/local-prom/` — the new overlay.
-- `bin/cluster/openlens-prometheus-config.sh` — updated with auto-detection (provider=operator for kube-prom).
+- `bin/cluster/openlens/prometheus-config.sh` — updated with auto-detection (provider=operator for kube-prom).
 - `deploy/openlens/lens-cluster-store-snippet.json` — golden reference for OpenLens `preferences` block.
 - `deploy/openlens/README.md` — provider-name lookup table + apply guide.
 - ADR-0014 — single-replica deployments for the demo cluster.

@@ -231,9 +231,9 @@ que de les découvrir au milieu d'une démo, et clarifie aussi quelles
 limitations sont des trade-offs délibérés (liés à un ADR) plutôt que
 des trous non-intentionnels.
 
-- **Le cold start est lent** — un `bin/cluster/demo-up.sh` à froid prend
+- **Le cold start est lent** — un `bin/cluster/demo/up.sh` à froid prend
   ~8 min (provision cluster 5 min + installs opérateurs 2 min + sync
-  app 1 min). L'accès nécessite une étape en plus : `bin/cluster/pf-prod.sh`
+  app 1 min). L'accès nécessite une étape en plus : `bin/cluster/port-forward/prod.sh`
   pour ouvrir les tunnels locaux vers chaque service (ADR-0025). Je
   chauffe le cluster 10 min avant toute démo live et laisse
   `pf-prod.sh --daemon` tourner en arrière-plan.

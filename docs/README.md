@@ -80,7 +80,7 @@ it lists every ADR with status, and the numbers are stable once merged.
 | [`ops/runbooks/auto-merge-stuck.md`](ops/runbooks/auto-merge-stuck.md)         | MR armed for auto-merge but the pipeline keeps failing.                   |
 | [`ops/runbooks/backend-503.md`](ops/runbooks/backend-503.md)                   | Spring `/actuator/health` returns 503 — which sub-probe is DOWN?         |
 | [`ops/runbooks/compose-startup-fails.md`](ops/runbooks/compose-startup-fails.md) | `docker compose up` errors out — port conflict, mount path, plugin 404. |
-| [`ops/runbooks/gke-cluster-boot-fails.md`](ops/runbooks/gke-cluster-boot-fails.md) | `bin/cluster/demo-up.sh` doesn't return — Argo CD stuck, ESO secret rotation.   |
+| [`ops/runbooks/gke-cluster-boot-fails.md`](ops/runbooks/gke-cluster-boot-fails.md) | `bin/cluster/demo/up.sh` doesn't return — Argo CD stuck, ESO secret rotation.   |
 | [`ops/runbooks/kafka-enrich-timeout.md`](ops/runbooks/kafka-enrich-timeout.md) | `/customers/{id}/enrich` returns 504 — request-reply timeout chain.       |
 | [`ops/runbooks/ollama-bio-fallback.md`](ops/runbooks/ollama-bio-fallback.md)   | Bio comes back generic — Ollama down or model not pulled.                 |
 

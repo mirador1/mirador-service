@@ -79,7 +79,7 @@ kubectl apply -k deploy/kubernetes/overlays/local-prom
 
 # Then point OpenLens at the new Prometheus (script auto-detects
 # kube-prom service and falls back to lgtm Mimir if not present).
-bin/cluster/openlens-prometheus-config.sh
+bin/cluster/openlens/prometheus-config.sh
 ```
 
 Verify cluster metrics:

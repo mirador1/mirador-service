@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
+# moved 2026-04-22 from bin/cluster/pf-stop.sh — per ~/.claude/CLAUDE.md subdirectory hygiene
 # =============================================================================
-# bin/cluster/pf-stop.sh — kill every kubectl port-forward started by pf-prod.sh or pf-kind.sh.
+# bin/cluster/port-forward/stop.sh — kill every kubectl port-forward started by prod.sh or kind.sh.
 #
 # Reads both /tmp/pf-prod.pids and /tmp/pf-kind.pids, kills each PID (and its
 # auto-reconnect wrapper so it does not immediately spawn a new kubectl).

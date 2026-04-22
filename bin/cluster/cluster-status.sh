@@ -84,16 +84,16 @@ except Exception:
     "$(python3 -c "print(round($HOURLY_BURN_EUR * 24 * 30, 2))")"
 
   # Pull this month's actual spend if budget.sh is available
-  if [[ -x "$(dirname "$0")/budget.sh" ]]; then
+  if [[ -x "$(git rev-parse --show-toplevel)/bin/budget/budget.sh" ]]; then
     echo -e "  ${DIM}Latest GCP budget snapshot:${NC}"
-    "$(dirname "$0")/budget.sh" status 2>/dev/null | sed 's/^/    /' | head -10
+    "$(git rev-parse --show-toplevel)/bin/budget/budget.sh" status 2>/dev/null | sed 's/^/    /' | head -10
   else
     echo -e "  ${DIM}(install bin/budget/budget.sh for live spend vs €10/month cap)${NC}"
   fi
 
   echo "  ─────────────────────────────────────────────────────────"
   if [[ "$cluster_status" == "RUNNING" ]]; then
-    echo -e "  ${YELLOW}Tip${NC}: \`bin/cluster/demo-down.sh\` if you're done — burn stops immediately."
+    echo -e "  ${YELLOW}Tip${NC}: \`bin/cluster/demo/down.sh\` if you're done — burn stops immediately."
   fi
 }
 

@@ -26,7 +26,7 @@ the last month:
 Each cost 13 min of GKE boot + rollback + fix-and-reboot — call it
 30 min of wasted cycle per incident.
 
-**kind already exists in the repo** (`bin/cluster/pf-kind.sh`,
+**kind already exists in the repo** (`bin/cluster/port-forward/kind.sh`,
 `scripts/deploy-local.sh`, `run.sh k8s-local`, `overlays/local/`). It's
 available but not *enforced* — dev discipline is the only trigger
 today. That is not an industry-standard practice at scale: dev
@@ -85,7 +85,7 @@ itself. Everything else (infra images are multi-arch) is validated.
 - GSM ↔ ESO sync (ESO SA on kind is dummy).
 
 GKE continues to be the last-mile validation, with the full
-`bin/cluster/demo-up.sh` cycle.
+`bin/cluster/demo/up.sh` cycle.
 
 ## Decision points considered (and rejected)
 

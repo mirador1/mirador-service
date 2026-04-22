@@ -31,7 +31,7 @@ fi
 echo "🔑  refreshing kubeconfig for $CLUSTER_NAME in $REGION…"
 if ! gcloud container clusters get-credentials "$CLUSTER_NAME" \
      --region "$REGION" --project "$PROJECT_ID" 2>/dev/null; then
-  echo "❌  Cluster '$CLUSTER_NAME' not found. Run bin/cluster/demo-up.sh first."
+  echo "❌  Cluster '$CLUSTER_NAME' not found. Run bin/cluster/demo/up.sh first."
   exit 1
 fi
 
@@ -64,8 +64,8 @@ cat <<'EOF'
     • IntelliJ Kubernetes plugin      ← same
 
   App plane (Grafana / backend / Unleash / Argo CD / Postgres / Kafka / …):
-      bin/cluster/pf-prod.sh --daemon        # port-forward tunnels
-      bin/cluster/pf-status.sh               # list + probe
-      bin/cluster/pf-stop.sh                 # tear down
+      bin/cluster/port-forward/prod.sh --daemon        # port-forward tunnels
+      bin/cluster/port-forward/status.sh               # list + probe
+      bin/cluster/port-forward/stop.sh                 # tear down
 ─────────────────────────────────────────────────────────────────────────
 EOF

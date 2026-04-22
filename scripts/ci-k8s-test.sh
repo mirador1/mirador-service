@@ -257,6 +257,23 @@ for target in "${ALL_PODS[@]}"; do
   # (fixed in the same commit), not in `rollout status` itself.
   case "$kind" in
     daemonset|statefulset)
+      # Operator-managed resources (e.g. kube-prom-stack's Prometheus
+      # STS) don't exist at `kubectl apply` time — the operator must
+      # reconcile the CR before creating them. `rollout status` returns
+      # NotFound immediately if we race it, so poll until the resource
+      # appears (pipeline #640+#642 both failed this way in 2026-04-22).
+      # Cap at 3 min: reconcile takes ~30-90 s normally; 3 min means
+      # something is actually wrong (missing CRD, RBAC denied).
+      wait_start=$(date +%s)
+      until kubectl get "$kind/$name" -n "$ns" >/dev/null 2>&1; do
+        if [ $(( $(date +%s) - wait_start )) -gt 180 ]; then
+          echo "❌ never appeared (3min — operator didn't reconcile)"
+          kubectl get events -n "$ns" --sort-by=.lastTimestamp | tail -10
+          failed=$((failed + 1))
+          continue 2
+        fi
+        sleep 5
+      done
       if kubectl rollout status "$kind/$name" -n "$ns" --timeout="$TIMEOUT" >/dev/null 2>&1; then
         echo "✅"
       else

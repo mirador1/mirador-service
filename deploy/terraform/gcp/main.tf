@@ -128,7 +128,7 @@ provider "google" {
 #                 Destroy + recreate if you change your mind.
 # Related     : ADR-0022 (ephemeral), ADR-0023 (stay Autopilot),
 #               ADR-0016 (workload_identity_config → ESO uses it),
-#               bin/cluster/demo-up.sh (what runs after apply).
+#               bin/cluster/demo/up.sh (what runs after apply).
 # =============================================================================
 resource "google_container_cluster" "autopilot" {
   name     = var.cluster_name
@@ -164,7 +164,7 @@ resource "google_container_cluster" "autopilot" {
 
   # Ephemeral cluster — terraform destroy must succeed without
   # deletion protection getting in the way. DO NOT flip this to `true`
-  # without breaking bin/cluster/demo-down.sh.
+  # without breaking bin/cluster/demo/down.sh.
   deletion_protection = false
 
   # Autopilot sets sensible defaults for ip_allocation_policy,

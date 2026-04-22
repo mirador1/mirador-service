@@ -21,7 +21,7 @@ Metrics tab works.
 ## Apply
 
 ```bash
-bin/cluster/openlens-prometheus-config.sh
+bin/cluster/openlens/prometheus-config.sh
 ```
 
 The script:
@@ -62,4 +62,4 @@ Empirical verification (2026-04-21):
 
 - ADR-0038 — kubeletstats receivers in lgtm (lgtm-only stack).
 - ADR-0039 — two observability deployment modes (lgtm vs kube-prom-stack).
-- `bin/cluster/openlens-prometheus-config.sh` — the apply script.
+- `bin/cluster/openlens/prometheus-config.sh` — the apply script.

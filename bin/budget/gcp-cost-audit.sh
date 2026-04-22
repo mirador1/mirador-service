@@ -20,7 +20,7 @@
 #   bin/budget/gcp-cost-audit.sh --delete     # prompt-per-class deletion
 #   bin/budget/gcp-cost-audit.sh --yes        # non-interactive purge (CI)
 #
-# bin/cluster/demo-down.sh already embeds the PVC cleanup for the happy path.
+# bin/cluster/demo/down.sh already embeds the PVC cleanup for the happy path.
 # This script is the safety net + the answer to "what am I paying now?"
 # when demo-down wasn't run or crashed mid-flight.
 # =============================================================================
@@ -140,7 +140,7 @@ else
   echo "$clusters" | while IFS=$'\t' read -r n l s nodes; do
     printf "   - %-20s %-18s status=%-8s nodes=%s\n" "$n" "$l" "$s" "${nodes:-0}"
   done
-  echo "     → if demo is over, run: bin/cluster/demo-down.sh"
+  echo "     → if demo is over, run: bin/cluster/demo/down.sh"
 fi
 echo
 

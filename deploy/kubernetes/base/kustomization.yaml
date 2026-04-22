@@ -3,7 +3,7 @@
 #
 # Per ADR-0025 the cluster exposes nothing to the public internet. The
 # Angular UI runs only on the developer's laptop (docker-compose for dev,
-# `bin/cluster/pf-prod.sh` tunnels for prod access). No Ingress, no TLS, no
+# `bin/cluster/port-forward/prod.sh` tunnels for prod access). No Ingress, no TLS, no
 # frontend Deployment — removed from the base entirely.
 #
 # This base is never applied directly — pick an overlay under ../overlays/:

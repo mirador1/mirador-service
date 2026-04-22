@@ -21,8 +21,8 @@ pods is to **delete the cluster**.
 Two scripts wrap the lifecycle:
 
 ```
-bin/cluster/demo-up.sh     # terraform apply + bootstrap Argo CD + ESO  (~8 min)
-bin/cluster/demo-down.sh   # terraform destroy                          (~5 min)
+bin/cluster/demo/up.sh     # terraform apply + bootstrap Argo CD + ESO  (~8 min)
+bin/cluster/demo/down.sh   # terraform destroy                          (~5 min)
 ```
 
 Everything that **must survive** across demos lives outside the
@@ -37,7 +37,7 @@ Terraform state:
 | Artifact Registry images | Push-on-release | Cents/month |
 | K8s cluster, pods, PVCs, Secrets | Ephemeral | **€0 when down, €0.26/h when up** |
 
-`bin/cluster/demo-up.sh` re-wires the Workload Identity annotation on every
+`bin/cluster/demo/up.sh` re-wires the Workload Identity annotation on every
 boot because the K8s ServiceAccount is new every time; the GCP side
 is already bound.
 
@@ -109,7 +109,7 @@ changes the calculus:
 | **Incident management** | Grafana OnCall self-hosted vs PagerDuty paid | Not really meaningful during a demo (no real paging to do). | **Defer entirely**. No SaaS, no self-hosted. Add when the cluster becomes long-lived. |
 | **Status page** | Cachet self-hosted vs Statuspage.io paid | A status page for a default-off cluster is ironic. | **Static page on GitLab Pages** saying "the demo is spun up on request; reach out for a live walk-through". €0, always up, always honest. |
 | **Continuous profiling** | Pyroscope self-hosted vs Grafana Cloud Profiles | Same as APM — history lost on destroy. | **Pyroscope self-hosted** alongside LGTM. Gets the CPU/mem flame graphs for the demo window. |
-| **Dashboard-as-code** | grizzly/jsonnet in git | Dashboards applied on every `demo-up`. | **No change**. This is already git-tracked and applied via `bin/cluster/demo-up.sh` extension. |
+| **Dashboard-as-code** | grizzly/jsonnet in git | Dashboards applied on every `demo-up`. | **No change**. This is already git-tracked and applied via `bin/cluster/demo/up.sh` extension. |
 
 Net effect: the ephemeral-cluster pattern makes **LGTM + Pyroscope
 self-hosted the obvious choice** for anything observability-shaped
@@ -120,7 +120,7 @@ real database).
 
 ## References
 
-- `bin/cluster/demo-up.sh` / `bin/cluster/demo-down.sh` — the two-verb lifecycle.
+- `bin/cluster/demo/up.sh` / `bin/cluster/demo/down.sh` — the two-verb lifecycle.
 - `deploy/terraform/gcp/main.tf` — single `google_container_cluster`
   resource on the default VPC (6 previously-managed resources were
   archived to `docs/archive/terraform-deferred/`).

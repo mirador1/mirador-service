@@ -125,7 +125,7 @@ pre-commit:
         # we care about in a pre-commit check: malformed YAML, broken refs,
         # missing base, invalid patch targets. CRD kinds (Rollout, Chaos*,
         # ExternalSecret) aren't validated structurally here, but the full
-        # `bin/cluster/demo-up.sh` validation cycle catches those on a live cluster.
+        # `bin/cluster/demo/up.sh` validation cycle catches those on a live cluster.
         #
         # Per-file checks for non-kustomization YAML are dropped: every file
         # we author lives under a directory that already has a kustomization.yaml,

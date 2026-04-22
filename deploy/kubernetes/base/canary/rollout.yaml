@@ -17,7 +17,7 @@
 #
 # workloadRef is NOT used — Rollout owns the ReplicaSet directly. The base
 # Deployment must be deleted before applying this (see canary/README.md
-# and bin/cluster/demo-up.sh where the swap is scripted).
+# and bin/cluster/demo/up.sh where the swap is scripted).
 # =============================================================================
 apiVersion: argoproj.io/v1alpha1
 kind: Rollout
@@ -87,7 +87,7 @@ spec:
       abortScaleDownDelaySeconds: 30
 
   # ── Pod template — identical to backend/deployment.yaml ───────────────
-  # Kept in sync by hand. If this drifts, `bin/cluster/demo-up.sh --full` will
+  # Kept in sync by hand. If this drifts, `bin/cluster/demo/up.sh --full` will
   # replay the diff and the canary step's analysis will catch real drift.
   template:
     metadata:

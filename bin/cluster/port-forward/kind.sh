@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
+# moved 2026-04-22 from bin/cluster/pf-kind.sh — per ~/.claude/CLAUDE.md subdirectory hygiene
 # =============================================================================
-# bin/cluster/pf-kind.sh — kubectl port-forward for the LOCAL kind cluster.
+# bin/cluster/port-forward/kind.sh — kubectl port-forward for the LOCAL kind cluster.
 #
-# Mirror of bin/cluster/pf-prod.sh but targets the kind cluster context
+# Mirror of bin/cluster/port-forward/prod.sh but targets the kind cluster context
 # (`kind-mirador-local`) and uses the +10000 offset so it can coexist with
 # both compose (upstream ports) and the prod tunnel (+20000).
 #
@@ -25,8 +26,8 @@
 #   Chaos Mesh dashboard 12333
 #
 # Usage:
-#   bin/cluster/pf-kind.sh               # foreground, Ctrl-C to stop
-#   bin/cluster/pf-kind.sh --daemon      # background, logs in /tmp/pf-kind-*.log
+#   bin/cluster/port-forward/kind.sh               # foreground, Ctrl-C to stop
+#   bin/cluster/port-forward/kind.sh --daemon      # background, logs in /tmp/pf-kind-*.log
 # =============================================================================
 
 set -u
@@ -104,12 +105,12 @@ done
 if $DAEMON; then
   echo ""
   echo "✅  ${#TUNNELS[@]} tunnels running in background. PIDs in $PID_FILE."
-  echo "   bin/cluster/pf-status.sh   list + test connectivity"
-  echo "   bin/cluster/pf-stop.sh     tear everything down"
+  echo "   bin/cluster/port-forward/status.sh   list + test connectivity"
+  echo "   bin/cluster/port-forward/stop.sh     tear everything down"
   exit 0
 fi
 
-trap 'echo ""; echo "⏹   stopping kind tunnels…"; bin/cluster/pf-stop.sh >/dev/null 2>&1; exit 0' INT TERM
+trap 'echo ""; echo "⏹   stopping kind tunnels…"; bin/cluster/port-forward/stop.sh >/dev/null 2>&1; exit 0' INT TERM
 echo ""
 echo "✅  ${#TUNNELS[@]} tunnels running. Ctrl-C to stop all."
 wait

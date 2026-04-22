@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
+# moved 2026-04-22 from bin/cluster/openlens-refresh.sh — per ~/.claude/CLAUDE.md subdirectory hygiene
 # =============================================================================
-# bin/cluster/openlens-refresh.sh — refresh ~/.kube/config + restart OpenLens.
+# bin/cluster/openlens/refresh.sh — refresh ~/.kube/config + restart OpenLens.
 #
 # OpenLens reads `~/.kube/config` at each "Connect" click. It already has
 # both Mirador clusters registered in its local store (see
@@ -22,8 +23,8 @@
 # caches the previous token and fails its first API call.
 #
 # Usage:
-#   bin/cluster/openlens-refresh.sh            # refresh + restart OpenLens
-#   bin/cluster/openlens-refresh.sh --no-open  # refresh only, don't touch the app
+#   bin/cluster/openlens/refresh.sh            # refresh + restart OpenLens
+#   bin/cluster/openlens/refresh.sh --no-open  # refresh only, don't touch the app
 # =============================================================================
 
 set -u  # -e is NOT set; GKE-down is expected, kind-down is recoverable.

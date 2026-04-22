@@ -24,7 +24,7 @@
 #
 #   --profile kind-tunnel / --profile prod-tunnel
 #                       → pgweb variants that proxy to kind/GKE via the
-#                         corresponding bin/cluster/pf-*.sh port-forwards.
+#                         corresponding bin/cluster/port-forward/*.sh port-forwards.
 #
 # Observability (LGTM, cors-proxy, docker-proxy) lives in its own file:
 #   deploy/compose/observability.yml — also profile-tagged as
@@ -325,11 +325,11 @@ services:
 
   # ---------------------------------------------------------------------------
   # pgweb (kind) — same image, points at the KIND cluster Postgres through
-  # the port-forward that bin/cluster/pf-kind.sh opens on localhost:15432 (kind = +10000).
+  # the port-forward that bin/cluster/port-forward/kind.sh opens on localhost:15432 (kind = +10000).
   #
   # Activation:
-  #   1. bin/cluster/pf-kind.sh --daemon        (opens localhost:15432 → kind Postgres)
-  #   2. bin/cluster/pgweb-kind-up.sh            (fetches DB password from the kind Secret,
+  #   1. bin/cluster/port-forward/kind.sh --daemon        (opens localhost:15432 → kind Postgres)
+  #   2. bin/cluster/pgweb/kind-up.sh            (fetches DB password from the kind Secret,
   #                                        starts this on :8082)
   # profile `kind-tunnel` keeps it off when you are not using kind.
   # ---------------------------------------------------------------------------
@@ -348,12 +348,12 @@ services:
 
   # ---------------------------------------------------------------------------
   # pgweb (prod tunnel) — same image, points at the GKE cluster Postgres
-  # through the port-forward that bin/cluster/pf-prod.sh opens on localhost:25432
+  # through the port-forward that bin/cluster/port-forward/prod.sh opens on localhost:25432
   # (prod = +20000).
   #
   # Activation:
-  #   1. bin/cluster/pf-prod.sh --daemon        (opens localhost:25432 → GKE Postgres)
-  #   2. bin/cluster/pgweb-prod-up.sh            (fetches DB password from GSM via ESO,
+  #   1. bin/cluster/port-forward/prod.sh --daemon        (opens localhost:25432 → GKE Postgres)
+  #   2. bin/cluster/pgweb/prod-up.sh            (fetches DB password from GSM via ESO,
   #                                        starts this on :8083)
   # profile `prod-tunnel` keeps it off unless explicitly activated.
   # ---------------------------------------------------------------------------

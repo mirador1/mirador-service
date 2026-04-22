@@ -70,4 +70,4 @@ kubectl delete pod -n app -l app=mirador
 
 If that doesn't recover within 60s, the cluster may be in a bad state.
 On the ephemeral-cluster pattern the fastest recovery is destroy +
-recreate: `bin/cluster/demo-down.sh && bin/cluster/demo-up.sh`.
+recreate: `bin/cluster/demo/down.sh && bin/cluster/demo/up.sh`.

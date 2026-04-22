@@ -52,7 +52,7 @@ premium for ~8 hours per month instead of 730.
 - Gets the €0/month when-down story too, with more control over
   node machine types (e.g. spot preemptibles).
 - **Against**: scaling a node pool to zero + spinning back up adds
-  one more step to `bin/cluster/demo-up.sh` (wait for a node), and the
+  one more step to `bin/cluster/demo/up.sh` (wait for a node), and the
   first pod to schedule takes ~2 min longer. Autopilot's provisioner
   handles this natively.
 
@@ -70,7 +70,7 @@ Positive:
 - Security baselines you'd have to wire up manually on Standard
   (PodSecurity admission, Workload Identity, shielded nodes) are the
   defaults on Autopilot.
-- The `bin/cluster/demo-up.sh` / `bin/cluster/demo-down.sh` flow stays symmetrical:
+- The `bin/cluster/demo/up.sh` / `bin/cluster/demo/down.sh` flow stays symmetrical:
   create a cluster or destroy it, nothing in between.
 
 Negative:

@@ -5,9 +5,9 @@ same in all three — only the `EnvService`'s computed URLs change.
 
 - **Local** — everything on the developer's laptop via Docker Compose.
 - **Kind** — a local Kubernetes-in-Docker cluster, reached via
-  `bin/cluster/pf-kind.sh` on the laptop.
+  `bin/cluster/port-forward/kind.sh` on the laptop.
 - **Prod tunnel** — the GKE Autopilot cluster reached through
-  `bin/cluster/pf-prod.sh`. No public surface
+  `bin/cluster/port-forward/prod.sh`. No public surface
   ([ADR-0025](../adr/0025-ui-local-only-no-public-prod-ingress.md)).
 
 Port offsets (decided 2026-04-18): Local uses upstream defaults, Kind
@@ -93,7 +93,7 @@ host firewall.
 │          │  HTTP (localhost:1xxxx)                                        │
 │          ▼                                                                │
 │   ┌─────────────────────────────────────────────────────────────────────┐ │
-│   │              kubectl port-forward (bin/cluster/pf-prod.sh)                   │ │
+│   │              kubectl port-forward (bin/cluster/port-forward/prod.sh)                   │ │
 │   │                                                                      │ │
 │   │   28080 ─┐    kubelet forwards TCP to the pod IP                     │ │
 │   │   23000 ─┤    (authenticated via ~/.kube/config — IAM/WIF gated)     │ │

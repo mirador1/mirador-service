@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
+# moved 2026-04-22 from bin/cluster/pgweb-prod-up.sh — per ~/.claude/CLAUDE.md subdirectory hygiene
 # =============================================================================
-# bin/cluster/pgweb-prod-up.sh — start the "Prod tunnel" pgweb container (port 8083).
+# bin/cluster/pgweb/prod-up.sh — start the "Prod tunnel" pgweb container (port 8083).
 #
 # Per ADR-0026 the Angular UI's Database page calls pgweb directly. In "Prod
 # tunnel" mode that pgweb still runs on the laptop (compose profile
 # `prod-tunnel`), but points at the GKE cluster Postgres through the
-# port-forward tunnel that bin/cluster/pf-prod.sh opens on localhost:25432 (prod uses
+# port-forward tunnel that bin/cluster/port-forward/prod.sh opens on localhost:25432 (prod uses
 # the +20000 offset — see docs/architecture/environments-and-flows.md).
 #
 # Because the cluster DB password is stored in Google Secret Manager (not
@@ -13,12 +14,12 @@
 # Secret (ESO-synced) before starting the container.
 #
 # Pre-requisites:
-#   1. bin/cluster/demo-up.sh (or bin/cluster/demo-up-fast.sh) — GKE cluster up
-#   2. bin/cluster/pf-prod.sh --daemon           — tunnels open (we need 25432 here)
+#   1. bin/cluster/demo/up.sh (or bin/cluster/demo/up-fast.sh) — GKE cluster up
+#   2. bin/cluster/port-forward/prod.sh --daemon           — tunnels open (we need 25432 here)
 #
 # Usage:
-#   bin/cluster/pgweb-prod-up.sh            # start pgweb-prod on localhost:8083
-#   bin/cluster/pgweb-prod-up.sh --down      # stop the container
+#   bin/cluster/pgweb/prod-up.sh            # start pgweb-prod on localhost:8083
+#   bin/cluster/pgweb/prod-up.sh --down      # stop the container
 # =============================================================================
 
 set -eu
@@ -32,13 +33,13 @@ fi
 
 # Sanity 1: a cluster is reachable.
 if ! kubectl cluster-info >/dev/null 2>&1; then
-  echo "❌  kubectl cannot reach a cluster. Run bin/cluster/demo-up.sh first." >&2
+  echo "❌  kubectl cannot reach a cluster. Run bin/cluster/demo/up.sh first." >&2
   exit 1
 fi
 
 # Sanity 2: the Postgres tunnel is open on the host (prod = +20000).
 if ! { nc -z -G 1 localhost 25432 2>/dev/null || nc -z -w 1 localhost 25432 2>/dev/null; }; then
-  echo "❌  localhost:25432 is not open. Run bin/cluster/pf-prod.sh --daemon first." >&2
+  echo "❌  localhost:25432 is not open. Run bin/cluster/port-forward/prod.sh --daemon first." >&2
   exit 1
 fi
 

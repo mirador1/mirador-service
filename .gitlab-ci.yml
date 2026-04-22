@@ -1075,7 +1075,7 @@ test:k8s-apply:
 # memory limit + retention + storage (4 lines diff). If those values
 # break the CRDs in kind, they'll break in GKE too. Kind validation
 # costs nothing and runs every MR; GKE smoke costs €/min and runs on
-# `bin/cluster/demo-up.sh` cycles.
+# `bin/cluster/demo/up.sh` cycles.
 test:k8s-apply-prom:
   stage: k8s
   interruptible: true
@@ -2448,7 +2448,7 @@ load-test:nightly:
 # propagates without a manifest edit. The ~90-line CI job is redundant plumbing.
 #
 # If you ever need a one-off apply outside Argo CD (e.g. debug a bad sync),
-# use bin/cluster/connect-prod.sh + bin/cluster/demo-up.sh or kubectl apply -k from your
+# use bin/cluster/connect-prod.sh + bin/cluster/demo/up.sh or kubectl apply -k from your
 # laptop — same code path, no WIF credentials in CI.
 
 # ── AWS EKS — manual ──────────────────────────────────────────────────────────

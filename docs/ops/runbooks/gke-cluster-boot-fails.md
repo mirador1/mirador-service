@@ -8,7 +8,7 @@ gcloud container clusters list                  # is the cluster even there?
 kubectl get pods -A --field-selector=status.phase!=Running
 ```
 
-If `clusters list` is empty → `bin/cluster/demo-up.sh` hasn't run or failed.
+If `clusters list` is empty → `bin/cluster/demo/up.sh` hasn't run or failed.
 If pods are Pending with "Insufficient cpu/memory" → Autopilot quota.
 
 ## Likely root causes (in order of frequency)
@@ -16,7 +16,7 @@ If pods are Pending with "Insufficient cpu/memory" → Autopilot quota.
 1. **Autopilot pod quota exceeded.** Autopilot auto-provisions nodes but
    within project-wide quotas. A cold demo with 15 pods can hit the
    default 32 vCPU quota if resource requests aren't tight.
-2. **Terraform state lock.** A previous `bin/cluster/demo-up.sh` crashed
+2. **Terraform state lock.** A previous `bin/cluster/demo/up.sh` crashed
    leaving the GCS state lock held. `terraform apply` hangs.
 3. **Budget-kill fired.** The Cloud Function `budget-kill` deleted
    the cluster because the monthly budget hit 100% (ADR-0022 + cost-
@@ -63,7 +63,7 @@ gcloud artifacts docker tags list \
   ```
 - **budget-kill aftermath** — check `bin/budget/budget.sh status` and verify
   if the cap needs raising. If yes: `bin/budget/budget.sh set 20`. Then
-  re-run `bin/cluster/demo-up.sh`.
+  re-run `bin/cluster/demo/up.sh`.
 - **Image pull** — check the last successful build SHA, push it
   through `glab ci` if needed, or temporarily pin the Argo CD
   Application's image tag to a known-good SHA via kustomize patch.
@@ -74,11 +74,11 @@ For a portfolio demo, the escalation path is just **start over**.
 The ephemeral pattern (ADR-0022) is designed for it:
 
 ```bash
-bin/cluster/demo-down.sh     # idempotent, destroys whatever's there
-bin/cluster/demo-up.sh       # recreate from scratch — 8 min cold start
+bin/cluster/demo/down.sh     # idempotent, destroys whatever's there
+bin/cluster/demo/up.sh       # recreate from scratch — 8 min cold start
 ```
 
-If `bin/cluster/demo-up.sh` still fails with the same error after teardown,
+If `bin/cluster/demo/up.sh` still fails with the same error after teardown,
 the issue is in the Terraform config or the GKE release channel —
 at that point, check https://status.cloud.google.com/ and consider
 running the demo in another region.

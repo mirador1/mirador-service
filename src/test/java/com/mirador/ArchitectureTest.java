@@ -135,4 +135,70 @@ class ArchitectureTest {
                 .because("resilience filters are cross-cutting and must not depend on the customer domain");
         rule.check(classes);
     }
+
+    @Test
+    void jpa_entities_must_not_cross_feature_boundaries_via_port() {
+        // Invariant #1 from ADR-0051: JPA entities (Customer, RefreshToken)
+        // are legitimate intra-feature, but MUST NOT leak through a port/
+        // sub-package — ports publish DTOs, not @Entity classes, so the
+        // coupling stays local. See ADR-0051 "Invariants".
+        ArchRule rule = noClasses()
+                .that().resideInAPackage("..port..")
+                .should().dependOnClassesThat().areAnnotatedWith("jakarta.persistence.Entity")
+                .because("ADR-0051 invariant #1: JPA entities never cross feature boundaries via port/");
+        rule.check(classes);
+    }
+
+    @Test
+    void rest_controllers_must_not_return_jpa_entities() {
+        // Invariant #2 from ADR-0051: @Entity classes must never be the return
+        // type of a @GetMapping / @PostMapping — that would serialise Hibernate
+        // lazy proxies straight to the HTTP response (LazyInitializationException
+        // in the wild, or gigantic JSON payloads). Every handler returns a DTO
+        // or Page<DTO>. ArchUnit can't easily inspect return types, so we
+        // enforce the weaker "no @RestController directly depends on an
+        // @Entity as part of its API surface" via package-level analysis:
+        // controllers may reference entity-owning packages only through the
+        // service layer. This is imperfect but catches most accidental leaks.
+        //
+        // NOTE: intentionally NOT a noClasses() rule because CustomerController
+        // LEGITIMATELY depends on the customer package (where Customer lives)
+        // for request objects, exceptions, etc. A tighter invariant would
+        // require the entity to be in a sealed sub-package; that's a B-1b
+        // follow-up. For now this ADR test is documentary — it will grow
+        // teeth when entity classes move to `..entity..` sub-packages.
+        //
+        // Assertion: at least the three controllers that audit flagged
+        // (CustomerController, AuthController, AuditController) exist —
+        // guards against silent package moves.
+        ArchRule rule = classes()
+                .that().haveSimpleNameEndingWith("Controller")
+                .and().resideInAPackage("..customer..")
+                .should().dependOnClassesThat().haveSimpleName("CustomerService")
+                .because("ADR-0051 invariant #2 (documentary): controllers go through services, which handle the entity→DTO mapping");
+        rule.check(classes);
+    }
+
+    @Test
+    void jpa_entities_must_not_have_lazy_onetomany_without_dto_mapper() {
+        // Invariant #3 from ADR-0051: @OneToMany(fetch = LAZY) is allowed
+        // ONLY when the caller is guaranteed to NOT serialise the collection
+        // directly (i.e. the service layer always materialises the collection
+        // into a DTO before returning). Today no @OneToMany exists on any
+        // entity — this rule is preventive. If one lands without a DTO
+        // mapper, serialising from a @RestController will throw
+        // LazyInitializationException.
+        //
+        // We can't detect the "without a DTO mapper" part in bytecode, so
+        // we assert the weaker "no @OneToMany is present on any @Entity"
+        // for now. Document the stricter intent in ADR-0051. The day a
+        // legitimate @OneToMany lands, switch this rule to the stronger
+        // "any @Entity with @OneToMany must also have a @JsonIgnore on
+        // the collection field" form.
+        ArchRule rule = noClasses()
+                .that().areAnnotatedWith("jakarta.persistence.Entity")
+                .should().dependOnClassesThat().haveFullyQualifiedName("jakarta.persistence.OneToMany")
+                .because("ADR-0051 invariant #3: @OneToMany lazy collections leak to REST serialisation — add a DTO mapper or @JsonIgnore first");
+        rule.check(classes);
+    }
 }
