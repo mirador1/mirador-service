@@ -99,6 +99,89 @@ We ship **B** + **C** + **D** together (Grafana for app-level + cluster
 metrics via OTLP; GMP frontend for OpenLens cAdvisor; GCP Console as
 power-user escape hatch).
 
+## What this unlocks (beyond OpenLens)
+
+The original motivation was an OpenLens "metrics tab" fix, but the GMP
+frontend turns out to be useful for a broader set of consumers. Once
+deployed, **any Prometheus-speaking client** can query cluster metrics
+that Google's managed collector gathers (cAdvisor + kubelet + anything
+you expose via `PodMonitoring` / `ClusterPodMonitoring` CRDs).
+
+### ✅ Grafana lgtm (primary win)
+
+The lgtm pod gets a 5th datasource `Prometheus (GMP — cluster metrics)`
+wired in `deploy/kubernetes/overlays/gke-prom/grafana-datasource-patch
+.yaml` (UID `prometheus-kps`). Grafana's default Prometheus datasource
+stays bound to lgtm's Mimir (OTel-pushed app metrics); the new one
+exposes:
+
+- **cAdvisor** per-pod `container_cpu_usage_seconds_total`,
+  `container_memory_working_set_bytes`, `container_network_receive_bytes_total`,
+  etc. — the standard community metric names.
+- **kube-state-metrics** `kube_pod_info`, `kube_deployment_status_replicas_available`,
+  `kube_node_status_capacity`, `kube_pod_container_resource_requests_*`
+  — deployment health, resource requests vs limits, pod lifecycle.
+- **kubelet** volume stats, eviction signals, pod admission metrics.
+
+Community dashboards from grafana.com (e.g. dashboards/315
+"Kubernetes cluster monitoring", 6417 "Kubernetes Cluster (Prometheus)",
+1860 "Node Exporter Full") drop in and work — they expect standard
+Prometheus metric names and get them through this bridge.
+
+### ✅ k9s (terminal)
+
+Pressing `y` on a pod row (in k9s ≥ 0.32) opens a mini-graph for CPU/mem.
+k9s queries `kubectl top` by default (metrics-server, live only); if you
+set `prom_endpoint: http://localhost:29091` in `~/.config/k9s/config.yaml`
+(with `bin/cluster/port-forward/prod.sh --daemon` running), k9s switches
+to historical queries via GMP.
+
+### ✅ Headlamp
+
+Headlamp's Prometheus plugin takes a URL in Cluster Settings → Plugins.
+Point it at `monitoring/gmp-frontend:9090` (inside cluster) or
+`http://localhost:29091` (via prod.sh port-forward). Pod/Workload rows
+then render CPU/mem sparklines.
+
+### ✅ Lens Desktop (paid)
+
+Lens Desktop's built-in metrics extension auto-detects the Service via
+label `app.kubernetes.io/name=prometheus` (which `install-gmp-frontend.sh`
+sets). The paid version works — it's only OpenLens OSS that lacks the
+extension entirely.
+
+### ✅ CLI / scripts
+
+Useful for one-off capacity analysis and ad-hoc debug without opening a
+UI:
+```bash
+# Top 10 pods by memory over the last 10 min.
+curl -sG 'http://localhost:29091/api/v1/query' \
+  --data-urlencode 'query=topk(10, avg_over_time(container_memory_working_set_bytes{container!=""}[10m]))' \
+  | jq '.data.result[] | {pod: .metric.pod, mem_mib: (.value[1] | tonumber / 1048576 | round)}'
+
+# CPU trend during a load-test window, per namespace.
+curl -sG 'http://localhost:29091/api/v1/query_range' \
+  --data-urlencode 'query=sum by (namespace) (rate(container_cpu_usage_seconds_total[5m]))' \
+  --data-urlencode "start=$(date -v-30M +%s)" --data-urlencode "end=$(date +%s)" \
+  --data-urlencode 'step=60'
+```
+
+### ✅ Alertmanager / custom alert routers
+
+If you ship an Alertmanager (the chart can add it in a follow-up), it can
+fire on PromQL rules evaluated against this frontend — same rules file as
+prometheus-operator's `PrometheusRule` CRD. Example: `container_memory_
+working_set_bytes > 0.9 * container_spec_memory_limit_bytes for 5m` fires
+a paging alert right before the OOM kill.
+
+### ✅ Export to external observability (Datadog / New Relic / …)
+
+The frontend exposes a standard Prometheus API, so any exporter that
+pulls PromQL (remote_read / scrape) can consume cluster metrics without
+agent sidecars. Useful if you ever layer another vendor on top without
+re-scraping cAdvisor.
+
 ## Cost
 
 + ~€0.01/h (1 frontend pod, 100m CPU / 128Mi). Included in the already-
