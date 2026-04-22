@@ -113,6 +113,9 @@
         <maven-project-info-reports-plugin.version>3.9.0</maven-project-info-reports-plugin.version>
         <maven-surefire-report-plugin.version>3.5.5</maven-surefire-report-plugin.version>
         <license-maven-plugin.version>2.7.1</license-maven-plugin.version>
+        <!-- exec-maven-plugin — runs QualityReportGenerator at prepare-package phase.
+             See ADR-0052 Phase Q-2 for why the quality report moves to build-time. -->
+        <exec-maven-plugin.version>3.5.0</exec-maven-plugin.version>
 
         <!-- Coverage, mutation, and quality analyzers -->
         <jacoco-maven-plugin.version>0.8.14</jacoco-maven-plugin.version>
@@ -859,6 +862,15 @@
                           Smoke tests lock the contract.
                         -->
                         <exclude>com/mirador/observability/quality/providers/**/*.class</exclude>
+                        <!--
+                          Phase Q-2 (2026-04-22, ADR-0052): QualityReportGenerator is
+                          the CLI that runs at prepare-package and writes the JSON
+                          consumed by QualityReportEndpoint at runtime. Never exercised
+                          by unit tests (it's a build-time tool), so its coverage is 0
+                          by design. Excluding keeps the 70% gate representative of
+                          business logic only.
+                        -->
+                        <exclude>com/mirador/observability/quality/*.class</exclude>
                         <!--
                           4. Application bootstrap
                         -->
@@ -1611,6 +1623,39 @@
                         <!-- Don't fail on unknown licenses — we report them, not block build -->
                         <failOnMissing>false</failOnMissing>
                         <sortArtifactByName>true</sortArtifactByName>
+                    </configuration>
+                </execution>
+            </executions>
+        </plugin>
+
+        <!--
+          exec-maven-plugin — runs QualityReportGenerator at prepare-package.
+          ADR-0052 Phase Q-2: moves Surefire/JaCoCo/SpotBugs/PMD/Checkstyle/
+          OWASP/PIT/pom/THIRD-PARTY parsing out of the runtime JVM and into
+          the Maven build. Output is target/classes/META-INF/quality-build-
+          report.json — QualityReportEndpoint reads it at runtime instead
+          of parsing tool outputs itself.
+
+          Phase binding: `prepare-package` runs AFTER tool plugins (jacoco,
+          spotbugs, pmd, checkstyle, owasp, pit all produce their reports
+          during `test` / `verify`) and BEFORE the JAR is assembled, so the
+          generated JSON lands inside the JAR's META-INF/ classpath entry.
+        -->
+        <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>exec-maven-plugin</artifactId>
+            <version>${exec-maven-plugin.version}</version>
+            <executions>
+                <execution>
+                    <id>generate-quality-build-report</id>
+                    <phase>prepare-package</phase>
+                    <goals><goal>java</goal></goals>
+                    <configuration>
+                        <mainClass>com.mirador.observability.quality.QualityReportGenerator</mainClass>
+                        <!-- Use the project classpath only, not plugin deps. -->
+                        <includePluginDependencies>false</includePluginDependencies>
+                        <!-- Let CLI exceptions propagate so the build fails on I/O errors. -->
+                        <cleanupDaemonThreads>false</cleanupDaemonThreads>
                     </configuration>
                 </execution>
             </executions>

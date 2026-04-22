@@ -1,51 +1,26 @@
 package com.mirador.observability;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.mirador.observability.quality.parsers.CheckstyleReportParser;
-import com.mirador.observability.quality.parsers.JacocoReportParser;
-import com.mirador.observability.quality.parsers.OwaspReportParser;
-import com.mirador.observability.quality.parsers.PitestReportParser;
-import com.mirador.observability.quality.parsers.PmdReportParser;
 import com.mirador.observability.quality.parsers.ReportParsers;
-import com.mirador.observability.quality.parsers.SpotBugsReportParser;
-import com.mirador.observability.quality.parsers.SurefireReportParser;
 import com.mirador.observability.quality.providers.ApiSectionProvider;
 import com.mirador.observability.quality.providers.BuildInfoSectionProvider;
-import com.mirador.observability.quality.providers.DependenciesSectionProvider;
-import com.mirador.observability.quality.providers.LicensesSectionProvider;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.net.URI;
-import java.net.URLEncoder;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Set;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
-import javax.xml.XMLConstants;
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.parsers.ParserConfigurationException;
 import java.lang.management.ManagementFactory;
 import org.springframework.boot.actuate.endpoint.annotation.Endpoint;
 import org.springframework.boot.actuate.endpoint.annotation.ReadOperation;
@@ -101,7 +76,6 @@ import org.w3c.dom.NodeList;
 public class QualityReportEndpoint {
 
     private static final DateTimeFormatter TS_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     // Classpath paths (inside packaged JAR)
     private static final String CP_JACOCO = "META-INF/build-reports/jacoco.csv";
@@ -196,52 +170,25 @@ public class QualityReportEndpoint {
     private final Environment environment;
     private final StartupTimeTracker startupTimeTracker;
     /**
-     * Phase B-1 split (2026-04-22): section builders are being extracted to
-     * {@link com.mirador.observability.quality.parsers}. Order of extraction
-     * from biggest XML-parsing surface down: Surefire → Jacoco → SpotBugs →
-     * PMD → Checkstyle → OWASP → Pitest.
+     * Runtime section providers — kept as Spring beans because they need
+     * live JVM / framework state (Environment, RequestMappingHandlerMapping).
+     * Build-time sections (tests, coverage, bugs, pmd, checkstyle, owasp,
+     * pitest, dependencies, licenses) no longer need injection — they come
+     * from the pre-generated classpath JSON under ADR-0052 Phase Q-2.
      */
-    private final SurefireReportParser surefireReportParser;
-    private final JacocoReportParser jacocoReportParser;
-    private final SpotBugsReportParser spotBugsReportParser;
-    private final PmdReportParser pmdReportParser;
-    private final CheckstyleReportParser checkstyleReportParser;
-    private final OwaspReportParser owaspReportParser;
-    private final PitestReportParser pitestReportParser;
-    // Phase B-1b: non-parser section providers.
     private final BuildInfoSectionProvider buildInfoSectionProvider;
     private final ApiSectionProvider apiSectionProvider;
-    private final LicensesSectionProvider licensesSectionProvider;
-    private final DependenciesSectionProvider dependenciesSectionProvider;
 
     public QualityReportEndpoint(RequestMappingHandlerMapping requestMappingHandlerMapping,
                                  Environment environment,
                                  StartupTimeTracker startupTimeTracker,
-                                 SurefireReportParser surefireReportParser,
-                                 JacocoReportParser jacocoReportParser,
-                                 SpotBugsReportParser spotBugsReportParser,
-                                 PmdReportParser pmdReportParser,
-                                 CheckstyleReportParser checkstyleReportParser,
-                                 OwaspReportParser owaspReportParser,
-                                 PitestReportParser pitestReportParser,
                                  BuildInfoSectionProvider buildInfoSectionProvider,
-                                 ApiSectionProvider apiSectionProvider,
-                                 LicensesSectionProvider licensesSectionProvider,
-                                 DependenciesSectionProvider dependenciesSectionProvider) {
+                                 ApiSectionProvider apiSectionProvider) {
         this.requestMappingHandlerMapping = requestMappingHandlerMapping;
         this.environment = environment;
         this.startupTimeTracker = startupTimeTracker;
-        this.surefireReportParser = surefireReportParser;
-        this.jacocoReportParser = jacocoReportParser;
-        this.spotBugsReportParser = spotBugsReportParser;
-        this.pmdReportParser = pmdReportParser;
-        this.checkstyleReportParser = checkstyleReportParser;
-        this.owaspReportParser = owaspReportParser;
-        this.pitestReportParser = pitestReportParser;
         this.buildInfoSectionProvider = buildInfoSectionProvider;
         this.apiSectionProvider = apiSectionProvider;
-        this.licensesSectionProvider = licensesSectionProvider;
-        this.dependenciesSectionProvider = dependenciesSectionProvider;
     }
 
     /**
@@ -259,48 +206,65 @@ public class QualityReportEndpoint {
     public Map<String, Object> report() {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("generatedAt", LocalDateTime.now().format(TS_FMT));
-        result.put(K_TESTS,        buildTestsSection());
-        result.put(K_COVERAGE,     buildCoverageSection());
-        result.put("bugs",         buildBugsSection());
-        result.put("pmd",          buildPmdSection());
-        result.put("checkstyle",   buildCheckstyleSection());
-        result.put("owasp",        buildOwaspSection());
-        result.put("pitest",       buildPitestSection());
+
+        // Build-time sections — pre-generated at mvn prepare-package by
+        // QualityReportGenerator (see ADR-0052 Phase Q-2). The backend no
+        // longer parses XML/CSV tool outputs at HTTP request time; it just
+        // reads one opaque classpath resource.
+        // Sections covered: tests, coverage, bugs, pmd, checkstyle, owasp,
+        //                   pitest, dependencies, licenses.
+        Map<String, Object> buildTime = loadBuildTimeReport();
+        for (String key : BUILD_TIME_KEYS) {
+            Object val = buildTime.get(key);
+            result.put(key, val != null ? val : Map.of(K_AVAILABLE, false,
+                    K_REASON, "build-time report not generated yet (run `mvn prepare-package`)"));
+        }
+
         // `sonar` + `pipeline` removed 2026-04-22 per ADR-0052 — the UI
         // dashboard links out to sonarcloud.io + gitlab.com directly.
-        result.put("build",        buildBuildSection());
+
+        // Runtime sections — genuine JVM / Spring / local-git state.
+        result.put("build",        buildInfoSectionProvider.parse());
         result.put("git",          buildGitSection());
-        result.put("api",          buildApiSection());
-        result.put(K_DEPENDENCIES, buildDependenciesSection());
-        result.put("licenses",     buildLicensesSection());
+        result.put("api",          apiSectionProvider.parse());
         result.put("metrics",      buildMetricsSection());
         result.put("runtime",      buildRuntimeSection());
         result.put(K_BRANCHES,     buildBranchesSection());
         return result;
     }
 
-    // -------------------------------------------------------------------------
-    // Tests section
-    // -------------------------------------------------------------------------
+    /** The 9 file-based section keys that live in the pre-generated JSON. */
+    private static final List<String> BUILD_TIME_KEYS = List.of(
+            K_TESTS, K_COVERAGE, "bugs", "pmd", "checkstyle", "owasp",
+            "pitest", K_DEPENDENCIES, "licenses");
 
-    // Delegates to the extracted SurefireReportParser — Phase B-1 split.
-    private Map<String, Object> buildTestsSection() {
-        return surefireReportParser.parse();
+    private static final String QUALITY_BUILD_REPORT = "META-INF/quality-build-report.json";
+
+    /**
+     * Loads the build-time quality report written by {@link
+     * com.mirador.observability.quality.QualityReportGenerator} during
+     * {@code mvn prepare-package}. Returns an empty map when the resource
+     * is absent (e.g. running from IDE without a full Maven build) — the
+     * caller fills each missing section with {@code {available: false}}.
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> loadBuildTimeReport() {
+        ClassPathResource res = new ClassPathResource(QUALITY_BUILD_REPORT);
+        if (!res.exists()) return Map.of();
+        try (InputStream is = res.getInputStream()) {
+            return (Map<String, Object>) BUILD_TIME_MAPPER.readValue(is, Map.class);
+        } catch (Exception _) {
+            return Map.of();
+        }
     }
 
-    // Delegates to the extracted parsers — Phase B-1 split.
-    private Map<String, Object> buildCoverageSection() {
-        return jacocoReportParser.parse();
-    }
+    private static final com.fasterxml.jackson.databind.ObjectMapper BUILD_TIME_MAPPER =
+            new com.fasterxml.jackson.databind.ObjectMapper();
 
-    private Map<String, Object> buildBugsSection() {
-        return spotBugsReportParser.parse();
-    }
-
-    // priorityLabel moved inside PmdReportParser (Phase B-1 split complete for PMD).
-
-    // Delegates — Phase B-1b.
-    private Map<String, Object> buildBuildSection() { return buildInfoSectionProvider.parse(); }
+    // Tests / coverage / bugs / pmd / checkstyle / owasp / pitest / deps /
+    // licenses sections moved to build-time per ADR-0052 Phase Q-2 —
+    // loaded via loadBuildTimeReport() from META-INF/quality-build-report.json
+    // generated at mvn prepare-package by QualityReportGenerator.
 
     // -------------------------------------------------------------------------
     // Git section
@@ -370,43 +334,15 @@ public class QualityReportEndpoint {
         }
     }
 
-    private Map<String, Object> buildApiSection() { return apiSectionProvider.parse(); }
-
-    // Delegates to the extracted DependenciesSectionProvider (Phase B-1b) —
-    // which owns the pom.xml parse, Maven Central freshness lookup (8 s budget),
-    // dependency-tree.txt read, and dependency-analysis.txt parse.
-    private Map<String, Object> buildDependenciesSection() { return dependenciesSectionProvider.parse(); }
-
-    // The old inline implementation (~210 LOC combined with parseDependencyAnalysis)
-    // was removed 2026-04-22. The Maven Central HTTP call moves to a build-time
-    // execution under Phase Q-2 (ADR-0052).
-    @SuppressWarnings({"java:S3776", "java:S135", "java:S6541"})
-
-    // getTagText moved to ReportParsers (Phase B-1 split).
+    // API / Dependencies / Licenses delegates removed — the first is inlined
+    // at the report() call site via apiSectionProvider.parse(); the others
+    // ship from build-time JSON (Phase Q-2).
 
     // -------------------------------------------------------------------------
     // Licenses section
     // -------------------------------------------------------------------------
 
-    /**
-     * Parses the THIRD-PARTY.txt generated by {@code license-maven-plugin:add-third-party}
-     * (packaged at {@value #CP_THIRD_PARTY}). Each line has the format:
-     * <pre>
-     *   (License Name) groupId:artifactId:version - Display Name
-     * </pre>
-     *
-     * <p>Returns a map with:
-     * <ul>
-     *   <li>{@code total} — total number of third-party dependencies listed</li>
-     *   <li>{@code licenses} — list of {@code {license, count, incompatible}} grouped by license name</li>
-     *   <li>{@code incompatibleCount} — count of GPL/AGPL/CDDL/EPL dependencies</li>
-     *   <li>{@code dependencies} — flat list of each dep with {@code group}, {@code artifact},
-     *       {@code version}, {@code license}, {@code incompatible}</li>
-     * </ul>
-     *
-     * <p>Incompatible licenses for commercial projects: GPL, AGPL, LGPL, CDDL, EPL.
-     */
-    private Map<String, Object> buildLicensesSection() { return licensesSectionProvider.parse(); }
+    // Licenses section moved to build-time per ADR-0052 Phase Q-2.
 
     // -------------------------------------------------------------------------
     // Metrics section
@@ -544,16 +480,8 @@ public class QualityReportEndpoint {
         return r;
     }
 
-    // -------------------------------------------------------------------------
-    // PMD section
-    // -------------------------------------------------------------------------
-
-    // Delegates to extracted parsers — Phase B-1 split.
-    private Map<String, Object> buildPmdSection()        { return pmdReportParser.parse(); }
-    private Map<String, Object> buildCheckstyleSection() { return checkstyleReportParser.parse(); }
-    private Map<String, Object> buildOwaspSection()      { return owaspReportParser.parse(); }
-
-    private Map<String, Object> buildPitestSection()     { return pitestReportParser.parse(); }
+    // PMD / Checkstyle / OWASP / Pitest sections moved to build-time per
+    // ADR-0052 Phase Q-2. Loaded at runtime from META-INF/quality-build-report.json.
 
     // `buildSonarSection` + `ratingLabel` removed 2026-04-22 per ADR-0052 —
     // the SonarCloud REST call moved out of the runtime path. UI dashboard

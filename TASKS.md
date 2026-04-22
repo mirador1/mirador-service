@@ -264,6 +264,37 @@ auth (JWT + Auth0 paths), Flyway migrations (no tests).
 
 ---
 
+## 🧭 Ideas pour plus tard (scope à confirmer)
+
+### GitLab Observability integration (potentiel 2e OTLP exporter)
+
+User signalait 2026-04-22 l'URL <https://gitlab.com/groups/mirador1/-/observability/setup>
+— GitLab a une feature Observability intégrée (OTLP ingest avec auth
+group-level, cf. [docs.gitlab.com/ee/operations/tracing.html](https://docs.gitlab.com/ee/operations/tracing.html)).
+
+**Ce que ça apporterait** : telemetry visualisable DIRECTEMENT dans
+l'UI GitLab (pas besoin de démarrer Grafana/Tempo localement pour un
+reviewer), + conservation cross-session sans coûter de VM GCP.
+
+**Questions à trancher avant d'implémenter** :
+- Disponibilité sur free tier ? (`plan: None` sur le groupe = free
+  tier probablement ; API `observability_config` retourne 404).
+- Format d'auth (Bearer token group-level ? deploy token ?).
+- Dual-export depuis l'OTel Collector (actuel → LGTM local + GitLab)
+  ou exporter directement depuis Spring Boot ?
+- Cohabitation avec ADR-0010 "OTLP push to Collector, not Prometheus
+  scrape" — OK en complément, pas en remplacement.
+
+**Estimation rough** : si faisable sur free tier, ~3-4 h : OTel
+Collector config (pipeline dual), env vars GitLab token, ADR
+documentant le flow.
+
+**Prérequis user** : valider la dispo free tier en ouvrant
+<https://gitlab.com/groups/mirador1/-/observability/setup> et
+reportant ce qui est proposé (tokens, endpoints, plan-lock).
+
+---
+
 ## 🟢 Nice-to-have
 
 ### Re-enable Alertmanager when project moves beyond demo
