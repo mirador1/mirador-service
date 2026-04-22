@@ -190,30 +190,37 @@ CodeQualitySummary, DockerControls, etc. **Pattern confirmed 2026-04-22** — 1
 widget = 1 file (see `~/.claude/CLAUDE.md` → "File length hygiene" rule #6
 + UI `CLAUDE.md` → "1 widget / 1 panel = 1 file").
 
-### B-7 — seconde passe: 10 fichiers additionnels (partial 2026-04-22)
+### B-7 — seconde passe: 10 fichiers additionnels (majorly DONE 2026-04-22)
 
 Scan 2026-04-22 identifie 10 offenders ≥ 700 LOC hors Phase B-1..6 :
 
 | # | Fichier | LOC avant | LOC après | Status |
 |---|---|---|---|---|
-| 1 | `ui/quality.component.scss`    | 1206 | — | pending B-7-1 (pair avec B-5) |
-| 2 | `ui/customers.component.ts`    |  904 | — | pending B-7-2 |
-| 3 | `ui/customers.component.scss`  |  820 | — | pending B-7-3 |
-| 4 | `ui/security.component.scss`   |  828 | — | pending B-7-4 |
-| 5 | `ui/about.component.scss`      |  813 | — | pending B-7-5 |
-| 6 | `ui/quality.component.ts`      |  806 | — | pending B-7-6 (après B-5) |
-| 7 | `svc/CustomerController.java`  |  782 |  705 | **partial** B-7-7 — CustomerDiagnosticsController extracted (stream/slow-query/export). Remaining: bio/todos/enrich → CustomerEnrichmentController (tracked) |
+| 1 | `ui/quality.component.scss`    | 1206 |   27 | **DONE** B-7-1 — split into 5 Sass partials (page-chrome / overview-cards / section-layout / tabs / panels) |
+| 2 | `ui/customers.component.ts`    |  904 |  813 | **partial** B-7-2 — extract data (46 names) + helpers (uuid, randomCustomer) + types (DetailTab, SortField, SortDir) + spec (5 tests, 0 TestBed). Full by-concern split deferred (complex state) |
+| 3 | `ui/customers.component.scss`  |  820 |   22 | **DONE** B-7-3 — split into 4 Sass partials (controls / forms / modal-detail / recent-banner) |
+| 4 | `ui/security.component.scss`   |  862 |   52 | **DONE** B-7-4 — split into 5 Sass partials (page-chrome / common-ui / mechanisms / jwt-inspector / headers-audit) |
+| 5 | `ui/about.component.scss`      |  813 |   22 | **DONE** B-7-5 — split into 4 Sass partials (tabs-header / sections / compat-pipeline / deploy) |
+| 6 | `ui/quality.component.ts`      |  806 |  249 | **DONE** B-7-6 — 24 interfaces → `quality-types.ts` (527 LOC types-only); helpers in `quality-helpers.ts` (84 LOC) |
+| 7 | `svc/CustomerController.java`  |  782 |  535 | **DONE** B-7-7 — 3-way split: CustomerDiagnosticsController (142) + CustomerEnrichmentController (185). Original shrank -32% |
 | 8 | `svc/run.sh`                   |  763 |   46 | **DONE** B-7-8 — split into 31 `bin/run/<case>.sh` + dispatcher + 2 alias symlinks (MR !143) |
-| 9 | `ui/diagnostic.component.ts`   |  711 | — | pending B-7-9 |
-| 10 | `ui/settings.component.scss`  |  688 | — | watch for drift |
+| 9 | `ui/diagnostic.component.ts`   |  711 |  628 | **partial** B-7-9 — 7 interfaces → `diagnostic-types.ts` (98 LOC). .scss split separately (616 → 19 + 5 partials: page-chrome / history / scenarios / charts / jobs-tests) |
+| 10 | `ui/settings.component.scss`  |  688 |   27 | **DONE** B-7-10 — split into 5 Sass partials (page-chrome / card-config / loggers / sql-explorer / jobs-flags); dedup of duplicated logger/sql selectors tracked as follow-up |
 
-**B-7-7 next step** (~30 min) — extract `bio/todos/enrich` endpoints to a
-`CustomerEnrichmentController` (3 endpoints + bio/todoService deps +
-customerEnrichTimer). Would bring CustomerController to ~550 LOC.
+**Wave summary (2026-04-22)**: 6 `.scss` + 2 `.ts` split deliveries landed
+in UI !82 (shipped under 1 MR accumulating 6 commits). All files below
+the 1000-LOC plan-split trigger except `ui/dashboard.component.scss` +
+`ui/dashboard.component.ts` which remain scope of Phase B-6 (deferred).
 
 **B-7-8 done details**: `run.sh` 763→46 dispatcher + `bin/run/_preamble.sh`
 (84 shared helpers) + 31 case scripts (flat layout intentional — dispatcher
 discovers scripts dynamically, `ls bin/run/` IS the UX).
+
+**B-7-2 follow-up deferred** — the pure-code extract (data + helpers +
+types + spec) was low-risk; the full by-concern component split (list /
+CRUD / detail tabs) is higher risk because `CustomersComponent` shares
+signals across all three concerns. Defer to a fresh session alongside
+Phase B-6 or as an explicit B-7-2b wave.
 
 ### B-1b (follow-up) — non-parser sections of QualityReportEndpoint
 
