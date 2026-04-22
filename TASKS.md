@@ -9,6 +9,23 @@ adding/starting/finishing a task. Delete when empty (per CLAUDE.md).
 
 Last meaningful checkpoints:
 
+- **`stable-v1.0.18`** (2026-04-22) — GKE demo cluster observability stack
+  - `bin/cluster/demo/install-{observability,gitlab-agent,gmp-frontend}.sh`
+    + 3 toggles in up.sh (WITH_PROMETHEUS / WITH_GITLAB_AGENT /
+    WITH_GMP_FRONTEND). One-command demo-up brings cluster + Argo +
+    kube-prom-stack (Autopilot-compat) + GitLab Agent + GMP query
+    frontend bridging Cloud Monitoring to PromQL.
+  - Grafana lgtm gets a 5th datasource "Prometheus (GMP — cluster
+    metrics)" — cAdvisor + ksm + kubelet via the GMP frontend bridge.
+  - `bin/cluster/port-forward/prod.sh` adds 2 tunnels (gmp-frontend
+    29091, kube-prom 22090) in the upstream+20000 scheme.
+  - `docs/ops/runbooks/gmp-frontend-openlens.md` runbook covering the
+    Autopilot kube-system lockdown root cause + 6 alternatives evaluated
+    + "what this unlocks" for 6 consumers.
+  - `bin/ship/gitlab-release.sh` + `bin/admin/gitlab-housekeeping.sh`
+    helper scripts for tag→Release promotion + sidebar feature cleanup.
+  - `.gitlab-ci.yml` workflow:rules now allows `.gitlab/**` +
+    `.gitlab-ci/**` paths (unblocks Agent config MRs, validates includes).
 - **`stable-v1.0.17`** (2026-04-22) — Phase B-7-7 + B-7-8 (svc)
   - `run.sh` 763 → 46 LOC dispatcher + 31 `bin/run/<case>.sh`
     sub-scripts + 2 alias symlinks (`check → test`, `ci → verify`)

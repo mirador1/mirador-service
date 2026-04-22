@@ -28,6 +28,8 @@
 #   Unleash front-proxy  24243
 #   Argo CD UI           28081   (port-forward to argocd-server:443, https)
 #   Chaos Mesh dashboard 22333
+#   GMP frontend (PromQL) 29091   (Google Managed Prometheus bridge)
+#   kube-prom Prometheus 22090
 #
 # Usage:
 #   bin/cluster/port-forward/prod.sh               # foreground, Ctrl-C to stop
@@ -70,6 +72,14 @@ TUNNELS=(
   "unleash-proxy | infra     | svc/unleash-proxy             | 24243:3000"
   "argocd        | argocd    | svc/argocd-server             | 28081:443"
   "chaos-mesh    | chaos-mesh| svc/chaos-dashboard           | 22333:2333"
+  # GMP query frontend — bridges Google Managed Prometheus to PromQL API
+  # so local Grafana / k9s / Headlamp can query cAdvisor + kubelet metrics.
+  # See docs/ops/runbooks/gmp-frontend-openlens.md. Port 29091 picked
+  # because 29090 is taken by Keycloak (another off-scheme port).
+  "gmp-frontend  | monitoring| svc/gmp-frontend              | 29091:9090"
+  # kube-prometheus-stack local Prometheus — kept as a secondary data source
+  # even though GMP frontend is the primary (ksm + ServiceMonitors).
+  "kube-prom     | monitoring| svc/kube-prometheus-stack-prometheus | 22090:9090"
 )
 
 start_tunnel() {
