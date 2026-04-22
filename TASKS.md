@@ -300,6 +300,35 @@ auth (JWT + Auth0 paths), Flyway migrations (no tests).
 
 ## 🧭 Ideas pour plus tard (scope à confirmer)
 
+### 🔥 Release automation — tool swap (discovered 2026-04-22, urgent-ish)
+
+`googleapis/release-please` configured + wired in `.gitlab-ci.yml` on
+both repos — but the tool is **GitHub-API-only**. With a GitLab PAT +
+`--repo-url https://gitlab.com/...`, release-please still hits
+`api.github.com/graphql` for its "existing releases" query → 401 Bad
+Credentials. Evidence: svc pipeline #660 release-please job.
+
+**Current state** (2026-04-22 15:00):
+- release-please job DISABLED (`when: never`) on both repos — stops
+  red-firing every main merge.
+- `RELEASE_PLEASE_TOKEN` CI vars still provisioned (harmless; rotate
+  or delete when the replacement ships).
+- `config/release-please-config.json` + `.release-please-manifest.json`
+  still present; format is portable to other tools.
+- [`docs/how-to/activate-release-please.md`](how-to/activate-release-please.md)
+  has a 🔴 DISABLED banner.
+- `CHANGELOG.md` stays hand-rolled (always was the fallback).
+
+**Swap candidates**: `semantic-release` + `@semantic-release/gitlab`
+(industry standard, GitLab-native, ~3 h); `standard-version`
+(minimal, ~2 h); hand-rolled CHANGELOG status quo (0 h, no auto
+vX.Y.Z tags).
+
+**Recommendation**: `standard-version` — simplest working path.
+Defer `semantic-release` unless the team grows past 2 contributors.
+
+
+
 ### GitLab Observability integration (potentiel 2e OTLP exporter)
 
 User signalait 2026-04-22 l'URL <https://gitlab.com/groups/mirador1/-/observability/setup>

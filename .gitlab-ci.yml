@@ -531,10 +531,10 @@ release-please:
     - macbook-local
   needs: []        # independent — runs in parallel with deploys
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-      when: never
-    # Explicit != "" check (2026-04-22) — GitLab sometimes evaluates bare $MASKED_VAR as false in rules:if even when set; observed on pipeline #658 (release-please job never scheduled).
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $RELEASE_PLEASE_TOKEN != ""
+    # DISABLED 2026-04-22 — googleapis/release-please is GitHub-API-only; 401
+    # Bad Credentials on api.github.com/graphql with GitLab PAT (see pipeline
+    # #660). See TASKS.md "Release automation — tool swap" for the follow-up.
+    - when: never
   before_script:
     - apk add --no-cache git
   script:

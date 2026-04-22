@@ -1,3 +1,9 @@
+> ⚠️ **🔴 DISABLED 2026-04-22** — `googleapis/release-please` is
+> GitHub-API-only (401 Bad Credentials against `api.github.com/graphql`
+> with a GitLab PAT). CI job gated on `when: never` in both repos. See
+> `TASKS.md` → "Release automation — tool swap". CHANGELOG.md stays
+> maintained by hand until a replacement tool ships.
+
 # Activate release-please — automated CHANGELOG maintenance
 
 **Current state** (2026-04-22): release-please is configured
