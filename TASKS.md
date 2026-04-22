@@ -183,12 +183,31 @@ test results, …) → 1 child component per panel + parent template ~150 lines.
 Largest UI refactor; touch only when fresh. **Pattern**: 1 panel = 1 file
 (see ~/.claude/CLAUDE.md → "File length hygiene" rule #6).
 
-### B-6 — `dashboard.component` (.ts 1022 + .scss 1258) → 1 widget/file (~4 h)
+### B-6 — `dashboard.component` split [DONE 2026-04-22, threshold-only]
 
-Split by widget: ArchitectureMap, HealthProbes, ErrorTimeline, BundleTreemap,
-CodeQualitySummary, DockerControls, etc. **Pattern confirmed 2026-04-22** — 1
-widget = 1 file (see `~/.claude/CLAUDE.md` → "File length hygiene" rule #6
-+ UI `CLAUDE.md` → "1 widget / 1 panel = 1 file").
+Shipped in UI MR !89 (commits ec6d210 + cb246ca + 6fc04fc, tagged
+[stable-v1.0.21](https://gitlab.com/mirador1/mirador-ui/-/tags/stable-v1.0.21)).
+Pragmatic incremental scope — extract types + static topology data + Sass
+partials. Brings the file under the 1000-LOC plan-split trigger; full
+"1 widget per file" extraction (ArchitectureMap, HealthProbes,
+ErrorTimeline, …) is still pending but no longer blocking Phase C.
+
+| File | Before | After | How |
+|---|---|---|---|
+| `dashboard.component.ts` | 1022 | 713 | `dashboard-types.ts` (49 — SVC, ActuatorHealth, DockerContainer) + `dashboard-topology-data.ts` (315 — TopoNode, TopoEdge, DASHBOARD_TOPO_COLUMNS/NODES/EDGES static data) |
+| `dashboard.component.scss` | 1291 | 59 | 8 Sass partials (page-chrome, charts, docker, architecture, data-grids, observability, metrics, quality-summary) |
+
+The 6 topology helper methods (`refreshTopology` / `topoNodesInCol` /
+`topoConnections` / `topoContainer` / `topoNodeColor` /
+`topoStatusTooltip`) stay in-class because they reference component
+state (signals + http). Future B-6b would extract them alongside a
+true widget-per-file split.
+
+**B-6 follow-up deferred** (B-6b) — the per-widget extraction
+(ArchitectureMap, HealthProbes, ErrorTimeline, BundleTreemap,
+CodeQualitySummary, DockerControls, ObservabilityLinks, LiveActivity)
+is a 4 h fresh session; current 713-LOC component is below threshold
+and refactor pressure is gone.
 
 ### B-7 — seconde passe: 10 fichiers additionnels (majorly DONE 2026-04-22)
 
@@ -289,7 +308,19 @@ REST call. New ADR rather than reopen ADR-0052.
 
 ---
 
-## 🚦 Phase C — flip enforcement (blocked on violation inventory)
+## 🚦 Phase C — flip enforcement [UI DONE 2026-04-22, svc PENDING]
+
+UI side shipped in MR !89 (commit cb246ca, tag
+[stable-v1.0.21](https://gitlab.com/mirador1/mirador-ui/-/tags/stable-v1.0.21)).
+ESLint flips warn → error on 6 size/complexity rules with project-
+calibrated thresholds (max-lines 700, max-lines-per-function 100,
+complexity 15, max-params 6, max-depth 4, max-nested-callbacks 4).
+Two legitimate complexity violations carry inline disables with
+documented reason (KeyboardService.onKeyDown switch-on-keycode,
+TelemetryService.push level discrimination).
+
+Svc side still pending — see notes below for the original plan
+(failOnViolation flip on PMD + Checkstyle in pom.xml).
 
 Once Phase B brings the current outliers below the new thresholds:
 
