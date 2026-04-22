@@ -3,8 +3,16 @@
 # `set -e` behaviour consistent with the original run.sh.
 #
 # Extracted 2026-04-22 from run.sh under Phase B-7-8 (1 sub-script per case).
+#
+# BUG FIX 2026-04-22 — removed stray `/usr/bin/env bash` line that was
+# originally the run.sh shebang. When this file is SOURCED (every case
+# script does `source _preamble.sh`), that line spawned a new `bash`
+# interpreter waiting for stdin, silently hanging the caller. The
+# extraction script kept the shebang line because the rest of the block
+# is comments; standalone `/usr/bin/env bash` (no `#!` marker) is not a
+# comment, it's an executable invocation. Removed entirely — a sourced
+# file has no shebang; the interpreter is the caller's.
 
-/usr/bin/env bash
 # =============================================================================
 # run.sh — unified entry point for local development and CI tasks
 #
