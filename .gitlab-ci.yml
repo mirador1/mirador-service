@@ -166,25 +166,11 @@ pages:
         - ".gitlab-ci.yml"
 
 # ── stage: lint ───────────────────────────────────────────────────────────────
-
-# Lint the Dockerfile with Hadolint.
-# Catches common Dockerfile mistakes:
-#   DL3002 — last USER should not be root (security)
-#   DL3007 — do not use latest tag (reproducibility)
-#   DL3008 — pin apt package versions (reproducibility)
-#   SC2xxx — shell script issues inside RUN instructions (via shellcheck)
-# Uses a standalone image — no JDK or Maven needed, runs in a few seconds.
-hadolint:
-  stage: lint
-  # latest-alpine (not latest) — the default image is distroless (no sh),
-  # which GitLab CI needs to wrap the script. Alpine variant includes a shell.
-  image: hadolint/hadolint:latest-alpine
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-      when: never   # Skip on daily scheduled pipeline — only build-native runs then
-    - when: on_success
-  script:
-    - hadolint Dockerfile
+#
+# The live `hadolint:` job definition is below at ~line 1280 — this file had
+# a duplicate at this spot (using `hadolint:latest-alpine` floating tag,
+# against our pin-everything rule). YAML silently kept only the 2nd. The
+# dead block was dropped 2026-04-22 as a Phase B-2 prep commit.
 
 # ── promtool-check-rules — validate Mirador PrometheusRule objects ────────────
 # Phase 3 O2. Catches:
