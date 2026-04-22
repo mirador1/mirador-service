@@ -2,7 +2,9 @@ package com.mirador.observability;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mirador.observability.quality.parsers.JacocoReportParser;
 import com.mirador.observability.quality.parsers.ReportParsers;
+import com.mirador.observability.quality.parsers.SpotBugsReportParser;
 import com.mirador.observability.quality.parsers.SurefireReportParser;
 import java.io.BufferedReader;
 import java.io.File;
@@ -206,19 +208,26 @@ public class QualityReportEndpoint {
     private final StartupTimeTracker startupTimeTracker;
     /**
      * Phase B-1 split (2026-04-22): section builders are being extracted to
-     * {@link com.mirador.observability.quality.parsers}. First out is the
-     * Surefire parser — its ~130-line XML-parsing machinery lived inline.
+     * {@link com.mirador.observability.quality.parsers}. Order of extraction
+     * from biggest XML-parsing surface down: Surefire → Jacoco → SpotBugs →
+     * PMD → Checkstyle → OWASP → Pitest.
      */
     private final SurefireReportParser surefireReportParser;
+    private final JacocoReportParser jacocoReportParser;
+    private final SpotBugsReportParser spotBugsReportParser;
 
     public QualityReportEndpoint(RequestMappingHandlerMapping requestMappingHandlerMapping,
                                  Environment environment,
                                  StartupTimeTracker startupTimeTracker,
-                                 SurefireReportParser surefireReportParser) {
+                                 SurefireReportParser surefireReportParser,
+                                 JacocoReportParser jacocoReportParser,
+                                 SpotBugsReportParser spotBugsReportParser) {
         this.requestMappingHandlerMapping = requestMappingHandlerMapping;
         this.environment = environment;
         this.startupTimeTracker = startupTimeTracker;
         this.surefireReportParser = surefireReportParser;
+        this.jacocoReportParser = jacocoReportParser;
+        this.spotBugsReportParser = spotBugsReportParser;
     }
 
     /**
@@ -265,178 +274,26 @@ public class QualityReportEndpoint {
         return surefireReportParser.parse();
     }
 
-    // -------------------------------------------------------------------------
-    // Coverage section
-    // -------------------------------------------------------------------------
-
-    // S1141 + S135: the inner try/catch and several `continue` statements are
-    // idiomatic for "skip malformed CSV row, aggregate the rest" — restructuring
-    // to one exit point would hide the data-validation cliff.
-    @SuppressWarnings({"java:S3776", "java:S1141", "java:S135"})
+    // Delegates to the extracted parsers — Phase B-1 split.
     private Map<String, Object> buildCoverageSection() {
-        // Prefer the merged report (unit + IT). In dev, fall through to
-        // the unit-only CSV when the merged one was not produced (e.g.
-        // `mvn verify -DskipITs`).
-        InputStream is = ReportParsers.loadResource(CP_JACOCO, DEV_JACOCO);
-        if (is == null) {
-            is = ReportParsers.loadResource(CP_JACOCO, DEV_JACOCO_UNIT);
-        }
-        if (is == null) {
-            return Map.of(K_AVAILABLE, false);
-        }
-
-        long instrCovered = 0;
-        long instrTotal = 0;
-        long branchCovered = 0;
-        long branchTotal = 0;
-        long lineCovered = 0;
-        long lineTotal = 0;
-        long methodCovered = 0;
-        long methodTotal = 0;
-
-        // Map<packageName, [lineCovered, lineTotal, instrCovered, instrTotal]>
-        Map<String, long[]> pkgData = new LinkedHashMap<>();
-
-        try (BufferedReader br = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
-            String line;
-            boolean header = true;
-            while ((line = br.readLine()) != null) {
-                if (header) { header = false; continue; } // skip header row
-                // CSV columns: GROUP,PACKAGE,CLASS,INSTRUCTION_MISSED,INSTRUCTION_COVERED,
-                //              BRANCH_MISSED,BRANCH_COVERED,LINE_MISSED,LINE_COVERED,
-                //              COMPLEXITY_MISSED,COMPLEXITY_COVERED,METHOD_MISSED,METHOD_COVERED
-                String[] cols = line.split(",", -1);
-                if (cols.length < 13) continue;
-                try {
-                    long iMissed = Long.parseLong(cols[3].trim());
-                    long iCovered = Long.parseLong(cols[4].trim());
-                    long bMissed = Long.parseLong(cols[5].trim());
-                    long bCovered = Long.parseLong(cols[6].trim());
-                    long lMissed = Long.parseLong(cols[7].trim());
-                    long lCovered = Long.parseLong(cols[8].trim());
-                    long mMissed = Long.parseLong(cols[11].trim());
-                    long mCovered = Long.parseLong(cols[12].trim());
-
-                    instrCovered += iCovered;
-                    instrTotal += iMissed + iCovered;
-                    branchCovered += bCovered;
-                    branchTotal += bMissed + bCovered;
-                    lineCovered += lCovered;
-                    lineTotal += lMissed + lCovered;
-                    methodCovered += mCovered;
-                    methodTotal += mMissed + mCovered;
-
-                    // Aggregate by package (col[1]), strip leading path segments for display
-                    String pkg = cols[1].trim();
-                    String pkgShort = pkg.isEmpty() ? "(default)" : pkg.replace('/', '.');
-                    // Use last segment for display
-                    String[] pkgParts = pkgShort.split("\\.");
-                    String pkgDisplay = pkgParts[pkgParts.length - 1];
-
-                    pkgData.merge(pkgDisplay, new long[]{lCovered, lMissed + lCovered, iCovered, iMissed + iCovered},
-                            (a, b) -> new long[]{a[0] + b[0], a[1] + b[1], a[2] + b[2], a[3] + b[3]});
-                } catch (NumberFormatException _) {
-                    // skip malformed lines
-                }
-            }
-        } catch (IOException e) {
-            return Map.of(K_AVAILABLE, false, K_ERROR, e.getMessage());
-        }
-
-        List<Map<String, Object>> packages = new ArrayList<>();
-        for (Map.Entry<String, long[]> entry : pkgData.entrySet()) {
-            long[] d = entry.getValue();
-            double instrPct = d[3] > 0 ? ReportParsers.round1(100.0 * d[2] / d[3]) : 0.0;
-            double linePct  = d[1] > 0 ? ReportParsers.round1(100.0 * d[0] / d[1]) : 0.0;
-            Map<String, Object> pkg = new LinkedHashMap<>();
-            pkg.put("name", entry.getKey());
-            pkg.put("instructionPct", instrPct);
-            pkg.put("linePct", linePct);
-            packages.add(pkg);
-        }
-
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put(K_AVAILABLE, true);
-        result.put("instructions", counterMap(instrCovered, instrTotal));
-        result.put(K_BRANCHES, counterMap(branchCovered, branchTotal));
-        result.put("lines", counterMap(lineCovered, lineTotal));
-        result.put(K_METHODS, counterMap(methodCovered, methodTotal));
-        result.put("packages", packages);
-        return result;
+        return jacocoReportParser.parse();
     }
-
-    private Map<String, Object> counterMap(long covered, long total) {
-        Map<String, Object> m = new LinkedHashMap<>();
-        m.put("covered", covered);
-        m.put(K_TOTAL, total);
-        m.put("pct", total > 0 ? ReportParsers.round1(100.0 * covered / total) : 0.0);
-        return m;
-    }
-
-    // -------------------------------------------------------------------------
-    // Bugs section
-    // -------------------------------------------------------------------------
 
     private Map<String, Object> buildBugsSection() {
-        InputStream is = ReportParsers.loadResource(CP_SPOTBUGS, DEV_SPOTBUGS);
-        if (is == null) {
-            return Map.of(K_AVAILABLE, false);
-        }
-
-        List<Map<String, Object>> items = new ArrayList<>();
-        Map<String, Integer> byCategory = new LinkedHashMap<>();
-        Map<String, Integer> byPriority = new LinkedHashMap<>();
-
-        try (is) {
-            DocumentBuilder docBuilder = ReportParsers.secureDocumentBuilder();
-            Document doc = docBuilder.parse(is);
-            NodeList bugInstances = doc.getElementsByTagName("BugInstance");
-            for (int i = 0; i < bugInstances.getLength(); i++) {
-                Element bug = (Element) bugInstances.item(i);
-                String category = bug.getAttribute("category");
-                String priority  = bug.getAttribute(K_PRIORITY);
-                String type      = bug.getAttribute("type");
-
-                // Extract class name from nested <Class> element
-                String className = "";
-                NodeList classes = bug.getElementsByTagName("Class");
-                if (classes.getLength() > 0) {
-                    className = ((Element) classes.item(0)).getAttribute("classname");
-                    // Short name
-                    if (className.contains(".")) {
-                        className = className.substring(className.lastIndexOf('.') + 1);
-                    }
-                }
-
-                Map<String, Object> item = new LinkedHashMap<>();
-                item.put("category", category);
-                item.put(K_PRIORITY, priority);
-                item.put("type", type);
-                item.put("className", className);
-                items.add(item);
-
-                byCategory.merge(category, 1, Integer::sum);
-                byPriority.merge(priorityLabel(priority), 1, Integer::sum);
-            }
-        } catch (Exception e) {
-            return Map.of(K_AVAILABLE, false, K_ERROR, e.getMessage());
-        }
-
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put(K_AVAILABLE, true);
-        result.put(K_TOTAL, items.size());
-        result.put("byCategory", byCategory);
-        result.put("byPriority", byPriority);
-        result.put("items", items);
-        return result;
+        return spotBugsReportParser.parse();
     }
 
-    private String priorityLabel(String priority) {
+    /**
+     * Priority label mapping shared with PMD violations (still inline).
+     * Will move out once PMD parser is extracted — tracked as part of
+     * Phase B-1 TASKS.md.
+     */
+    private static String priorityLabel(String priority) {
         return switch (priority) {
             case "1" -> "High";
             case "2" -> "Normal";
             case "3" -> "Low";
-            default -> priority;
+            default  -> priority;
         };
     }
 
