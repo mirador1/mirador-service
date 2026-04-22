@@ -91,32 +91,33 @@ After Phase C: every new violation fails the MR. Tag `stable-v1.0.11`.
 
 ---
 
-## 👤 Action user (pas faisable depuis Claude)
+## 👤 Actions user
 
-### Docker Desktop VM ≥ 12 GB → retire k8s-apply shields
+### ✅ DONE 2026-04-22 — Docker VM 16 GB + shields retired
 
-Both `test:k8s-apply` + `test:k8s-apply-prom` carry `allow_failure: true`
-with dated exit 2026-05-21 (commits 3dcb2d0 + d54c5e9). Two paths:
+Docker Desktop VM raised from default 7.6 GB → **16 GB** (`docker system
+info` confirms 15.6 GiB + 10 CPUs). k8s-apply + k8s-apply-prom shields
+retired in commit 314012f — both jobs now BLOCKING again on main.
+See `docs/audit/session-2026-04-22-user-actions-closed.md` for the full
+flow. Related: ADR-0049 "shield retirement log" section.
 
-1. **Raise Docker Desktop → Settings → Resources → Memory ≥ 12 GB**, then
-   remove the 2 shields. Tested with 4 sequential kind clusters during
-   Phase 3 = ~3 GB peak each — 7.6 GB default cap is genuinely too tight.
-2. Move both jobs off `macbook-local` to a SaaS amd64 runner (cost-bearing).
+### ✅ DONE 2026-04-22 — Signed commits (S2)
 
-### S2 — signed-commits hardening
-
-Setup local commit signing + re-enable `required_signatures` on GitHub
-main (disabled during Auth0 work). Steps:
-- `git config --global user.signingkey ssh:<path-to-pubkey>`
-- `git config --global commit.gpgsign true`
-- `git config --global gpg.format ssh`
-- GitHub repo settings → Branches → Protect `main` → require signed commits
+Local SSH-sign configured via `bin/dev/setup-signed-commits.sh`
+(ED25519 key, `commit.gpgsign=true` global). GitHub signing key
+registered with `gh ssh-key add --type signing`. Commit 314012f was the
+first signed commit — `git log --show-signature` returns `Good "git"
+signature for benoit.besson@gmail.com`. `required_signatures` re-enabled
+on both repos' main branches via `gh api -X POST
+.../protection/required_signatures` (both return `"enabled": true`).
 
 ### TF_STATE_BUCKET — re-enable terraform-plan
 
 Currently scoped-out via rules.if (was failing 5/5 with "bucket doesn't
 exist"). Either provision the GCS bucket via `terraform/bootstrap.sh` and
 remove the scope-out, OR drop terraform-plan from the pipeline entirely.
+Provisioning a new GCS bucket costs money (Cloud Storage ~€0.02/GB/month
++ egress fees). Confirm with user before running the terraform apply.
 
 ---
 

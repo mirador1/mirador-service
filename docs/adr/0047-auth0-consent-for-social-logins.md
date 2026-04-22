@@ -143,9 +143,11 @@ Mirador to access your dev-ksxj46zlkhk2gcvo account".
 
 - [Auth0 — User consent and third-party applications](https://auth0.com/docs/get-started/applications/confidential-and-public-applications/user-consent-and-third-party-applications)
 - [Auth0 — Connection types](https://auth0.com/docs/authenticate/identity-providers/social-identity-providers)
-- `docs/api/auth0-action-roles.js` — the Post-Login Action that
-  injects `https://mirador-api/roles` into the access token (works
-  regardless of consent flow).
-- mirador-ui `docs/how-to/auth0-tenant-setup.md` — the end-to-end
-  setup guide that references this ADR for the consent-screen
-  expectation.
+- [`docs/api/auth0-current-tenant-state.md`](../api/auth0-current-tenant-state.md)
+  — live snapshot of the Mirador dev tenant (domain, client ID,
+  audience, roles, Post-Login Action wiring, disaster recovery).
+- [`docs/api/auth0-action-roles.js`](../api/auth0-action-roles.js) —
+  the Post-Login Action that injects `https://mirador-api/roles` into
+  the access token (works regardless of consent flow).
+- mirador-ui [`docs/how-to/auth0-tenant-setup.md`](https://gitlab.com/mirador1/mirador-ui/-/blob/main/docs/how-to/auth0-tenant-setup.md)
+  — generic end-to-end setup guide for creating a fresh tenant.

@@ -43,7 +43,16 @@ Hurl with `brew install hurl` (macOS) or
 
 All endpoints except `/auth/login`, `/auth/refresh`, `/actuator/**`, and `/demo/**` require a Bearer token.
 
-Two auth modes coexist in the same filter chain:
+**Three** auth modes coexist in the same filter chain:
+
+1. Built-in `/auth/login` — demo accounts (`admin/admin`, `user/user`, `viewer/viewer`)
+2. Keycloak — `client_credentials` flow for M2M callers (api-gateway, monitoring-service)
+3. Auth0 — OIDC PKCE for the Angular UI. Tenant config snapshot:
+   [`auth0-current-tenant-state.md`](auth0-current-tenant-state.md).
+   Post-Login Action source: [`auth0-action-roles.js`](auth0-action-roles.js).
+   The diagram below focuses on the Keycloak + built-in paths; Auth0
+   adds a 4th caller type with the same `Bearer JWT` endpoint — see
+   the Auth0 doc for the full round-trip.
 
 ```mermaid
 flowchart LR

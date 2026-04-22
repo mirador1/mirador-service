@@ -987,14 +987,9 @@ test:k8s-apply:
   # → "connection refused" at 18:54. Same Monitor-heartbeat pattern as the
   # integration-test job which already carries the `integration-k8s` group.
   resource_group: k8s-kind-cluster
-  # Pipeline #612 (2026-04-21) showed that even a SERIAL kind cluster can
-  # OOM its control-plane during CNI install under session-heavy Docker VM
-  # usage: "resource quota evaluation timed out" mid-kubectl apply. Same
-  # Docker VM cap root cause as k8s-apply-prom. Shield applied with the
-  # same dated exit ticket + same scope boundary — raise the VM to ≥ 12 GB
-  # (user action) OR move the job to a dedicated runner → remove the shield.
-  # Revisit: 2026-05-21.
-  allow_failure: true
+  # 2026-04-22: shield retired — user raised Docker Desktop VM to 16 GB
+  # (above the 12 GB threshold identified in pipeline #612 post-mortem).
+  # resource_group + retry-on-runner-failure kept as belt-and-suspenders.
   retry:
     max: 1
     when: runner_system_failure
@@ -1093,21 +1088,11 @@ test:k8s-apply-prom:
   retry:
     max: 1
     when: runner_system_failure
-  # allow_failure: true shield re-armed 2026-04-21 — pipeline #610's
-  # control-plane failed "≤ 2m0s for Ready" AND the kube-apiserver started
-  # refusing connections mid-job during chaos-mesh CRD install. kube-prom-
-  # stack (200+ CRDs) + chaos-mesh (20+ CRDs) on a single Docker Desktop
-  # VM (~7.6 GB default cap) is above the memory budget — control-plane
-  # pod OOMKilled, not a script issue. Two exit paths:
-  #   1. User raises Docker Desktop VM memory to ≥ 12 GB (local action,
-  #      can't be done from CI) → remove the shield.
-  #   2. CI image move off macbook-local for this job (a dedicated
-  #      Kubernetes-friendly runner — not today's priority).
-  # Revisit: 2026-05-21 (1 month). If neither path has landed, ADR this
-  # as a permanent kind-locality constraint. test:k8s-apply (without
-  # kube-prom-stack) still serves as the CRD-drift canary and stays
-  # required — this shield is narrowly scoped to the prom overlay.
-  allow_failure: true
+  # 2026-04-22: shield retired — user raised Docker Desktop VM to 16 GB
+  # (well above the 12 GB threshold identified in pipeline #610 post-
+  # mortem). kube-prom-stack + chaos-mesh CRDs now fit the VM budget.
+  # If a future regression re-introduces OOM, re-shield with a fresh
+  # dated exit ticket per ADR-0049 rather than silently tolerating it.
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
