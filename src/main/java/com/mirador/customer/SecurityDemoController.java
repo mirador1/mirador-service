@@ -173,13 +173,18 @@ public class SecurityDemoController {
             description = "Explains why `allowedOrigins('*') + allowCredentials(true)` is dangerous and how this API is correctly configured.")
     @GetMapping("/cors-info")
     public Map<String, Object> corsInfo(HttpServletRequest request) {
+        // `Map.of(...)` rejects null values with NPE. Origin header is OPTIONAL
+        // — same-origin requests + curl probes won't send one — so coalesce
+        // to a placeholder string instead of letting the demo endpoint 500
+        // on a missing header. (Caught 2026-04-23 by SecurityDemoControllerTest.)
+        String origin = request.getHeader("Origin");
         return Map.of(
                 "currentOriginPolicy", "http://localhost:4200 (restrictive — correct)",
                 "dangerousConfig", "allowedOrigins('*') + allowCredentials(true)",
                 "risk", "Any website can make authenticated requests to this API on behalf of the user's browser session",
                 "attack", "evil.com includes <script>fetch('http://localhost:8080/customers', {credentials:'include'})</script>",
                 "fix", "Always restrict allowedOrigins to known frontends. Never use '*' with credentials.",
-                "yourOrigin", request.getHeader("Origin")
+                "yourOrigin", origin != null ? origin : "(none — same-origin or non-browser caller)"
         );
     }
 
