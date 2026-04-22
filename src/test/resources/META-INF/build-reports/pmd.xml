@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<pmd version="7.0.0" timestamp="2026-04-23T00:00:00.000">
+  <file name="src/main/java/com/example/foo/AliceController.java">
+    <violation beginline="42" endline="42" begincolumn="1" endcolumn="20"
+               rule="UnusedPrivateField" ruleset="bestpractices"
+               package="com.example.foo" class="AliceController"
+               externalInfoUrl="http://pmd.org/rule"
+               priority="3">Avoid unused private fields such as 'unused'.</violation>
+    <violation rule="UnusedPrivateField" ruleset="bestpractices" priority="3">Another unused field.</violation>
+  </file>
+  <file name="src/main/java/com/example/bar/BobService.java">
+    <violation rule="GodClass" ruleset="design" priority="1">God class with 50+ methods.</violation>
+    <violation rule="ExcessivePublicCount" ruleset="design" priority="2">Too many public methods.</violation>
+    <violation rule="ExcessiveMethodLength" ruleset="design" priority="2">Method longer than 100 lines.</violation>
+  </file>
+  <file name="CarolHelper.java">
+    <violation rule="EmptyCatchBlock" ruleset="errorprone" priority="1">Empty catch block.</violation>
+  </file>
+</pmd>

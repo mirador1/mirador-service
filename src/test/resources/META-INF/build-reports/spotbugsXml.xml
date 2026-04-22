@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<BugCollection>
+  <BugInstance category="MALICIOUS_CODE" priority="1" type="EI_EXPOSE_REP">
+    <Class classname="com.example.foo.AliceController"/>
+    <Method classname="com.example.foo.AliceController" name="getCustomers"/>
+  </BugInstance>
+  <BugInstance category="STYLE" priority="2" type="UWF_FIELD_NOT_INITIALIZED_IN_CONSTRUCTOR">
+    <Class classname="com.example.bar.BobService"/>
+  </BugInstance>
+  <BugInstance category="STYLE" priority="3" type="DLS_DEAD_LOCAL_STORE">
+    <Class classname="com.example.bar.CarolHelper"/>
+  </BugInstance>
+  <BugInstance category="MALICIOUS_CODE" priority="1" type="EI_EXPOSE_REP">
+    <Class classname="DaveDirect"/>
+  </BugInstance>
+</BugCollection>

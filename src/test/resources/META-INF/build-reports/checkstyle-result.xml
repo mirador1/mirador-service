@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<checkstyle version="10.0">
+  <file name="src/main/java/com/example/foo/AliceController.java">
+    <error line="42" severity="warning" source="com.puppycrawl.tools.checkstyle.checks.javadoc.MissingJavadocMethodCheck" message="Missing Javadoc on public method 'getCustomers'."/>
+    <error line="55" severity="error" source="com.puppycrawl.tools.checkstyle.checks.coding.MagicNumberCheck" message="Magic number 42."/>
+  </file>
+  <file name="src/main/java/com/example/bar/BobService.java">
+    <error line="10" severity="warning" source="com.puppycrawl.tools.checkstyle.checks.javadoc.MissingJavadocMethodCheck" message="Missing Javadoc."/>
+    <error line="100" severity="info" source="com.puppycrawl.tools.checkstyle.checks.metrics.CyclomaticComplexityCheck" message="Cyclomatic complexity is 12 (max 10)."/>
+  </file>
+</checkstyle>
