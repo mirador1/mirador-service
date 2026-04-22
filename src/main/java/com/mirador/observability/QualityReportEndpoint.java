@@ -12,6 +12,7 @@ import com.mirador.observability.quality.parsers.SpotBugsReportParser;
 import com.mirador.observability.quality.parsers.SurefireReportParser;
 import com.mirador.observability.quality.providers.ApiSectionProvider;
 import com.mirador.observability.quality.providers.BuildInfoSectionProvider;
+import com.mirador.observability.quality.providers.LicensesSectionProvider;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
@@ -209,6 +210,7 @@ public class QualityReportEndpoint {
     // Phase B-1b: non-parser section providers.
     private final BuildInfoSectionProvider buildInfoSectionProvider;
     private final ApiSectionProvider apiSectionProvider;
+    private final LicensesSectionProvider licensesSectionProvider;
 
     public QualityReportEndpoint(RequestMappingHandlerMapping requestMappingHandlerMapping,
                                  Environment environment,
@@ -221,7 +223,8 @@ public class QualityReportEndpoint {
                                  OwaspReportParser owaspReportParser,
                                  PitestReportParser pitestReportParser,
                                  BuildInfoSectionProvider buildInfoSectionProvider,
-                                 ApiSectionProvider apiSectionProvider) {
+                                 ApiSectionProvider apiSectionProvider,
+                                 LicensesSectionProvider licensesSectionProvider) {
         this.requestMappingHandlerMapping = requestMappingHandlerMapping;
         this.environment = environment;
         this.startupTimeTracker = startupTimeTracker;
@@ -234,6 +237,7 @@ public class QualityReportEndpoint {
         this.pitestReportParser = pitestReportParser;
         this.buildInfoSectionProvider = buildInfoSectionProvider;
         this.apiSectionProvider = apiSectionProvider;
+        this.licensesSectionProvider = licensesSectionProvider;
     }
 
     /**
@@ -628,69 +632,7 @@ public class QualityReportEndpoint {
      *
      * <p>Incompatible licenses for commercial projects: GPL, AGPL, LGPL, CDDL, EPL.
      */
-    @SuppressWarnings({"java:S3776", "java:S135"})   // THIRD-PARTY.txt parsing: multiple early-skip branches for header and malformed rows
-    private Map<String,Object> buildLicensesSection() {
-        InputStream is = ReportParsers.loadResource(CP_THIRD_PARTY, "target/THIRD-PARTY.txt");
-        if (is == null) return Map.of(K_AVAILABLE, false);
-
-        // Licenses that may be incompatible with proprietary/commercial use
-        List<String> restrictedKeywords = List.of("GPL", "AGPL", "LGPL", "CDDL", "EPL");
-
-        List<Map<String,Object>> deps = new ArrayList<>();
-        Map<String,Integer> licenseCounts = new LinkedHashMap<>();
-        int incompatibleCount = 0;
-
-        try (BufferedReader br = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = br.readLine()) != null) {
-                String trimmed = line.trim();
-                // THIRD-PARTY.txt lines: "(License Name) group:artifact:version - Name"
-                if (!trimmed.startsWith("(")) continue;
-                int closeIdx = trimmed.indexOf(')');
-                if (closeIdx < 0) continue;
-                String licenseStr = trimmed.substring(1, closeIdx).trim();
-                String rest = trimmed.substring(closeIdx + 1).trim();
-                // rest: "group:artifact:version - Display Name" or just coords
-                String coords = rest.contains(" - ") ? rest.substring(0, rest.indexOf(" - ")).trim() : rest.trim();
-                String[] parts = coords.split(":");
-                if (parts.length < 2) continue;
-                String groupId    = parts[0];
-                String artifactId = parts[1];
-                String version    = parts.length >= 3 ? parts[2] : "";
-                boolean incompatible = restrictedKeywords.stream()
-                        .anyMatch(kw -> licenseStr.toUpperCase().contains(kw));
-                if (incompatible) incompatibleCount++;
-                licenseCounts.merge(licenseStr, 1, Integer::sum);
-                Map<String,Object> dep = new LinkedHashMap<>();
-                dep.put("group", groupId);
-                dep.put("artifact", artifactId);
-                dep.put(K_VERSION, version);
-                dep.put("license", licenseStr);
-                dep.put("incompatible", incompatible);
-                deps.add(dep);
-            }
-        } catch (IOException e) {
-            return Map.of(K_AVAILABLE, false, K_ERROR, e.getMessage());
-        }
-
-        // Build license summary sorted by count desc
-        List<Map<String,Object>> licenseSummary = licenseCounts.entrySet().stream()
-                .sorted(Map.Entry.<String,Integer>comparingByValue().reversed())
-                .map(e -> {
-                    boolean restricted = restrictedKeywords.stream()
-                            .anyMatch(kw -> e.getKey().toUpperCase().contains(kw));
-                    return Map.<String,Object>of("license", e.getKey(), K_COUNT, e.getValue(), "incompatible", restricted);
-                })
-                .toList();
-
-        Map<String,Object> result = new LinkedHashMap<>();
-        result.put(K_AVAILABLE, true);
-        result.put(K_TOTAL, deps.size());
-        result.put("incompatibleCount", incompatibleCount);
-        result.put("licenses", licenseSummary);
-        result.put(K_DEPENDENCIES, deps);
-        return result;
-    }
+    private Map<String, Object> buildLicensesSection() { return licensesSectionProvider.parse(); }
 
     // -------------------------------------------------------------------------
     // Metrics section
