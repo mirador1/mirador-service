@@ -55,4 +55,16 @@ regexes = [
   '''admin:admin''',
   # Fake JWT tokens in tests (header.payload.signature shape).
   '''eyJhbGciOiJIUzI1NiIs[A-Za-z0-9_\-\.]+''',
+  # Auth0 public identifiers — safe by design in an SPA.
+  # SPA Client IDs ship in the browser bundle (PKCE flow, no client_secret
+  # client-side). Flagged by generic-api-key rule (entropy 4.56, 24 chars)
+  # on docs/api/auth0-current-tenant-state.md line 138. Same allowlist
+  # mirrored on UI repo's .gitleaks.toml (commit dac848b on UI).
+  # A real leak (JWT, Auth0 Management API key) still fires.
+  '''AUTH0_DOMAIN''',
+  '''AUTH0_CLIENT_ID''',
+  '''AUTH0_AUDIENCE''',
+  # Specific dev-tenant literal values (narrow — swap these if tenant rotates):
+  '''dev-ksxj46zlkhk2gcvo\.us\.auth0\.com''',
+  '''DZKCwZ9dqAk3dOtVdDfc2rLJOenxidX6''',
 ]
