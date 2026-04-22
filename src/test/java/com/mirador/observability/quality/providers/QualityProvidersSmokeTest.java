@@ -28,4 +28,30 @@ class QualityProvidersSmokeTest {
         // With no handlers registered, total = 0 and endpoints list is empty.
         assertThat(r.get("total")).isEqualTo(0);
     }
+
+    @Test
+    void metrics_parse_returnsMapWithAvailableFlag() {
+        // Depends on target/site/jacoco*/jacoco.csv existing. When it does
+        // (common after `mvn verify`), we lock the full shape. When it's
+        // absent (IDE-only runs), we just lock the `available=false` branch.
+        Map<String, Object> r = new MetricsSectionProvider().parse();
+        assertThat(r).isNotNull().containsKey("available");
+        if (Boolean.TRUE.equals(r.get("available"))) {
+            assertThat(r)
+                    .containsKeys("totalClasses", "totalMethods", "totalLines",
+                            "totalComplexity", "packages", "topComplexClasses",
+                            "untestedClasses", "untestedCount");
+        }
+    }
+
+    @Test
+    void licenses_parse_returnsMapWithAvailableFlag() {
+        // THIRD-PARTY.txt may not exist yet on a fresh checkout — lock the
+        // same "available flag" contract regardless.
+        Map<String, Object> r = new LicensesSectionProvider().parse();
+        assertThat(r).isNotNull().containsKey("available");
+        if (Boolean.TRUE.equals(r.get("available"))) {
+            assertThat(r).containsKeys("total", "licenses", "dependencies");
+        }
+    }
 }

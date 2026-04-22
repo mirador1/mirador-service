@@ -1,23 +1,18 @@
 package com.mirador.observability;
 
-import com.mirador.observability.quality.parsers.ReportParsers;
 import com.mirador.observability.quality.providers.ApiSectionProvider;
 import com.mirador.observability.quality.providers.BuildInfoSectionProvider;
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -26,13 +21,8 @@ import org.springframework.boot.actuate.endpoint.annotation.Endpoint;
 import org.springframework.boot.actuate.endpoint.annotation.ReadOperation;
 import org.springframework.core.env.Environment;
 import org.springframework.core.io.ClassPathResource;
-import org.springframework.core.io.Resource;
-import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
-import org.w3c.dom.Document;
-import org.w3c.dom.Element;
-import org.w3c.dom.NodeList;
 
 /**
  * Actuator endpoint exposing a Maven quality report at {@code /actuator/quality}.
@@ -45,6 +35,10 @@ import org.w3c.dom.NodeList;
  * of an error.
  *
  * <h3>Sections returned by {@link #report()}</h3>
+ *
+ * <p>Build-time (pre-aggregated in {@code META-INF/quality-build-report.json}
+ * by {@link com.mirador.observability.quality.QualityReportGenerator} —
+ * ADR-0052 Phase Q-2 / Q-2b):
  * <ul>
  *   <li><b>tests</b>        — Surefire XML: test counts, failures, slowest tests</li>
  *   <li><b>coverage</b>     — JaCoCo CSV: line/branch coverage %, per-class table</li>
@@ -53,23 +47,22 @@ import org.w3c.dom.NodeList;
  *   <li><b>checkstyle</b>   — Checkstyle XML: violation count by severity</li>
  *   <li><b>owasp</b>        — OWASP Dependency-Check JSON: CVE list with CVSS scores</li>
  *   <li><b>pitest</b>       — PIT XML: mutation test strength %</li>
- *   <li><b>sonar</b>        — SonarCloud REST API: bug/vuln/smell counts, ratings A–E</li>
+ *   <li><b>dependencies</b> — pom.xml walk + Maven Central freshness</li>
+ *   <li><b>licenses</b>     — THIRD-PARTY.txt: license summary + incompatible flag</li>
+ *   <li><b>metrics</b>      — JaCoCo CSV: per-package complexity + top-10 classes + untested set</li>
+ * </ul>
+ *
+ * <p>Runtime (live JVM / Spring / git state):
+ * <ul>
  *   <li><b>build</b>        — build-info.properties: version, artifact, build time</li>
- *   <li><b>git</b>          — git log: last commit, branch, remote URL</li>
+ *   <li><b>git</b>          — git log: last 15 commits, remote URL</li>
  *   <li><b>api</b>          — Spring MVC handler mappings: endpoint count, method breakdown</li>
- *   <li><b>dependencies</b> — pom.xml: direct dependency count, Spring Boot version</li>
- *   <li><b>metrics</b>      — Micrometer registry: metric count, key gauges/counters</li>
- *   <li><b>runtime</b>      — JVM: uptime, active profiles, heap, JAR layer list</li>
- *   <li><b>pipeline</b>     — GitLab API: last 10 CI/CD pipeline runs with status/duration</li>
+ *   <li><b>runtime</b>      — JVM: uptime, active profiles, startup duration, JAR layer list</li>
  *   <li><b>branches</b>     — git for-each-ref: 20 most recently active remote branches</li>
  * </ul>
  *
- * <p>Data sources in priority order:
- * <ol>
- *   <li>Classpath resources (META-INF/build-reports/...) — present when the JAR was built with
- *       {@code mvn verify} and the reports were copied by the Antrun plugin.</li>
- *   <li>Filesystem fallback (target/...) — used during local development without packaging.</li>
- * </ol>
+ * <p>{@code sonar} + {@code pipeline} sections removed 2026-04-22 per
+ * ADR-0052 Phase Q-1 — UI links out to sonarcloud.io + gitlab.com directly.
  */
 @Component
 @Endpoint(id = "quality")
@@ -77,61 +70,25 @@ public class QualityReportEndpoint {
 
     private static final DateTimeFormatter TS_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-    // Classpath paths (inside packaged JAR)
-    private static final String CP_JACOCO = "META-INF/build-reports/jacoco.csv";
-    private static final String CP_POM = "META-INF/build-reports/pom.xml";
-    private static final String CP_SPOTBUGS = "META-INF/build-reports/spotbugsXml.xml";
-    private static final String CP_DEP_TREE     = "META-INF/build-reports/dependency-tree.txt";
-    private static final String CP_DEP_ANALYZE  = "META-INF/build-reports/dependency-analysis.txt";
-    private static final String CP_THIRD_PARTY  = "META-INF/build-reports/THIRD-PARTY.txt";
-    private static final String CP_SUREFIRE_PATTERN = "META-INF/build-reports/surefire/TEST-*.xml";
-    private static final String CP_BUILD_INFO = "META-INF/build-info.properties";
-    private static final String CP_PMD        = "META-INF/build-reports/pmd.xml";
-    private static final String CP_CHECKSTYLE = "META-INF/build-reports/checkstyle-result.xml";
-    private static final String CP_OWASP      = "META-INF/build-reports/dependency-check-report.json";
-    private static final String CP_PITEST     = "META-INF/build-reports/pit-reports/mutations.xml";
+    // Classpath / filesystem input paths moved to the individual parser /
+    // provider classes under com.mirador.observability.quality.* — after
+    // ADR-0052 Phase Q-2b, the endpoint no longer reads any tool output
+    // directly (everything flows through META-INF/quality-build-report.json).
 
-    // Fallback paths for local development. DEV_JACOCO prefers the merged
-    // report (unit + IT) — same data as the jacoco:check gate reads — and
-    // falls back to the unit-only CSV when running `mvn verify -DskipITs`.
-    private static final String DEV_JACOCO = "target/site/jacoco-merged/jacoco.csv";
-    private static final String DEV_JACOCO_UNIT = "target/site/jacoco/jacoco.csv";
-    private static final String DEV_SPOTBUGS = "target/spotbugsXml.xml";
-    private static final String DEV_SUREFIRE_DIR = "target/surefire-reports";
-    private static final String DEV_PMD        = "target/pmd.xml";
-    private static final String DEV_CHECKSTYLE = "target/checkstyle-result.xml";
-    private static final String DEV_OWASP      = "target/dependency-check-report.json";
-    private static final String DEV_PITEST     = "target/pit-reports/mutations.xml";
-
-    // ── Map key constants — used repeatedly across section builders ─────────────
-    // Centralised here to avoid Sonar CRITICAL java:S1192 (duplicate string literals ≥3 occurrences).
-    private static final String K_AVAILABLE   = "available";
-    private static final String K_ERROR       = "error";
-    private static final String K_TOTAL       = "total";
-    private static final String K_FAILURES    = "failures";
-    private static final String K_ERRORS      = "errors";
-    private static final String K_TIME_MS     = "timeMs";
-    private static final String K_PRIORITY    = "priority";
-    private static final String K_METHODS     = "methods";
-    private static final String K_MESSAGE     = "message";
-    private static final String K_SEVERITY    = "severity";
-    private static final String K_SCORE       = "score";
-    private static final String K_DESCRIPTION = "description";
-    private static final String K_COMPLEXITY  = "complexity";
-    private static final String K_VULNERABILITIES = "vulnerabilities";
-    private static final String K_TESTS         = "tests";
-    private static final String K_COVERAGE      = "coverage";
-    private static final String K_SKIPPED       = "skipped";
-    private static final String K_UNKNOWN       = "unknown";
-    private static final String K_VERSION       = "version";
-    private static final String K_DEPENDENCIES  = "dependencies";
-    private static final String K_MUTATED_CLASS = "mutatedClass";
-    private static final String K_BRANCHES       = "branches";
-    private static final String K_STATUS         = "status";
-    private static final String K_GROUP_ID       = "groupId";
-    private static final String K_ARTIFACT_ID    = "artifactId";
-    private static final String K_COUNT          = "count";
-    private static final String K_REASON         = "reason";
+    // ── Map key constants — used across runtime section builders ──────────────
+    // (Dead-code cleanup 2026-04-22 per Q-2b: 17 constants removed when their
+    // call-sites moved to build-time parsers. Only the 9 still-referenced keys
+    // stay here — adding new ones is fine, but favour inlining a one-shot
+    // literal if it's only used in a single section.)
+    private static final String K_AVAILABLE    = "available";
+    private static final String K_ERROR        = "error";
+    private static final String K_TOTAL        = "total";
+    private static final String K_MESSAGE      = "message";
+    private static final String K_TESTS        = "tests";
+    private static final String K_COVERAGE     = "coverage";
+    private static final String K_DEPENDENCIES = "dependencies";
+    private static final String K_BRANCHES     = "branches";
+    private static final String K_REASON       = "reason";
 
     /**
      * Absolute path to the {@code git} binary, resolved once at class-init
@@ -212,7 +169,7 @@ public class QualityReportEndpoint {
         // longer parses XML/CSV tool outputs at HTTP request time; it just
         // reads one opaque classpath resource.
         // Sections covered: tests, coverage, bugs, pmd, checkstyle, owasp,
-        //                   pitest, dependencies, licenses.
+        //                   pitest, dependencies, licenses, metrics.
         Map<String, Object> buildTime = loadBuildTimeReport();
         for (String key : BUILD_TIME_KEYS) {
             Object val = buildTime.get(key);
@@ -227,16 +184,15 @@ public class QualityReportEndpoint {
         result.put("build",        buildInfoSectionProvider.parse());
         result.put("git",          buildGitSection());
         result.put("api",          apiSectionProvider.parse());
-        result.put("metrics",      buildMetricsSection());
         result.put("runtime",      buildRuntimeSection());
         result.put(K_BRANCHES,     buildBranchesSection());
         return result;
     }
 
-    /** The 9 file-based section keys that live in the pre-generated JSON. */
+    /** The 10 file-based section keys that live in the pre-generated JSON. */
     private static final List<String> BUILD_TIME_KEYS = List.of(
             K_TESTS, K_COVERAGE, "bugs", "pmd", "checkstyle", "owasp",
-            "pitest", K_DEPENDENCIES, "licenses");
+            "pitest", K_DEPENDENCIES, "licenses", "metrics");
 
     private static final String QUALITY_BUILD_REPORT = "META-INF/quality-build-report.json";
 
@@ -344,141 +300,10 @@ public class QualityReportEndpoint {
 
     // Licenses section moved to build-time per ADR-0052 Phase Q-2.
 
-    // -------------------------------------------------------------------------
-    // Metrics section
-    // -------------------------------------------------------------------------
-
-    /**
-     * Reads JaCoCo CSV to compute:
-     * <ul>
-     *   <li>Totals: class/method/line/complexity counts across the whole project.</li>
-     *   <li>Package-level summary sorted by complexity (for the Metrics tab).</li>
-     *   <li>Top-10 most complex classes (for the Cyclomatic Complexity view).</li>
-     *   <li>Classes with 0% method coverage (potential gap in test suite).</li>
-     * </ul>
-     *
-     * <p>JaCoCo CSV columns (0-indexed):
-     * GROUP(0), PACKAGE(1), CLASS(2), INSTRUCTION_MISSED(3), INSTRUCTION_COVERED(4),
-     * BRANCH_MISSED(5), BRANCH_COVERED(6), LINE_MISSED(7), LINE_COVERED(8),
-     * COMPLEXITY_MISSED(9), COMPLEXITY_COVERED(10), METHOD_MISSED(11), METHOD_COVERED(12)
-     */
-    // S1141 + S135 + S3776: intentional skip-malformed-row pattern — same rationale as
-    // buildCoverageSection above. Restructuring obscures the validation intent.
-    @SuppressWarnings({"java:S1141", "java:S135", "java:S3776"})
-    private Map<String, Object> buildMetricsSection() {
-        // Same merged-first / unit-fallback strategy as buildCoverageSection.
-        InputStream is = ReportParsers.loadResource(CP_JACOCO, DEV_JACOCO);
-        if (is == null) {
-            is = ReportParsers.loadResource(CP_JACOCO, DEV_JACOCO_UNIT);
-        }
-        if (is == null) return Map.of(K_AVAILABLE, false);
-
-        long totalClasses = 0;
-        long totalMethods = 0;
-        long totalLines = 0;
-        long totalComplexity = 0;
-        Map<String, long[]> pkgMetrics = new LinkedHashMap<>(); // [classes, lines, methods, complexity]
-        // Class-level complexity for top-10 view
-        List<long[]> classComplexity = new ArrayList<>(); // [complexity, classNameIndex]
-        List<String> classNames = new ArrayList<>();
-        // Classes with 0% method coverage (METHOD_COVERED=0, METHOD_TOTAL>0)
-        List<String> untestedClasses = new ArrayList<>();
-
-        try (BufferedReader br = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
-            String line;
-            boolean header = true;
-            while ((line = br.readLine()) != null) {
-                if (header) { header = false; continue; }
-                String[] cols = line.split(",", -1);
-                if (cols.length < 13) continue;
-                try {
-                    long lineMissed   = Long.parseLong(cols[7].trim());
-                    long lineCovered  = Long.parseLong(cols[8].trim());
-                    long cxMissed     = Long.parseLong(cols[9].trim());
-                    long cxCovered    = Long.parseLong(cols[10].trim());
-                    long methodMissed = Long.parseLong(cols[11].trim());
-                    long methodCovered= Long.parseLong(cols[12].trim());
-                    long lines      = lineMissed + lineCovered;
-                    long methods    = methodMissed + methodCovered;
-                    long complexity = cxMissed + cxCovered;
-
-                    totalClasses++;
-                    totalMethods    += methods;
-                    totalLines      += lines;
-                    totalComplexity += complexity;
-
-                    // Package-level aggregate
-                    String pkg = cols[1].trim();
-                    String[] parts = pkg.replace('/', '.').split("\\.");
-                    String pkgShort = parts[parts.length - 1];
-                    pkgMetrics.merge(pkgShort, new long[]{1, lines, methods, complexity},
-                        (a, b) -> new long[]{a[0]+1, a[1]+b[1], a[2]+b[2], a[3]+b[3]});
-
-                    // Class-level record for top-10 most complex
-                    String rawClass = cols[2].trim();
-                    // Use simple class name (strip inner class separators like $1, $Companion)
-                    String simpleClass = rawClass.contains("$") ? rawClass.substring(0, rawClass.indexOf('$')) : rawClass;
-                    int idx = classNames.size();
-                    classNames.add(simpleClass);
-                    classComplexity.add(new long[]{complexity, idx});
-
-                    // Untested class: has methods but 0 are covered (METHOD_MISSED > 0 && METHOD_COVERED == 0)
-                    // Excludes pure data classes (records, DTOs) with 0 methods — they have no logic to test.
-                    if (methodCovered == 0 && methods > 0) {
-                        untestedClasses.add(simpleClass);
-                    }
-                } catch (NumberFormatException _) {
-                    // Skip malformed rows silently — JaCoCo CSV occasionally leaks
-                    // non-numeric totals on synthetic classes; they shouldn't break the report.
-                }
-            }
-        } catch (IOException e) {
-            return Map.of(K_AVAILABLE, false, K_ERROR, e.getMessage());
-        }
-
-        List<Map<String,Object>> packages = new ArrayList<>();
-        for (Map.Entry<String, long[]> e : pkgMetrics.entrySet()) {
-            long[] v = e.getValue();
-            Map<String,Object> p = new LinkedHashMap<>();
-            p.put("name", e.getKey());
-            p.put("classes", v[0]);
-            p.put("lines", v[1]);
-            p.put(K_METHODS, v[2]);
-            p.put(K_COMPLEXITY, v[3]);
-            packages.add(p);
-        }
-        // Sort by complexity desc (top 10 most complex packages first)
-        packages.sort((a, b) -> Long.compare((Long)b.get(K_COMPLEXITY), (Long)a.get(K_COMPLEXITY)));
-
-        // Top-10 most complex classes — sorted desc, deduplicated by simple name (inner classes merged)
-        classComplexity.sort((a, b) -> Long.compare(b[0], a[0]));
-        List<Map<String,Object>> topComplex = new ArrayList<>();
-        java.util.Set<String> seen = new java.util.LinkedHashSet<>();
-        for (long[] cc : classComplexity) {
-            String name = classNames.get((int) cc[1]);
-            if (seen.add(name) && topComplex.size() < 10) {
-                Map<String,Object> entry = new LinkedHashMap<>();
-                entry.put("class", name);
-                entry.put(K_COMPLEXITY, cc[0]);
-                topComplex.add(entry);
-            }
-        }
-
-        Map<String,Object> r = new LinkedHashMap<>();
-        r.put(K_AVAILABLE, true);
-        r.put("totalClasses", totalClasses);
-        r.put("totalMethods", totalMethods);
-        r.put("totalLines", totalLines);
-        r.put("totalComplexity", totalComplexity);
-        r.put("packages", packages);
-        // Top-10 most complex classes by cyclomatic complexity (COMPLEXITY_MISSED + COMPLEXITY_COVERED)
-        r.put("topComplexClasses", topComplex);
-        // Classes with 0% method coverage — potential test gaps (deduplicated, sorted alphabetically)
-        java.util.Set<String> untestedSet = new java.util.TreeSet<>(untestedClasses);
-        r.put("untestedClasses", new ArrayList<>(untestedSet));
-        r.put("untestedCount", untestedSet.size());
-        return r;
-    }
+    // Metrics section moved to build-time per ADR-0052 Phase Q-2b — the
+    // JaCoCo CSV was the last runtime tool-output re-read; it now ships
+    // pre-aggregated in META-INF/quality-build-report.json via
+    // MetricsSectionProvider.
 
     // PMD / Checkstyle / OWASP / Pitest sections moved to build-time per
     // ADR-0052 Phase Q-2. Loaded at runtime from META-INF/quality-build-report.json.

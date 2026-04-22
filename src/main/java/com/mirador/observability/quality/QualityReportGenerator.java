@@ -11,6 +11,7 @@ import com.mirador.observability.quality.parsers.SpotBugsReportParser;
 import com.mirador.observability.quality.parsers.SurefireReportParser;
 import com.mirador.observability.quality.providers.DependenciesSectionProvider;
 import com.mirador.observability.quality.providers.LicensesSectionProvider;
+import com.mirador.observability.quality.providers.MetricsSectionProvider;
 import java.io.File;
 import java.io.IOException;
 import java.time.LocalDateTime;
@@ -48,7 +49,8 @@ import java.util.Map;
  *   "owasp":        { … owasp … },
  *   "pitest":       { … pit … },
  *   "dependencies": { … pom + maven-central freshness … },
- *   "licenses":     { … THIRD-PARTY.txt … } }
+ *   "licenses":     { … THIRD-PARTY.txt … },
+ *   "metrics":      { … jacoco CSV → per-package complexity + top-10 + untested … } }
  * </pre>
  *
  * <h3>Runtime behaviour</h3>
@@ -58,7 +60,7 @@ import java.util.Map;
  * partial JSON is always a valid output.
  *
  * <h3>Why pure POJOs (no Spring)</h3>
- * The 7 parsers + 2 providers are instantiated with {@code new …()} rather
+ * The 7 parsers + 3 providers are instantiated with {@code new …()} rather
  * than via {@code @Autowired}. They have no Spring-wired dependencies
  * (no {@code ApplicationContext}, {@code Environment}, or HandlerMapping).
  * Running {@code main()} without a Spring context keeps build-time memory
@@ -99,9 +101,11 @@ public final class QualityReportGenerator {
         report.put("pitest",       new PitestReportParser().parse());
 
         // File-based providers — pom.xml walk (+ Maven Central freshness, here
-        // at build time is legitimate) + THIRD-PARTY.txt license summary.
+        // at build time is legitimate) + THIRD-PARTY.txt license summary +
+        // JaCoCo CSV re-read for per-package complexity metrics (Q-2b).
         report.put("dependencies", new DependenciesSectionProvider().parse());
         report.put("licenses",     new LicensesSectionProvider().parse());
+        report.put("metrics",      new MetricsSectionProvider().parse());
 
         ObjectMapper mapper = new ObjectMapper();
         mapper.enable(SerializationFeature.INDENT_OUTPUT);
