@@ -1,0 +1,75 @@
+# .gitlab-ci/native.yml — extracted 2026-04-22 from .gitlab-ci.yml
+# Phase B-2 CI modularisation (ADR-0050). Contains: build-native.
+# The parent `.gitlab-ci.yml` keeps only workflow/stages/default/
+# variables/cache/include. See docs/adr/0050-ci-yaml-modularisation-plan.md.
+
+build-native:
+  # Builds the GraalVM native image using Kaniko — no DinD, no privileged mode.
+  # AOT compilation is CPU-intensive (up to 30 min) so this only runs on schedule or manually.
+  stage: native
+  image:
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
+  # No `needs:` — runs independently on the scheduled pipeline, not after unit/integration.
+  # The source is already tested by the regular pipeline before it lands on main.
+  rules:
+    # Only on the native-build schedule (REPORT_PIPELINE must NOT be set).
+    # The report schedule sets REPORT_PIPELINE=true — that triggers generate-reports instead.
+    # `changes:` compares against the previous pipeline on this branch; skips if nothing changed.
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $REPORT_PIPELINE != "true"
+      changes:
+        - build/Dockerfile.native
+        - pom.xml
+        - src/**/*
+    # Manual ▶ button in any pipeline (MR or branch) — click to trigger a native build.
+    # allow_failure: true so it never blocks a merge.
+    - when: manual
+      allow_failure: true
+  allow_failure: true   # never blocks a merge when triggered manually
+  timeout: 30 minutes   # AOT compilation is CPU-intensive; default 1h is too loose
+  script:
+    - |
+      mkdir -p /kaniko/.docker
+      printf '{"auths":{"%s":{"auth":"%s"}}}' \
+        "$CI_REGISTRY" \
+        "$(printf '%s:%s' "$CI_REGISTRY_USER" "$CI_REGISTRY_PASSWORD" | base64 | tr -d '\n')" \
+        > /kaniko/.docker/config.json
+    - |
+      /kaniko/executor \
+        --context "$CI_PROJECT_DIR" \
+        --dockerfile "$CI_PROJECT_DIR/build/Dockerfile.native" \
+        --destination "$CI_REGISTRY_IMAGE:native-$CI_COMMIT_SHA" \
+        --destination "$CI_REGISTRY_IMAGE:native-$CI_COMMIT_REF_SLUG" \
+        --cache=true \
+        --cache-repo "$CI_REGISTRY_IMAGE/cache" \
+        --label "org.opencontainers.image.revision=$CI_COMMIT_SHA" \
+        --label "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  artifacts:
+    # Expose image tags as a dotenv artifact so downstream jobs (e.g. deploy)
+    # can reference the exact tag without re-computing it.
+    reports:
+      dotenv: native-image.env
+    expire_in: 1 week
+  after_script:
+    # Write the image tags to the dotenv artifact after a successful build
+    - |
+      echo "NATIVE_IMAGE_TAG=$CI_REGISTRY_IMAGE:native-$CI_COMMIT_SHA" > native-image.env
+      echo "NATIVE_IMAGE_SLUG=$CI_REGISTRY_IMAGE:native-$CI_COMMIT_REF_SLUG" >> native-image.env
+
+# ── stage: infra (Terraform) ──────────────────────────────────────────────────
+#
+# Manages GCP infrastructure via Terraform:
+#   terraform-plan   — always runs on main/MR to show what would change
+#   terraform-apply  — manual trigger only — provisions/updates GCP resources
+#
+# Required GitLab CI/CD variables (group level — Settings → CI/CD → Variables):
+#   GCP_WIF_PROVIDER   WIF provider full resource name (set at group level)
+#   GCP_SERVICE_ACCOUNT service account email (set at group level)
+#   TF_VAR_project_id  GCP project ID
+#   TF_VAR_app_host    public hostname (e.g. mirador.example.com)
+#   TF_VAR_db_password Cloud SQL app user password (sensitive)
+#   TF_STATE_BUCKET    GCS bucket name for Terraform state
+#
+# Auth: OIDC Workload Identity Federation (no long-lived service account key).
+# The gitlab-ci-deployer SA needs: container.admin, cloudsql.admin, redis.admin,
+# iam.serviceAccountAdmin, compute.networkAdmin, storage.admin (for GCS state).

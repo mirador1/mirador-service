@@ -63,13 +63,29 @@ pre-commit:
     gitlab-ci-lint:
       # Validates .gitlab-ci.yml against GitLab's CI lint API before commit.
       # Catches YAML syntax, unknown keywords, invalid rules, wrong stages, etc.
-      glob: ".gitlab-ci.yml"
+      #
+      # `--ref <branch> --dry-run` is REQUIRED since the Phase B-2 modularisation
+      # (2026-04-22) — the parent .gitlab-ci.yml now `- local: .gitlab-ci/*.yml`
+      # references that GitLab can only resolve against a branch's committed
+      # state. Without --ref the linter uses the default branch (main) which
+      # may not have the newest includes yet during an in-flight refactor.
+      #
+      # Exit-code 1 is expected when workflow:rules don't fire for a dry-run
+      # (e.g. simulating a push that touches zero code paths) — we grep for
+      # actual syntax errors and let "pipeline did not run" pass.
+      glob: "{.gitlab-ci.yml,.gitlab-ci/*.yml}"
       run: |
-        if command -v glab >/dev/null 2>&1; then
-          glab ci lint
-        else
+        if ! command -v glab >/dev/null 2>&1; then
           echo "⚠️  glab not installed — skipping .gitlab-ci.yml lint. Install: brew install glab"
+          exit 0
         fi
+        branch=$(git branch --show-current)
+        output=$(glab ci lint --ref "$branch" --dry-run 2>&1)
+        printf '%s\n' "$output"
+        if printf '%s' "$output" | grep -Eiq 'syntax|invalid keyword|unknown key|does not exist|unknown value|undefined anchor'; then
+          exit 1
+        fi
+        exit 0
       fail_text: ".gitlab-ci.yml has syntax errors. Fix before committing."
 
     dockerfile-lint:

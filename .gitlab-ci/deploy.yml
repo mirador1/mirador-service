@@ -1,0 +1,434 @@
+# .gitlab-ci/deploy.yml — extracted 2026-04-22 from .gitlab-ci.yml
+# Phase B-2 CI modularisation (ADR-0050). Contains: .terraform-base, terraform-plan, terraform-apply, .kubectl-apply, deploy, deploy, deploy, deploy, deploy.
+# The parent `.gitlab-ci.yml` keeps only workflow/stages/default/
+# variables/cache/include. See docs/adr/0050-ci-yaml-modularisation-plan.md.
+
+.terraform-base:
+  stage: infra
+  image:
+    name: hashicorp/terraform:1.9   # pinned — Terraform is not backwards-compatible across majors
+    # hashicorp/terraform sets ENTRYPOINT ["/bin/terraform"] which breaks GitLab CI's
+    # shell execution (it would run "terraform sh -c ..." instead of "sh -c ...").
+    # Override entrypoint so GitLab's default shell wrapper works correctly.
+    entrypoint: [""]
+  id_tokens:
+    # GitLab generates a short-lived OIDC JWT for this job.
+    # GCP STS exchanges it for a temporary access token via Workload Identity Federation.
+    GCP_OIDC_TOKEN:
+      aud: "https://iam.googleapis.com/$GCP_WIF_PROVIDER"
+  before_script:
+    # Write the OIDC token to a file; the external_account credential config references it.
+    # Terraform's Google provider reads GOOGLE_APPLICATION_CREDENTIALS automatically —
+    # no gcloud needed; the provider handles STS exchange natively.
+    - echo "$GCP_OIDC_TOKEN" > /tmp/gcp_oidc_token.txt
+    - |
+      # quota_project_id is REQUIRED for external_account creds with GCS backend.
+      # Without it, the Go Cloud Storage SDK sees no X-Goog-User-Project header
+      # and Cloud Storage rejects the request with `bucket doesn't exist` (a
+      # misleading-by-design 403 to avoid leaking bucket existence). Docs:
+      # https://github.com/hashicorp/terraform-provider-google/issues/15570
+      cat > /tmp/gcp_credentials.json <<EOF
+      {
+        "type": "external_account",
+        "audience": "//iam.googleapis.com/${GCP_WIF_PROVIDER}",
+        "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+        "token_url": "https://sts.googleapis.com/v1/token",
+        "credential_source": {"file": "/tmp/gcp_oidc_token.txt", "format": {"type": "text"}},
+        "service_account_impersonation_url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${GCP_SERVICE_ACCOUNT}:generateAccessToken",
+        "quota_project_id": "${TF_VAR_project_id}"
+      }
+      EOF
+    - export GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp_credentials.json
+    # Also export GOOGLE_CLOUD_PROJECT as belt-and-suspenders — some codepaths
+    # in the Go Cloud SDK consult the env var before the credential JSON.
+    - export GOOGLE_CLOUD_PROJECT="${TF_VAR_project_id}"
+    - cd deploy/terraform/gcp
+    - terraform init
+        -backend-config="bucket=${TF_STATE_BUCKET}"
+        -backend-config="prefix=mirador/gcp"
+        -input=false
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+# Show the Terraform execution plan — no changes applied.
+# Output is stored as an artifact so terraform-apply can use it.
+terraform-plan:
+  extends: .terraform-base
+  # Shield removed 2026-04-21 — replaced with a `when: never` rule when
+  # `TF_STATE_BUCKET` is unset (same pattern as `sonar-analysis` after
+  # the SonarCloud free-tier-MR-analysis fix). The job was failing
+  # 5/5 on main + 5/5 on MR with "bucket doesn't exist", silently
+  # tolerated by the shield, polluting every pipeline view with red
+  # squares. Per ADR-0022 the project deliberately doesn't provision
+  # a permanent GCS state bucket (ephemeral demo cluster pattern), so
+  # `TF_STATE_BUCKET` is not set in CI variables — and trying to run
+  # `terraform init` against an empty backend config fails 100%. The
+  # right fix is to NOT run the job rather than shield a guaranteed
+  # failure. When the bucket is provisioned, set `TF_STATE_BUCKET` in
+  # CI/CD variables → the rule below stops short-circuiting → the job
+  # runs as a real gate.
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    # Skip entirely if TF_STATE_BUCKET is unset — terraform init can't
+    # configure the GCS backend without it. Also covers the case where
+    # the variable is set to an empty string by GitLab UI default.
+    - if: '$TF_STATE_BUCKET == null || $TF_STATE_BUCKET == ""'
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  script:
+    - terraform plan
+        -var="project_id=${TF_VAR_project_id}"
+        -var="app_host=${TF_VAR_app_host}"
+        -var="db_password=${TF_VAR_db_password}"
+        -out=tfplan
+        -input=false
+  artifacts:
+    paths:
+      - deploy/terraform/gcp/tfplan
+    expire_in: 1 day   # plan is only valid for the pipeline that generated it
+
+# Apply the Terraform plan — manual trigger required (prevents accidental infra changes).
+terraform-apply:
+  extends: .terraform-base
+  interruptible: false   # Provisioning real GCP resources — must not be killed mid-apply.
+  script:
+    - terraform apply -input=false tfplan
+  needs:
+    # `optional: true` — terraform-plan does NOT run when TF_STATE_BUCKET
+    # is unset (per its rules added 2026-04-21 along with the
+    # terraform-plan shield removal). Without `optional`, GitLab refuses
+    # to create the WHOLE pipeline ("'terraform-apply' job needs
+    # 'terraform-plan' job, but 'terraform-plan' does not exist in the
+    # pipeline") → catastrophic main-pipeline failure when the bucket
+    # var is missing. Caught the hard way in main pipeline #592 on
+    # 2026-04-21 (post-merge !123). With `optional: true`, terraform-
+    # apply silently skips when terraform-plan didn't run, which is
+    # the correct behaviour (you can't apply a plan that wasn't
+    # generated).
+    - job: terraform-plan
+      artifacts: true
+      optional: true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    # Same TF_STATE_BUCKET gate as terraform-plan — keeps the manual
+    # button hidden when the prerequisite isn't met (avoids a confused
+    # "click ▶ → fail immediately" loop).
+    - if: '$TF_STATE_BUCKET == null || $TF_STATE_BUCKET == ""'
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+      allow_failure: true   # infra failure must not block app deployment (deploy:gke handles errors)
+
+# ── stage: deploy ─────────────────────────────────────────────────────────────
+#
+# Six deployment targets — one auto (GKE Autopilot, default) + five manual.
+#
+# Provider         Image used              Required GitLab CI/CD variables
+# ──────────────── ─────────────────────── ────────────────────────────────────────────────────────
+# GKE Autopilot ✓  google/cloud-sdk:alpine GCP_WIF_PROVIDER, GCP_SERVICE_ACCOUNT, GCP_PROJECT, GKE_CLUSTER, GKE_REGION
+# AWS EKS          alpine/k8s:1.30.2       AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, EKS_CLUSTER
+# Azure AKS        mcr.microsoft.com/azure-cli AZURE_APP_ID, AZURE_PASSWORD, AZURE_TENANT, AKS_RG, AKS_CLUSTER
+# Google Cloud Run google/cloud-sdk:alpine GCP_WIF_PROVIDER, GCP_SERVICE_ACCOUNT, GCP_PROJECT, GCP_REGION
+# Fly.io           flyio/flyctl:latest     FLY_API_TOKEN
+# k3s / bare metal bitnami/kubectl:latest  K8S_SERVER, K8S_TOKEN, K8S_CA_CERT¹
+#
+# All kubectl targets also need: K8S_HOST (public hostname), DB_PASSWORD
+# GKE + Cloud Run use OIDC Workload Identity Federation — no long-lived SA key required.
+# ¹ base64-encoded cluster CA certificate
+#
+# Set variables in GitLab → Settings → CI/CD → Variables (masked + protected).
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Common kubectl-apply fragment — reused by GKE, EKS, AKS, and k3s jobs via
+# GitLab's `!reference` tag (expanded at pipeline parse time, not YAML merge).
+#
+# Each caller sets K8S_OVERLAY to the directory under deploy/kubernetes/overlays/
+# to apply (gke, eks, aks, local). Kustomize resolves base + overlay; envsubst
+# substitutes ${K8S_HOST}, ${IMAGE_REGISTRY}, ${IMAGE_TAG}, ${UI_IMAGE_TAG},
+# ${CLOUD_SQL_INSTANCE}, ${GCP_PROJECT}, etc. into the rendered YAML stream.
+.kubectl-apply:
+  script:
+    # ── Defense-in-depth: re-verify the image signature at deploy time ──
+    # The pipeline already gates deploy via `needs: cosign:verify` in the
+    # package stage, which binds the signature to the image digest at that
+    # moment. In principle nothing can change the digest for a given tag
+    # between then and now. In practice: a compromised registry could
+    # swap the image (different digest, re-signed by an attacker with a
+    # different OIDC identity), AND a separate pipeline could re-push the
+    # same tag with a different signature. Re-verifying at deploy time
+    # catches both cases for ~12 s of CPU.
+    #
+    # The install idempotently writes cosign v2.5.0 into /usr/local/bin.
+    # Skip if already present (the docker-build / cosign stages may have
+    # left a cached binary).
+    - |
+      if ! command -v cosign >/dev/null 2>&1; then
+        ARCH="$(uname -m)"
+        case "$ARCH" in
+          x86_64)        CS_ARCH=amd64 ;;
+          aarch64|arm64) CS_ARCH=arm64 ;;
+          *) echo "Unsupported arch $ARCH — skipping cosign re-verify" >&2; CS_ARCH="" ;;
+        esac
+        if [ -n "$CS_ARCH" ]; then
+          # curl comes pre-installed on alpine/k8s, azure-cli, gcloud-sdk; on
+          # slim images (bitnami/kubectl) we fall back to apk/apt-get.
+          if ! command -v curl >/dev/null 2>&1; then
+            (apk add --no-cache curl ca-certificates 2>/dev/null) || \
+              (apt-get update -qq && apt-get install -y -qq --no-install-recommends curl ca-certificates)
+          fi
+          curl -sSL -o /usr/local/bin/cosign \
+            "https://github.com/sigstore/cosign/releases/download/v2.5.0/cosign-linux-${CS_ARCH}"
+          chmod +x /usr/local/bin/cosign
+        fi
+      fi
+    - |
+      if command -v cosign >/dev/null 2>&1; then
+        # Same identity-regexp + OIDC issuer as the cosign:verify job in
+        # the package stage. If the image was signed by a different project
+        # or a different branch (e.g. a fork's fly branch), verify fails
+        # and the deploy aborts — which is what we want.
+        COSIGN_EXPERIMENTAL=1 cosign verify \
+          --certificate-identity-regexp "^https://gitlab\.com/mirador1/mirador-service//\.gitlab-ci\.yml@refs/" \
+          --certificate-oidc-issuer "https://gitlab.com" \
+          "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA" \
+          > /tmp/cosign-verify.json
+        echo "cosign re-verify OK — deploy proceeds."
+      else
+        echo "cosign not available on this runner — skipped re-verify (primary verify still gates via needs:cosign:verify)." >&2
+      fi
+
+    # Export substitution variables consumed by envsubst in the rendered manifests.
+    # IMAGE_REGISTRY points to the registry sub-path so manifests resolve correctly:
+    #   ${IMAGE_REGISTRY}/backend:${IMAGE_TAG} → registry.gitlab.com/<group>/<project>/backend:<sha>
+    - export IMAGE_REGISTRY="$CI_REGISTRY_IMAGE"
+    - export IMAGE_TAG="$CI_COMMIT_SHA"
+    - export UI_IMAGE_TAG="$CI_COMMIT_SHA"   # frontend image tag (same SHA for monorepo)
+    - export CORS_ALLOWED_ORIGINS="https://${K8S_HOST}"   # production: HTTPS, no port
+    - |
+      # Create namespaces (idempotent — safe to re-apply on every deploy)
+      kubectl create namespace app   --dry-run=client -o yaml | kubectl apply -f -
+      kubectl create namespace infra --dry-run=client -o yaml | kubectl apply -f -
+    - |
+      # GitLab Container Registry pull secret — needed by EKS/AKS/k3s to pull images.
+      # GKE Autopilot with Workload Identity can omit this; keeping it here for all targets.
+      kubectl create secret docker-registry gitlab-registry \
+        --docker-server="$CI_REGISTRY" \
+        --docker-username="$CI_REGISTRY_USER" \
+        --docker-password="$CI_REGISTRY_PASSWORD" \
+        --namespace=app --dry-run=client -o yaml | kubectl apply -f -
+    - |
+      # App secrets — masked GitLab CI group variables injected into K8s.
+      # GRAFANA_OTLP_AUTH = base64(instanceId:apiToken) for Grafana Cloud direct OTLP push.
+      kubectl create secret generic mirador-secrets \
+        --from-literal=DB_PASSWORD="$DB_PASSWORD" \
+        --from-literal=JWT_SECRET="$JWT_SECRET" \
+        --from-literal=API_KEY="${API_KEY:-}" \
+        --from-literal=OTEL_EXPORTER_OTLP_AUTH="${GRAFANA_OTLP_AUTH:-}" \
+        --from-literal=GITLAB_API_TOKEN="${GITLAB_API_TOKEN:-}" \
+        --namespace=app --dry-run=client -o yaml | kubectl apply -f -
+    - |
+      # Legacy-resource cleanup. When a resource is renamed (e.g. the Ingress
+      # went from customer-service-ingress → mirador-ingress in commit e884286),
+      # `kubectl apply` creates the new name but never deletes the old one.
+      # The nginx-ingress admission webhook then rejects the new resource
+      # because the old one still claims the same host+path pair. List every
+      # renamed-away resource we still need to sweep here.
+      kubectl delete ingress customer-service-ingress -n app --ignore-not-found
+    - |
+      # Render the overlay with kustomize, then substitute ${VAR} placeholders
+      # (Kustomize itself does NOT process env vars — envsubst fills them in).
+      # GKE overlay includes the Cloud SQL sidecar + TLS patch; local/eks/aks
+      # include the in-cluster Postgres mini-base.
+      : "${K8S_OVERLAY:?must be set to an overlay name under deploy/kubernetes/overlays/}"
+      echo "Applying overlay: deploy/kubernetes/overlays/${K8S_OVERLAY}"
+      kubectl kustomize "deploy/kubernetes/overlays/${K8S_OVERLAY}" \
+        | envsubst \
+        | kubectl apply -f -
+    # Wait for the rolling update to complete. 6 min covers cold-start on GKE
+    # Autopilot (image pull + JVM warmup + Flyway); matches startupProbe budget.
+    - kubectl rollout status deployment/mirador -n app --timeout=360s
+
+# ── smoke-test — k6 smoke test ────────────────────────────────────────────────
+# Manual-trigger job. Pre-ADR-0025 this ran against mirador1.duckdns.org
+# after deploy:gke. Now that the cluster has no public surface, the job
+# stands up its OWN backend inside the runner (docker-compose for deps +
+# `mvn spring-boot:run` for the app) and runs k6 against it.
+#
+# Pattern mirrors the UI repo's `e2e:kind` job (see ADR-0033 + the UI
+# .gitlab-ci.yml). Rationale: the smoke test asserts the user-visible
+# contract — p95 latency, zero 5xx, readiness — which doesn't depend on
+# the GKE topology. Running it in-job removes the cluster-up prerequisite
+# so every MR pipeline can trigger it manually without €0.26/h cluster
+# costs (ADR-0022).
+#
+# 30 s of light read-only traffic at ~3 RPS, pass/fail on p95 < 500 ms and
+# < 1 % errors. See scripts/load-test/README.md for thresholds.
+deploy:eks:
+  stage: deploy
+  image: alpine/k8s:1.30.2   # kubectl + aws-cli + helm in a single Alpine image
+  needs:
+    - job: docker-build
+      artifacts: false
+    - job: cosign:verify
+      artifacts: false
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+      allow_failure: true
+  environment:
+    name: production/eks
+    url: "https://$K8S_HOST"
+  script:
+    - aws eks update-kubeconfig --name "$EKS_CLUSTER" --region "$AWS_REGION"
+    - export K8S_OVERLAY="eks"
+    - !reference [.kubectl-apply, script]
+
+# ── Azure AKS — manual ────────────────────────────────────────────────────────
+#
+# Azure Kubernetes Service: managed control plane with optional Virtual Nodes
+# (serverless node pools backed by Azure Container Instances).
+# Uses a service principal for non-interactive auth.
+deploy:aks:
+  stage: deploy
+  image: mcr.microsoft.com/azure-cli:latest
+  needs:
+    - job: docker-build
+      artifacts: false
+    - job: cosign:verify
+      artifacts: false
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+      allow_failure: true
+  environment:
+    name: production/aks
+    url: "https://$K8S_HOST"
+  before_script:
+    - az aks install-cli --only-show-errors   # installs kubectl
+  script:
+    - az login --service-principal -u "$AZURE_APP_ID" -p "$AZURE_PASSWORD"
+        --tenant "$AZURE_TENANT" --output none
+    - az aks get-credentials --resource-group "$AKS_RG" --name "$AKS_CLUSTER"
+    - export K8S_OVERLAY="aks"
+    - !reference [.kubectl-apply, script]
+
+# ── Google Cloud Run — manual ─────────────────────────────────────────────────
+#
+# Fully serverless: no cluster, no nodes, no ingress. Scales to zero when idle.
+# Best for: demos, low-traffic environments, cost-sensitive deployments.
+# Limitation: no persistent volumes → PostgreSQL must be Cloud SQL (or external).
+# DB_PASSWORD is read from Secret Manager (not a k8s secret).
+deploy:cloud-run:
+  stage: deploy
+  image: google/cloud-sdk:alpine
+  id_tokens:
+    GCP_OIDC_TOKEN:
+      aud: "https://iam.googleapis.com/$GCP_WIF_PROVIDER"
+  needs:
+    - job: docker-build
+      artifacts: false
+    - job: cosign:verify
+      artifacts: false
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+      allow_failure: true
+  environment:
+    name: production/cloud-run
+  script:
+    - echo "$GCP_OIDC_TOKEN" > /tmp/gcp_oidc_token.txt
+    - |
+      cat > /tmp/gcp_credentials.json <<EOF
+      {
+        "type": "external_account",
+        "audience": "//iam.googleapis.com/${GCP_WIF_PROVIDER}",
+        "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+        "token_url": "https://sts.googleapis.com/v1/token",
+        "credential_source": {"file": "/tmp/gcp_oidc_token.txt", "format": {"type": "text"}},
+        "service_account_impersonation_url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${GCP_SERVICE_ACCOUNT}:generateAccessToken"
+      }
+      EOF
+    - gcloud auth login --cred-file=/tmp/gcp_credentials.json --quiet
+    - gcloud config set project "$GCP_PROJECT"
+    - |
+      gcloud run deploy mirador-service \
+        --image "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA" \
+        --region "${GCP_REGION:-europe-west1}" \
+        --platform managed \
+        --allow-unauthenticated \
+        --port 8080 \
+        --cpu 1 --memory 512Mi \
+        --set-env-vars "SPRING_PROFILES_ACTIVE=cloud-run" \
+        --set-secrets "DB_PASSWORD=mirador-db-password:latest" \
+        --quiet
+
+# ── Fly.io — manual ───────────────────────────────────────────────────────────
+#
+# PaaS with global anycast routing. The simplest deploy — no cluster to manage.
+# Requires a fly.toml at the project root (see: fly launch --no-deploy).
+# Best for: demos, side projects, quick staging environments.
+deploy:fly:
+  stage: deploy
+  image: flyio/flyctl:latest
+  needs:
+    - job: docker-build
+      artifacts: false
+    - job: cosign:verify
+      artifacts: false
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+      allow_failure: true
+  environment:
+    name: production/fly
+  script:
+    - flyctl auth token "$FLY_API_TOKEN"
+    - flyctl deploy --image "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA" --remote-only
+
+# ── k3s / self-hosted — manual ─────────────────────────────────────────────────
+#
+# Generic kubectl deploy to any cluster (k3s, kubeadm, Hetzner Cloud,
+# OVHcloud Managed Kubernetes, bare metal, Raspberry Pi…).
+# Provide the cluster API URL, a service-account token with deploy rights,
+# and the cluster CA cert (all base64-encoded) as CI variables.
+deploy:k3s:
+  stage: deploy
+  image: bitnami/kubectl:latest
+  needs:
+    - job: docker-build
+      artifacts: false
+    - job: cosign:verify
+      artifacts: false
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+      allow_failure: true
+  environment:
+    name: production/k3s
+    url: "https://$K8S_HOST"
+  script:
+    - |
+      # Build kubeconfig from CI variables (no kubeconfig file in the runner)
+      kubectl config set-cluster self-hosted \
+        --server="$K8S_SERVER" \
+        --certificate-authority=<(echo "$K8S_CA_CERT" | base64 -d)
+      kubectl config set-credentials ci-runner --token="$K8S_TOKEN"
+      kubectl config set-context default --cluster=self-hosted --user=ci-runner
+      kubectl config use-context default
+    - !reference [.kubectl-apply, script]

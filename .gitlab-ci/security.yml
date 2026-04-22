@@ -1,0 +1,512 @@
+# .gitlab-ci/security.yml — extracted 2026-04-22 from .gitlab-ci.yml
+# Phase B-2 CI modularisation (ADR-0050). Contains: sast, dependency_scanning, owasp-dependency-check, secret-scan, trivy, sbom, grype, dockle, cosign, cosign, semgrep.
+# The parent `.gitlab-ci.yml` keeps only workflow/stages/default/
+# variables/cache/include. See docs/adr/0050-ci-yaml-modularisation-plan.md.
+
+sast:
+  stage: test
+  rules:
+    - when: never
+
+# GitLab Dependency Scanning.
+# Reads pom.xml and checks all direct + transitive Maven dependencies against
+# OSV, NVD, and GitHub Advisory databases for known CVEs.
+# Results appear in Security > Dependency List.
+#
+# Skipped for the same reason as sast above — free-tier stub exits 1.
+# To enable on GitLab Ultimate: replace `when: never` with `when: on_success`.
+dependency_scanning:
+  stage: test
+  rules:
+    - when: never
+
+# OWASP Dependency-Check — SCA (Software Composition Analysis).
+# Runs the Maven plugin to scan all dependencies against the NVD for known CVEs.
+# Produces an HTML report; fails on CVSS ≥ 7 (High/Critical).
+# Shield removed 2026-04-20 — job was allow_failure: true "initially to
+# promote awareness" but ran green across 4+ consecutive pipelines on main.
+# If a High/Critical CVE lands, we want the MR to go red so dependency
+# bumps get prioritised instead of silently trailing in the report.
+# Set NVD_API_KEY as a masked CI/CD variable to speed up the NVD database download.
+owasp-dependency-check:
+  stage: test
+  timeout: 2h   # NVD full download ~60 min on first run; cached runs are ~2 min
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - when: on_success
+  cache:
+    - key: "$CI_COMMIT_REF_SLUG"
+      paths:
+        - .m2/repository
+    - key: "owasp-nvd-db-v1"   # shared across all branches — survives after first download
+      paths:
+        - .owasp-data/
+  script:
+    - mvn $MAVEN_CLI_OPTS dependency-check:check
+  artifacts:
+    when: always
+    paths:
+      - target/dependency-check-report.html
+    expire_in: 1 week
+
+# Pull in the GitLab-managed SAST and Dependency Scanning job definitions.
+# Placed after the overrides so our `stage:` settings take effect.
+secret-scan:
+  stage: test
+  image:
+    name: zricethezav/gitleaks:v8.21.4   # pinned — never :latest
+    entrypoint: [""]
+  tags:
+    - macbook-local
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - when: on_success
+  script:
+    # `detect` scans the current working tree + git history.
+    # --redact hides secret values in output (in case of a real leak we don't
+    # want the secret to live in CI logs too).
+    - gitleaks detect --source . --config .gitleaks.toml --redact --verbose
+  artifacts:
+    when: always
+    paths:
+      - gitleaks-report.json
+    expire_in: 1 week
+
+# ── Renovate config lint ──────────────────────────────────────────────────────
+# Renovate runs externally (GitLab's Renovate instance), but we lint our own
+# renovate.json here so syntax errors don't break the scheduled bot run.
+trivy:scan:
+  # Scans the freshly built Docker image for OS + Java CVEs using Trivy.
+  # Trivy pulls directly from the registry — no DinD or privileged mode needed.
+  # Runs only on main/tags after docker-build succeeds. allow_failure:true —
+  # we track CVEs as informational; blocking releases on new CVEs creates friction.
+  stage: package
+  # aquasec/trivy no longer publishes :latest (since ~0.60). Pin a real tag.
+  # Check https://hub.docker.com/r/aquasec/trivy/tags for the current stable.
+  # entrypoint:[""] overrides the default `trivy` entrypoint — GitLab CI wraps
+  # the script in `sh -c`, which trivy rejects with `unknown command "sh"`.
+  image:
+    name: aquasec/trivy:0.69.3
+    entrypoint: [""]
+  tags:
+    - macbook-local
+  needs:
+    - job: docker-build
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+  # Shield removed 2026-04-21 — no-op flip with current --exit-code 0
+  # (the trivy invocation itself never returns non-zero today). Ran
+  # green 7/7 on main (pipelines #557→#565). Removing now so a future
+  # bump to --exit-code 1 on HIGH/CRITICAL lands a real CVE gate
+  # without a second config change. If we want to coordinate the
+  # exit-code flip + a brief shield window during the transition, add
+  # `allow_failure: true` back here with a dated TODO per CLAUDE.md
+  # → "Pipelines stay green".
+  script:
+    - |
+      trivy image \
+        --exit-code 0 \
+        --severity HIGH,CRITICAL \
+        --format json \
+        --output trivy-report.json \
+        --username "$CI_REGISTRY_USER" \
+        --password "$CI_REGISTRY_PASSWORD" \
+        "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA"
+    - |
+      # SARIF output — ingested by SonarCloud via sonar.sarifReportPaths.
+      # Trivy's sarif template attaches CVE → rule/finding so Sonar
+      # shows them on the Issues page next to native rules.
+      trivy image \
+        --exit-code 0 \
+        --severity HIGH,CRITICAL \
+        --format sarif \
+        --output trivy-report.sarif \
+        --username "$CI_REGISTRY_USER" \
+        --password "$CI_REGISTRY_PASSWORD" \
+        "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA"
+    - |
+      # Human-readable summary to CI log
+      trivy image \
+        --exit-code 0 \
+        --severity HIGH,CRITICAL \
+        "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA"
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - trivy-report.json
+      - trivy-report.sarif
+
+# ── Dockerfile lint (hadolint) ────────────────────────────────────────────────
+# Linter for Dockerfile best practices: pin versions, COPY not ADD, USER
+# non-root, no `apt-get update` without --no-install-recommends, etc.
+# Runs in seconds — catches issues before the long docker-build job.
+sbom:syft:
+  stage: package
+  # Switched from anchore/syft to aquasec/trivy for SBOM generation: the
+  # syft Go binary deterministically panics with `runtime: lfstack.push
+  # invalid packing` when run under QEMU emulation (amd64 binary on arm64
+  # macbook-local runner). Two retries didn't absorb it because the crash
+  # is deterministic, not flaky. Trivy is already pulled for `trivy:scan`
+  # so we save one image download. Job name kept as `sbom:syft` so
+  # downstream jobs (`needs:`) and watchers don't break.
+  image:
+    name: aquasec/trivy:0.69.3
+    entrypoint: [""]
+  tags:
+    - macbook-local
+  needs:
+    - job: docker-build
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+  retry:
+    max: 1
+    when: runner_system_failure
+  script:
+    - trivy registry login "$CI_REGISTRY" --username "$CI_REGISTRY_USER" --password "$CI_REGISTRY_PASSWORD"
+    - trivy image --format cyclonedx --output bom.cdx.json "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA"
+    - trivy image --format spdx-json --output bom.spdx.json "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA"
+  artifacts:
+    when: always
+    expire_in: 90 days
+    paths:
+      - bom.cdx.json
+      - bom.spdx.json
+    reports:
+      cyclonedx: bom.cdx.json
+
+# ── Grype CVE scan — reads the SBOM, matches against vuln database ─────────
+# Second opinion alongside Trivy. Grype's matcher is more aggressive on
+# Java — it knows the Maven coordinates from the SBOM and cross-references
+# the GitHub Advisory Database + NVD. Running both tools catches CVEs that
+# only one has in its DB.
+grype:scan:
+  stage: package
+  image:
+    # -debug variant ships /bin/sh + /grype (same pattern as syft above).
+    # 2026-04-21: bumped from v0.87.0-debug (amd64-only, Go runtime panic
+    # `fatal error: lfstack.push` on the arm64 macbook-local runner) to
+    # v0.111.0-debug which is multi-arch (amd64 + arm64 + ppc64le + s390x
+    # — verified via `docker manifest inspect anchore/grype:v0.111.0-debug`).
+    # This fixes the 5/5 FAIL pattern on main/tag pipelines without
+    # routing to a SaaS amd64 runner (would burn paid quota).
+    name: anchore/grype:v0.111.0-debug
+    entrypoint: [""]
+  tags:
+    - macbook-local
+  needs:
+    - job: sbom:syft
+      artifacts: true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+  # Shield removed 2026-04-21 — the arm64 panic was caused by
+  # v0.87.0-debug being amd64-only. v0.111.0-debug is multi-arch
+  # (amd64 + arm64 + ppc64le + s390x per the image manifest), so the
+  # macbook-local arm64 runner now runs the native arm64 binary and
+  # the `Go runtime fatal error: lfstack.push` is gone. With the root
+  # cause fixed, the shield becomes decorative — removing it lets a
+  # real HIGH CVE block main. Mirrors the trivy:scan policy.
+  # If a future arm64 regression resurfaces, re-shield with a dated
+  # TODO rather than silently tolerate it.
+  script:
+    # Scan the SBOM rather than the image → faster + reproducible.
+    - export PATH="/:$PATH"
+    - grype sbom:bom.cdx.json --fail-on high --output table
+    - grype sbom:bom.cdx.json --output json > grype-report.json
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - grype-report.json
+
+# ── Container policy check (dockle) ───────────────────────────────────────────
+# dockle checks image hardening: USER non-root, no root in image, Dockerfile
+# best practices, CIS Docker Benchmark. Complements Trivy (CVEs) with
+# hygiene checks (DKL-DI-0006 HEALTHCHECK, DKL-LI-0003 suspicious env var).
+#
+# Runner quirk: our macbook-local runner is arm64 and the backend image
+# is amd64-only (we buildx cross-compile specifically for GKE). dockle's
+# registry client auto-detects host arch and fails with "no image found
+# for architecture arm64" when talking straight to the registry. Work
+# around by pulling the amd64 variant explicitly via docker:28 + the
+# host's Docker Desktop socket, `docker save`-ing to a tarball, and
+# pointing dockle at the file via `--input`.
+dockle:
+  stage: package
+  image: docker:28
+  tags:
+    - macbook-local
+  needs:
+    - job: docker-build
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+  # Shield removed 2026-04-21 — ran green 7/7 on main (pipelines #557→
+  # #565). The backend Dockerfile satisfies the CIS + dockle baseline
+  # and a fresh DKL-* finding is exactly the regression worth blocking
+  # (a buildpack bump that introduces a sensitive flag, a base image
+  # CVE that surfaces a new check, etc.). Re-shield only if a known
+  # false positive lands and we're waiting for an upstream fix.
+  variables:
+    DOCKLE_VERSION: "0.4.15"
+  before_script:
+    - apk add --no-cache curl ca-certificates
+    - |
+      # Install dockle binary for the runner's native arch so no
+      # emulation is needed; dockle itself is arch-agnostic as long as
+      # it reads the image from a tarball (--input).
+      ARCH="$(uname -m)"
+      case "$ARCH" in
+        x86_64)  DK_ARCH=64bit ;;
+        aarch64|arm64) DK_ARCH=ARM64 ;;
+        *) echo "unsupported arch: $ARCH"; exit 1 ;;
+      esac
+      curl -sSL -o /tmp/dockle.tgz \
+        "https://github.com/goodwithtech/dockle/releases/download/v${DOCKLE_VERSION}/dockle_${DOCKLE_VERSION}_Linux-${DK_ARCH}.tar.gz"
+      tar -xzf /tmp/dockle.tgz -C /usr/local/bin dockle
+      dockle --version
+  script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+    # Explicit --platform selects the amd64 variant of a single-platform
+    # image without pulling the arm64 variant (which doesn't exist).
+    - |
+      docker pull --platform linux/amd64 \
+        "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA"
+      docker save "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA" -o /tmp/image.tar
+    - dockle --exit-code 0 --input /tmp/image.tar --format json --output dockle-report.json
+    - dockle --exit-code 0 --input /tmp/image.tar
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - dockle-report.json
+
+# ── cosign — keyless image signing via GitLab OIDC ────────────────────────────
+# Signs the image with a short-lived certificate from Sigstore's Fulcio,
+# using GitLab's OIDC token as identity proof. No long-lived signing keys.
+# Signatures are stored in the registry as OCI artifacts alongside the image.
+#
+# Verify externally with:
+#   cosign verify \
+#     --certificate-identity "https://gitlab.com/mirador1/mirador-service//.gitlab-ci.yml@refs/heads/main" \
+#     --certificate-oidc-issuer "https://gitlab.com" \
+#     $CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA
+cosign:sign:
+  stage: package
+  # Sigstore publishes `gcr.io/projectsigstore/cosign:vX.Y.Z` as pure
+  # distroless — no /bin/sh, which GitLab's script wrapper needs. No
+  # upstream -debug tag exists. Install the cosign binary on top of
+  # an alpine image instead: small download (~60 MB), pinned by the
+  # release's sha256 checksum, reproducible.
+  image: alpine:3.21
+  tags:
+    - macbook-local
+  needs:
+    - job: docker-build
+  id_tokens:
+    SIGSTORE_ID_TOKEN:
+      aud: sigstore
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+  # Shield removed 2026-04-20 — cosign:sign ran green 4+ times in a row
+  # against Sigstore's public Fulcio/Rekor. Signing is deterministic once
+  # the OIDC token + registry auth succeed; a real signing failure is a
+  # broken supply chain (tampered image, expired cert) and should fail
+  # the pipeline. The deploy-side enforcement (`cosign:verify`) already
+  # runs without a shield — signing should match its strictness.
+  variables:
+    COSIGN_VERSION: "2.5.0"        # pin the exact cosign release
+    COSIGN_YES: "true"             # skip interactive prompt
+    COSIGN_EXPERIMENTAL: "1"       # enables keyless signing with Sigstore
+  before_script:
+    - apk add --no-cache curl ca-certificates
+    - |
+      # amd64 runners use -amd64, arm64 runners use -arm64. Detect once.
+      ARCH="$(uname -m)"
+      case "$ARCH" in
+        x86_64)  CS_ARCH=amd64 ;;
+        aarch64|arm64) CS_ARCH=arm64 ;;
+        *) echo "unsupported arch: $ARCH"; exit 1 ;;
+      esac
+      curl -sSL -o /usr/local/bin/cosign \
+        "https://github.com/sigstore/cosign/releases/download/v${COSIGN_VERSION}/cosign-linux-${CS_ARCH}"
+      chmod +x /usr/local/bin/cosign
+      cosign version
+  script:
+    # Log in to the registry — cosign needs read access to resolve the digest
+    # and write access to push the signature artifact.
+    - cosign login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD"
+    # Sign the image by SHA digest (never by tag — tags are mutable).
+    - |
+      DIGEST=$(cosign triangulate --type digest \
+        "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA" 2>/dev/null \
+        || echo "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA")
+      cosign sign --identity-token "$SIGSTORE_ID_TOKEN" \
+        "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA"
+
+# ── cosign:verify — supply-chain gate before deploy ───────────────────────────
+#
+# Verifies the freshly-signed image carries a valid Fulcio cert chain
+# from this exact GitLab project. Acts as a gate: every deploy:* job
+# (deploy:eks, :aks, :cloud-run, :fly, :k3s) MUST `needs:` this so a
+# tampered or unsigned image cannot reach prod.
+#
+# The expected identity comes from GitLab's OIDC token (issuer +
+# project URL). If a sibling project tries to push a Mirador-named
+# image, the cert won't match the expected `--certificate-identity-regexp`
+# and verification fails.
+cosign:verify:
+  stage: package
+  image: alpine:3.21
+  tags:
+    - macbook-local
+  needs:
+    - job: cosign:sign
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+  variables:
+    COSIGN_VERSION: "2.5.0"
+    COSIGN_EXPERIMENTAL: "1"
+  before_script:
+    - apk add --no-cache curl ca-certificates
+    - |
+      ARCH="$(uname -m)"
+      case "$ARCH" in
+        x86_64)  CS_ARCH=amd64 ;;
+        aarch64|arm64) CS_ARCH=arm64 ;;
+        *) echo "unsupported arch: $ARCH"; exit 1 ;;
+      esac
+      curl -sSL -o /usr/local/bin/cosign \
+        "https://github.com/sigstore/cosign/releases/download/v${COSIGN_VERSION}/cosign-linux-${CS_ARCH}"
+      chmod +x /usr/local/bin/cosign
+  script:
+    - cosign login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD"
+    # The identity-regexp pins the cert to GitLab CI of THIS project only.
+    # `https://gitlab.com/mirador1/mirador-service//.gitlab-ci.yml@refs/heads/main`
+    # is what GitLab's OIDC produces for main-branch jobs.
+    - |
+      cosign verify \
+        --certificate-identity-regexp "^https://gitlab\.com/mirador1/mirador-service//\.gitlab-ci\.yml@refs/" \
+        --certificate-oidc-issuer "https://gitlab.com" \
+        "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA"
+
+# ── stage: compat ─────────────────────────────────────────────────────────────
+#
+# On-demand compatibility matrix — unit + integration tests across SB/Java combos.
+# SB4 + Java 25 is the default and is already exercised by unit-test + integration-test.
+# These four jobs cover the remaining supported combinations from the README:
+#
+#   sb4-java21  → mvn verify -Dcompat             (SB4, ScopedValue→ThreadLocal)
+#   sb4-java17  → mvn verify -Dcompat -Djava17    (SB4, + switch pattern→if/else)
+#   sb3-java21  → mvn verify -Dsb3               (SB3, manual X-API-Version dispatch)
+#   sb3-java17  → mvn verify -Dsb3 -Djava17       (SB3 + Java 17 compat layers)
+#
+# Trigger options:
+#   • Click ▶ on the job in any pipeline (when: manual)
+#   • "Run pipeline" in GitLab CI/CD UI with variable RUN_COMPAT=true (runs all four)
+#
+# Testcontainers uses the host Docker socket (mounted by the runner) — no DinD needed.
+# allow_failure: true — compat failures don't block MR merge.
+semgrep:
+  stage: reports
+  image: semgrep/semgrep:latest
+  rules:
+    # Run on the daily report schedule alongside generate-reports
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $REPORT_PIPELINE == "true"
+      when: on_success
+    # Also available as a manual ▶ trigger on any pipeline
+    - when: manual
+      allow_failure: true
+  allow_failure: true   # static analysis results are informational — must not block deploys
+  script:
+    # GitLab SAST format — populates the Security Dashboard and MR security widget
+    - semgrep
+        --config=p/java
+        --config=p/spring
+        --config=p/owasp-top-ten
+        --config=p/secrets
+        --gitlab-sast
+        --output=gl-sast-report.json
+        --exclude="src/test"
+        src/main/java/
+        || true   # exit 1 when findings exist — treat as informational, not a failure
+    # Full JSON for manual review or downstream tooling
+    - semgrep
+        --config=p/java
+        --config=p/spring
+        --config=p/owasp-top-ten
+        --config=p/secrets
+        --json
+        --output=semgrep-report.json
+        --exclude="src/test"
+        src/main/java/
+        || true
+    # SARIF output — ingested by SonarCloud via sonar.sarifReportPaths
+    # so Semgrep findings land on Sonar's Issues page next to native
+    # Java rule findings (single-source-of-truth principle).
+    - semgrep
+        --config=p/java
+        --config=p/spring
+        --config=p/owasp-top-ten
+        --config=p/secrets
+        --sarif
+        --output=semgrep-report.sarif
+        --exclude="src/test"
+        src/main/java/
+        || true
+    - |
+      # Summary to CI log
+      python3 -c "
+      import json, os
+      if os.path.exists('semgrep-report.json'):
+          d = json.load(open('semgrep-report.json'))
+          n = len(d.get('results', []))
+          print(f'Semgrep: {n} findings across p/java + p/spring + p/owasp-top-ten + p/secrets')
+      "
+  artifacts:
+    name: "semgrep-${CI_COMMIT_SHORT_SHA}"
+    reports:
+      sast: gl-sast-report.json   # GitLab reads this for the Security Dashboard
+    paths:
+      - semgrep-report.json       # full findings — browsable as artifact
+      - gl-sast-report.json
+    expire_in: 30 days
+    when: always
+
+# ── stage: reports — PIT mutation testing (proposal #6) ──────────────────────
+#
+# Mutation testing measures TEST QUALITY, not code coverage. PIT mutates
+# bytecode (replaces `>` with `>=`, swaps `+` with `-`, returns null,
+# etc.) and re-runs the test suite. A "killed" mutant means at least
+# one test caught the change → the test is meaningful. A "survived"
+# mutant means no test detected the change → that line is uncovered
+# in spirit even if line-coverage said 100 %.
+#
+# Heavy: full mutation run is ~15 min on this codebase. Gated to the
+# weekly REPORT_PIPELINE schedule (alongside Semgrep + maven-site +
+# integration-test:keycloak) and a manual button. Output is a
+# browseable HTML report.
+#
+# Quality gate: targeted at 70 % mutation score on the `com.mirador.*`
+# package (excluded: config classes, data classes — see pom.xml
+# `excludedClasses`). Lower than line-coverage on purpose: 70 % is
+# the industry-standard threshold for "tests actually exercise logic".

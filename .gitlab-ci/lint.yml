@@ -1,0 +1,251 @@
+# .gitlab-ci/lint.yml — extracted 2026-04-22 from .gitlab-ci.yml
+# Phase B-2 CI modularisation (ADR-0050). Contains: promtool-check-rules, openapi-lint, renovate-lint, hadolint.
+# The parent `.gitlab-ci.yml` keeps only workflow/stages/default/
+# variables/cache/include. See docs/adr/0050-ci-yaml-modularisation-plan.md.
+
+# ── promtool-check-rules — validate Mirador PrometheusRule objects ────────────
+# Phase 3 O2. Catches:
+#   • PromQL syntax errors (missing `)`, unknown functions)
+#   • Label selector typos (e.g. `status_code=~"5.."` instead of `status=~"5.."`)
+#   • Empty recording rule expressions (records that always evaluate to empty)
+#   • Duplicate rule names within a group
+#
+# Why here and not in the k8s stage: `promtool check rules` doesn't need a
+# cluster — it's pure parsing. Running it in `lint` fails fast, within 15 s
+# of commit, instead of after the 4-minute k8s dry-run job.
+#
+# Rule file: deploy/kubernetes/base/observability-prom/mirador-alerts.yaml.
+# See docs/adr/0048 and docs/ops/runbooks/ for the full story.
+promtool-check-rules:
+  stage: lint
+  # Official Prometheus image ships promtool in /bin. 3.x matches the kube-
+  # prometheus-stack version we deploy in overlays — keeps parser semantics
+  # identical between CI and runtime.
+  # `entrypoint: [""]` overrides the default `prometheus` binary so
+  # GitLab's script wrapper (which expects /bin/sh) runs normally. Without
+  # this, `script:` lines are appended to `prometheus` and the job fails
+  # with "unexpected promtool" at the first command.
+  image:
+    name: prom/prometheus:v3.1.0
+    entrypoint: [""]
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - deploy/kubernetes/base/observability-prom/**
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - deploy/kubernetes/base/observability-prom/**
+    - when: never
+  before_script: []
+  script:
+    # The rule file has `kind: PrometheusRule` + `spec.groups`. promtool
+    # expects a plain Prometheus rule file (no kube CR wrapper), so we
+    # strip the metadata + `spec:` line and de-indent `groups:` once.
+    # Tested locally: `SUCCESS: 13 rules found`. `yq` would be cleaner
+    # but the prom image doesn't ship it; sed keeps the job dep-free.
+    - cd deploy/kubernetes/base/observability-prom
+    - sed -n '/^spec:/,$ p' mirador-alerts.yaml | sed '1d;s/^  //' > /tmp/rules.yaml
+    - head -5 /tmp/rules.yaml
+    - /bin/promtool check rules /tmp/rules.yaml
+
+# ── openapi-lint — Spectral rules against the generated OpenAPI spec ────────
+# Compiles the app, boots it briefly, fetches /v3/api-docs (springdoc),
+# then runs Spectral with our ruleset (.spectral.yaml). Catches
+# operationId-not-unique, missing descriptions, unused schemas — issues
+# that SonarCloud + PMD cannot see because they operate on the Java
+# source, not on the produced API contract.
+openapi-lint:
+  stage: lint
+  image: node:22-alpine
+  tags:
+    - macbook-local
+  # Shield removed 2026-04-21 after:
+  #   1. ADR-0037 Path B (OpenApiCustomizer bean) cleared the 2
+  #      `oas3-valid-{schema,media}-example` errors (24 → 0).
+  #   2. Removing the `.name(securitySchemeName)` setter on the HTTP
+  #      `bearerAuth` SecurityScheme cleared the last `oas3-schema`
+  #      "unevaluated properties: name" error (1 → 0).
+  # The 6 remaining warnings (`operation-description`, `operation-tag-defined`,
+  # `no-script-tags-in-markdown`) do not fail `--fail-severity error` and
+  # are tracked separately in TASKS.md as code-cleanup follow-ups.
+  # If a future change re-introduces a Spectral error, the MR goes red —
+  # which is the whole point. To re-shield temporarily during a planned
+  # springdoc upgrade window, add `allow_failure: true` here with a
+  # dated TODO comment per CLAUDE.md → "Pipelines stay green".
+  # Postgres sidecar — Spring Boot's Flyway auto-config will fail-fast on
+  # a missing DB before OpenAPI routes come up, so we need a real DB on
+  # localhost:5432. GitLab spawns this container on the same network.
+  # Credentials match the application.yml defaults (DB_USER/DB_PASSWORD).
+  services:
+    - name: postgres:17-alpine
+      alias: postgres
+      variables:
+        POSTGRES_DB: customer-service
+        POSTGRES_USER: demo
+        POSTGRES_PASSWORD: demo
+  variables:
+    # With `services:`, the DB is reachable via the alias, not localhost.
+    # Spring's application.yml defaults use DB_HOST=localhost; override here.
+    DB_HOST: postgres
+    DB_PORT: "5432"
+    DB_NAME: customer-service
+    DB_USER: demo
+    DB_PASSWORD: demo
+    # Redis / Kafka aren't reached during a plain `/v3/api-docs` request, but
+    # Spring's actuator health indicators may probe them at startup. Disable
+    # the probes that would block the app from becoming ready without those
+    # services. See `observability/*HealthIndicator` classes for what's gated.
+    SPRING_DATA_REDIS_REPOSITORIES_ENABLED: "false"
+    # FF_NETWORK_PER_BUILD puts the job container and its `services:` on a
+    # per-job user-defined Docker network, which is the only way `alias`
+    # DNS resolution works on our socket-mounted macbook-local runner.
+    # Without it, service linking silently lands on the default bridge and
+    # `UnknownHostException: postgres` kills Flyway before openapi export.
+    FF_NETWORK_PER_BUILD: "true"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - changes:
+        - "**/*.java"
+        - ".spectral.yaml"
+        - "pom.xml"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  needs: []
+  before_script:
+    - apk add --no-cache bash curl openjdk25-jre-headless maven
+  script:
+    # Start the app with the special 'openapi-export' profile (auto-exit
+    # after writing the spec). Alternative: boot + curl + kill — more fragile.
+    # We use Spring's standalone openapi endpoint: boot briefly, fetch, kill.
+    - mvn -q -DskipTests package -Dmaven.javadoc.skip=true
+    - |
+      # Boot the app in the background, wait up to 5 min for it to serve,
+      # then fetch /v3/api-docs and kill. Pipeline #610 measured a 310 s
+      # wall-time of the 180-iter loop due to curl's TCP connect timeout
+      # (~2 s per iteration instead of the expected 1 s) — the app was
+      # still mid-startup when the loop gave up.
+      #
+      # Two fixes applied:
+      #   1. --max-time 2 on curl → each iteration is capped at 2 s total
+      #      (TCP connect + response read), not dominated by kernel-level
+      #      connection-refused fast-path vs slow-path variance.
+      #   2. Loop bumped 180 → 300 iterations (5 min). Happy-path unchanged
+      #      (exits on first success); only the worst-case ceiling widens.
+      #   3. Progress log every 30 s so the trace shows the loop progress
+      #      instead of a silent 5-min gap before "Failed to fetch".
+      # Disable JVM agents that do outbound-network calls — they turn
+      # "no local endpoint listening" into a retry-storm that drowns
+      # the /v3/api-docs wait window. In pipeline #612 the JVM spent
+      # 8 minutes retrying Pyroscope @ :4040 and OTLP @ :4318 before
+      # Tomcat bound. None of those sidecars exist in the openapi-lint
+      # job (Postgres-only services:), so unsetting is correct.
+      export MANAGEMENT_TRACING_ENABLED=false
+      export MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED=false
+      export PYROSCOPE_ENABLED=false
+      nohup java -jar target/mirador-*.jar > /tmp/app.log 2>&1 &
+      APP_PID=$!
+      # 600 iterations × 1 s sleep = up to 10 min. SB4 + JDK 25 under
+      # runner contention measured 8-9 min in #612 (still hadn't bound
+      # Tomcat at loop expiry). Happy-path unchanged (break on first
+      # success); only the worst-case ceiling widens.
+      for i in $(seq 1 600); do
+        curl -sSf --max-time 2 http://localhost:8080/v3/api-docs > /tmp/openapi.json 2>/dev/null && break
+        [ $((i % 30)) -eq 0 ] && echo "…still waiting for /v3/api-docs (t+${i}s)"
+        sleep 1
+      done
+      kill "$APP_PID" 2>/dev/null || true
+      test -s /tmp/openapi.json || { echo "Failed to fetch /v3/api-docs"; cat /tmp/app.log | tail -120; exit 1; }
+    # Run Spectral with our ruleset. --fail-severity error = block only on errors.
+    # Pin the CLI version — floating `latest` silently renamed/removed rules
+    # (e.g. `operation-4xx-response` gone in 6.15 broke pipeline #474).
+    #
+    # Two output formats in one invocation (Spectral supports `-f X -f Y`):
+    #   - `stylish` to stdout for the CI log readability
+    #   - `sarif` to a file so SonarCloud can ingest the warnings as
+    #     "External Issues" via `sonar.sarifReportPaths` (see pom.xml).
+    #     This makes Spectral findings visible alongside Java/PMD/SpotBugs
+    #     issues on https://sonarcloud.io/project/issues without needing
+    #     a separate Sonar plugin.
+    - npx --yes @stoplight/spectral-cli@6.15.1 lint /tmp/openapi.json
+        --ruleset .spectral.yaml
+        --fail-severity error
+        -f stylish
+        -f sarif --output.sarif /tmp/spectral-report.sarif
+    # Copy the SARIF into the workspace so the artifact/sonar-pickup
+    # works (default workspace = $CI_PROJECT_DIR; /tmp doesn't survive
+    # the artifact upload step).
+    - cp /tmp/spectral-report.sarif "$CI_PROJECT_DIR/spectral-report.sarif"
+  artifacts:
+    when: always
+    paths:
+      - /tmp/openapi.json
+      - spectral-report.sarif
+    expire_in: 1 week
+  # (Previously had a second `allow_failure: true` here; removed 2026-04-21
+  # alongside the top-of-job shield — see comment block above for the
+  # cleared-errors history. Keep the warnings list for future cleanup:
+  # `operation-description` missing on /customers/{id}.get, /scheduled/jobs.get,
+  # /customers/summary.get; `operation-tag-defined` on /scheduled/jobs.get;
+  # 2× `no-script-tags-in-markdown` on /demo/security/xss-*.)
+
+# ── stage: test ───────────────────────────────────────────────────────────────
+
+# Unit tests only — *ITest classes excluded (they need Docker / Testcontainers).
+# JaCoCo is instrumented here via prepare-agent; the resulting jacoco.exec is
+# passed as an artifact to the integration stage so both exec files can be merged
+# for a combined unit + integration coverage report.
+renovate-lint:
+  stage: lint
+  image: node:22-alpine
+  tags:
+    - macbook-local
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - changes: [renovate.json]
+  script:
+    # renovate-config-validator is bundled in the renovate npm package.
+    # --strict: fail on warnings too.
+    - npx --yes --package renovate renovate-config-validator --strict renovate.json
+
+# ── release-please — automatic CHANGELOG + semver tags on main ────────────────
+#
+# release-please (Google's tool) reads Conventional Commits since the last tag,
+# computes the next version (semver: feat → minor, fix/perf → patch, ! → major),
+# writes CHANGELOG.md, and opens a release MR. When that MR merges, it creates
+# a Git tag (vX.Y.Z) and a GitLab Release.
+#
+# Runs only on `main` — feature commits on `dev` are picked up when `dev` is
+# merged into `main` (via our auto-merge flow on green pipelines).
+#
+# Requires RELEASE_PLEASE_TOKEN (masked CI var) — a personal access token with
+# `api` + `write_repository` scopes so release-please can push the release MR
+# and tag. Job is a no-op until that token is provisioned.
+hadolint:
+  stage: lint
+  image:
+    name: hadolint/hadolint:v2.12.0-debian
+    entrypoint: [""]
+  tags:
+    - macbook-local
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - changes: [Dockerfile]
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    # --failure-threshold error: fail only on errors, not on warnings.
+    # Matches the lefthook pre-commit policy.
+    - hadolint --failure-threshold error Dockerfile
+
+# ── SBOM generation (syft) — CycloneDX format ─────────────────────────────────
+# Produces a Software Bill of Materials for the built image, listing every
+# OS package + Java library with version + license. Required by an
+# increasing number of enterprise compliance frameworks (NTIA, EU CRA).
+#
+# Output: bom.cdx.json (CycloneDX 1.5 format, machine-readable).
+# Attached as a GitLab artifact + can be pushed as an OCI referrer
+# alongside the image so `cosign download sbom` retrieves it anywhere
+# the image is available.
