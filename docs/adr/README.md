@@ -131,6 +131,7 @@ monotonic across supersessions.
 | 0044 | Accepted | [Hexagonal considered, feature-slicing retained (with ports-and-adapters lite on outbound events)](0044-hexagonal-considered-feature-slicing-retained.md) |
 | 0047 | Accepted | [Auth0 consent screen stays for social logins (Google OAuth2)](0047-auth0-consent-for-social-logins.md) |
 | 0048 | Accepted | [Mirador alert rules evaluate in Prometheus but don't route via Alertmanager](0048-prometheus-alert-rules-evaluate-but-dont-route.md) |
+| 0049 | Accepted | [CI shields (`allow_failure: true`) require a dated exit ticket](0049-ci-shields-with-dated-exit-tickets.md) |
 <!-- ADR-INDEX:END -->
 
 ## Hierarchical index (by theme)
