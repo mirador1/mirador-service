@@ -95,6 +95,25 @@ extracts build-info/git/api/deps/metrics/sonar/pipeline/branches/runtime
 into `com.mirador.observability.quality.providers`. Brings the endpoint
 under ~250 lines (true thin aggregator).
 
+**Started 2026-04-22**:
+
+- ✅ `BuildInfoSectionProvider` — reads META-INF/build-info.properties.
+- ✅ `ApiSectionProvider` — walks RequestMappingHandlerMapping.
+- Endpoint 1218 → 1179 LOC (−39).
+
+**Remaining 7 providers** (priority order — smallest self-contained first):
+
+- `GitSectionProvider` (+ `fetchGitRemoteUrl` helper, needs `GIT_BIN` static)
+- `RuntimeSectionProvider` (+ `buildJarLayersSection`, needs Environment + StartupTimeTracker)
+- `PipelineSectionProvider` (GitLab API call, needs HttpClient + @Value config)
+- `BranchesSectionProvider` (git for-each-ref, needs GIT_BIN)
+- `LicensesSectionProvider` (reads THIRD-PARTY.txt)
+- `SonarSectionProvider` (SonarCloud REST call, needs @Value config)
+- `MetricsSectionProvider` (walks Micrometer registry)
+- `DependenciesSectionProvider` (+ `parseDependencyAnalysis`, reads pom.xml + dependency-tree.txt)
+
+Target: endpoint ≈ 250 LOC (true thin aggregator).
+
 ---
 
 ## 🚦 Phase C — flip enforcement (~30 min, post-Phase-B)
