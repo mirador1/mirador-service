@@ -81,12 +81,36 @@ Same pattern as B-2. Files: validate, test, build, e2e, quality, security.
 
 10+ panels (coverage, SpotBugs, Pitest, OWASP, PMD, Checkstyle, Sonar,
 test results, …) → 1 child component per panel + parent template ~150 lines.
-Largest UI refactor; touch only when fresh.
+Largest UI refactor; touch only when fresh. **Pattern**: 1 panel = 1 file
+(see ~/.claude/CLAUDE.md → "File length hygiene" rule #6).
 
 ### B-6 — `dashboard.component` (.ts 1022 + .scss 1258) → 1 widget/file (~4 h)
 
 Split by widget: ArchitectureMap, HealthProbes, ErrorTimeline, BundleTreemap,
-CodeQualitySummary, DockerControls, etc.
+CodeQualitySummary, DockerControls, etc. **Pattern confirmed 2026-04-22** — 1
+widget = 1 file (see `~/.claude/CLAUDE.md` → "File length hygiene" rule #6
++ UI `CLAUDE.md` → "1 widget / 1 panel = 1 file").
+
+### B-7 — seconde passe: 10 fichiers additionnels (~12 h)
+
+Scan 2026-04-22 identifie 10 offenders ≥ 700 LOC hors Phase B-1..6 :
+
+| # | Fichier | LOC | Pattern |
+|---|---|---|---|
+| 1 | `ui/quality.component.scss`    | 1206 | 1 panel SCSS/file (pair avec B-5) |
+| 2 | `ui/customers.component.ts`    |  904 | 1 tab/file (list, CRUD, import/export, bio, todos, enrich) |
+| 3 | `ui/customers.component.scss`  |  820 | pair avec ↑ |
+| 4 | `ui/security.component.scss`   |  828 | 1 demo/file |
+| 5 | `ui/about.component.scss`      |  813 | section-scoped SCSS |
+| 6 | `ui/quality.component.ts`      |  806 | presque thin après B-5 children |
+| 7 | `svc/CustomerController.java`  |  782 | `CustomerReadController` + `CustomerWriteController` + `CustomerExportController` |
+| 8 | `svc/run.sh`                   |  763 | 29 cases → `bin/run/cases/<case>.sh` + thin dispatcher (1 case = 1 file) |
+| 9 | `ui/diagnostic.component.ts`   |  711 | panels inside — 1 diag/file |
+| 10 | `ui/settings.component.scss`  |  688 | just under 700 — watch for drift |
+
+Ordre proposé (gain/risque ↑): **B-7-8 run.sh (fastest, biggest relative gain),
+B-7-7 CustomerController, B-7-5/4/3/2 SCSS batches, B-7-1/6 quality component
+parts after B-5, B-7-9 diagnostic**.
 
 ### B-1b (follow-up) — non-parser sections of QualityReportEndpoint
 
