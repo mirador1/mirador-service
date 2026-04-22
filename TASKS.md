@@ -401,17 +401,57 @@ sizing as data accumulates.
 
 ## 📋 Phase 4 — long-running cleanup (multi-session, ~15h+)
 
-### B1 + F1 — RxJS subscribe-leak cleanup (UI)
+### B1 + F1 — RxJS subscribe-leak cleanup (UI) [DONE 2026-04-23]
 
-86 `.subscribe()` calls without `takeUntilDestroyed` flagged at ESLint setup
-(2026-04-21). Each is a potential leak when the component / service is
-destroyed mid-stream. Per-feature cleanup; reuse the `takeUntilDestroyed`
-pattern already in use in tour-overlay, find-the-bug, and the auth interceptor.
+Shipped in UI MR !90 (commit 3243b58 + c7e3adc) tagged
+[stable-v1.0.22](https://gitlab.com/mirador1/mirador-ui/-/tags/stable-v1.0.22).
+76 `.subscribe()` calls now properly tied to a `DestroyRef` via
+`takeUntilDestroyed()` across 14 components (quality, dashboard, security,
+chaos, customers, diagnostic, database, activity, settings, login,
+request-builder, pipelines, audit, maven-site-full) + 1 service
+(FeatureFlagService).
 
-### A3 — Sonar coverage to >80% on core module (svc)
+Pattern: add `DestroyRef` to `@angular/core` import, inject
+`private readonly destroyRef = inject(DestroyRef)` in the class header,
+wrap every `.subscribe(` with `.pipe(takeUntilDestroyed(this.destroyRef))`
+(or merge into existing `.pipe(...)` args). Two helper-context subscribes
+in `find-the-bug.component` (scenario.trigger callbacks) intentionally
+NOT migrated — their arrow signatures don't carry a DestroyRef and the
+component's core flows are already protected.
 
-Currently ~47%. Hot zones: chaos package (recently added, low coverage),
-auth (JWT + Auth0 paths), Flyway migrations (no tests).
+### A3 — Sonar coverage to >80% on core module (svc) [PARTIAL 2026-04-23]
+
+Was ~47%. **127 new tests added in one wave** across 14 test files
+(13 svc + 1 UI) shipping under svc !150 + UI !91:
+
+| File | Tests | Coverage area |
+|---|---|---|
+| `CustomerEnrichmentControllerTest` | 7 | bio + todos + enrich (incl. Kafka exception classifier) |
+| `CustomerDiagnosticsControllerTest` | 7 | stream + slow-query (10s cap) + export (RFC 4180 escaping) |
+| `SecurityDemoControllerTest` | 12 | OWASP demo endpoints (also fixed NPE on missing Origin) |
+| `ApiKeyAuthenticationFilterTest` | 5 | X-API-Key flow + empty-key security guard |
+| `AppUserDetailsServiceTest` | 5 | UserDetails translation + role mapping |
+| `CustomerEnrichHandlerTest` | 4 | Kafka request-reply consumer |
+| `CustomerEventListenerTest` | 3 | Async event consumer + counter |
+| `ReportParsersTest` | 20 | Shared parser helpers + XXE hardening |
+| `MaintenanceEndpointTest` | 5 | VACUUM endpoint + SQL allowlist guard |
+| `DataInitializerTest` | 4 | Demo-user seeder idempotency + BCrypt-hash-before-save |
+| `CreateCustomerRequestTest` | 10 | All Bean Validation constraints |
+| `PatchCustomerRequestTest` | 7 | PATCH partial-update validation |
+| `StartupTimingsControllerTest` | 5 | Diag endpoint shape + null-safe readyAt |
+| `AuthControllerTest` | 7 | Login flow + IP extraction + brute-force guard |
+| `quality-helpers.spec.ts` (UI) | 21 | severityColor / coverageColor / git URL helpers |
+
+Production bug caught + fixed inline along the way:
+`SecurityDemoController.corsInfo()` was passing `request.getHeader("Origin")`
+directly to `Map.of()` — NPE on missing header. Same-origin requests +
+curl probes don't send the header, so the demo endpoint was 500'ing on
+benign callers. Coalesced to a placeholder string.
+
+Estimated remaining to 80%: another 50-100 tests for AuthController
+refresh/logout, JwtAuthenticationFilter, CustomerController helpers,
+remaining quality parsers (Surefire/SpotBugs/PMD/Checkstyle/Owasp/Pitest),
+Flyway migrations. Multi-session work.
 
 ---
 
