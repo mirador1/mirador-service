@@ -132,6 +132,39 @@ the shield lives there".
   same "deliberately documented limitation" framing for alert routing
 - `~/.claude/CLAUDE.md` → "Pipelines stay green"
 - Current shields with tickets (post-2026-04-21):
-  - `test:k8s-apply` + `test:k8s-apply-prom` (Revisit 2026-05-21)
+  - ~~`test:k8s-apply` + `test:k8s-apply-prom` (Revisit 2026-05-21)~~ — **retired 2026-04-22** (see log below)
   - `.compat-job` template, `semgrep`, `native-image-build` (manual-only
     intent, retroactive tickets pending)
+
+## Shield-retirement log
+
+First validation of the "dated exit ticket → real retirement" flow.
+
+### 2026-04-22 — test:k8s-apply + test:k8s-apply-prom (commit `314012f`)
+
+**Original ticket** (commit 3dcb2d0 + d54c5e9, 2026-04-21):
+
+> Pipelines #610 + #612 showed Docker Desktop VM OOM (7.6 GB cap) during
+> kind control-plane + chaos-mesh + kube-prom-stack CRD install. Two
+> exit paths: (1) raise Docker Desktop VM ≥ 12 GB, (2) move jobs off
+> macbook-local. Revisit: 2026-05-21.
+
+**Exit taken**: Path 1. User raised Docker Desktop VM to **16 GB** (2 GB
+above the stated minimum for headroom during multi-compose sessions).
+
+**Validation performed**:
+- `docker system info` → Total Memory: 15.6 GiB, CPUs: 10 ✅
+- Shield-retirement commit [314012f](../commit/314012f) itself made via
+  git commit — also served as the first SSH-signed commit under the
+  parallel S2 signed-commits hardening (same session).
+
+**Outcome**:
+- Both `allow_failure: true` removed from `.gitlab-ci.yml`
+- `resource_group: k8s-kind-cluster` + `retry: when: runner_system_failure`
+  kept as belt-and-suspenders (harmless if OOM never recurs).
+- Lead time ticket → retirement: ~18 hours. Well under the 1-month
+  revisit date (2026-05-21). Exit pattern works.
+
+**Regression plan**: if OOM re-emerges in a future pipeline, re-shield
+with a FRESH dated ticket (not reuse the old one). Same pattern — this
+section serves as the precedent.
