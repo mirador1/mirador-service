@@ -1,12 +1,7 @@
 package com.mirador.customer;
 
-import com.mirador.integration.TodoItem;
 import com.mirador.observability.AuditEventDto;
 import com.mirador.observability.AuditService;
-import com.mirador.messaging.CustomerEnrichReply;
-import com.mirador.messaging.CustomerEnrichRequest;
-import com.mirador.integration.BioService;
-import com.mirador.integration.TodoService;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -21,12 +16,8 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.apache.kafka.clients.producer.ProducerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.kafka.requestreply.KafkaReplyTimeoutException;
-import org.springframework.kafka.requestreply.ReplyingKafkaTemplate;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
@@ -48,7 +39,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
-import java.util.concurrent.ExecutionException;
 import java.util.function.Supplier;
 
 /**
@@ -105,24 +95,18 @@ public class CustomerController {
     private final AuditService auditService;  // used for GET /{id}/audit — customer-scoped audit trail
     // ObservationRegistry is the Micrometer entry point for creating spans/traces
     private final ObservationRegistry observationRegistry;
-    // Typed template for Pattern 2 (synchronous Kafka request-reply)
-    private final ReplyingKafkaTemplate<String, CustomerEnrichRequest, CustomerEnrichReply> replyingKafkaTemplate;
-    private final TodoService todoService;
-    private final BioService bioService;
-    // SseEmitterRegistry no longer injected here — moved to
-    // CustomerDiagnosticsController (Phase B-7-7, 2026-04-22) along with
-    // GET /stream that was its only consumer in this controller.
-    // Injected from application.yml: app.kafka.topics.customer-request
-    private final String customerRequestTopic;
-    // Injected from application.yml: app.kafka.enrich-timeout-seconds
-    private final long enrichTimeoutSeconds;
+    // SseEmitterRegistry / ReplyingKafkaTemplate / TodoService / BioService /
+    // customerRequestTopic / enrichTimeoutSeconds removed — moved to siblings:
+    //   - SseEmitterRegistry → CustomerDiagnosticsController (Phase B-7-7, 2026-04-22)
+    //   - todoService/bioService/Kafka reply template + 2 @Value props →
+    //     CustomerEnrichmentController (Phase B-7-7 follow-through, 2026-04-22)
 
     // ─── Micrometer metrics (registered at startup, not per-request) ──────────
     private final Counter customerCreatedCounter;   // total customer creations
     private final Timer customerCreateTimer;        // latency histogram for POST /customers
     private final Timer customerFindAllTimer;       // latency histogram for GET /customers
     private final Timer customerAggregateTimer;     // latency histogram for GET /customers/aggregate
-    private final Timer customerEnrichTimer;        // latency histogram for GET /customers/{id}/enrich
+    // customerEnrichTimer registered by CustomerEnrichmentController (where /enrich lives).
 
     /**
      * Constructor injection (preferred over field injection for testability and immutability).
@@ -131,32 +115,17 @@ public class CustomerController {
      * {@code publishPercentileHistogram()} enables server-side histogram buckets so that
      * Prometheus can compute accurate percentiles without client-side approximation.
      */
-    // S107: 11 constructor params — this is the composition-root of the customer
-    // feature slice (service, buffer, Kafka reply template, resilience-wrapped
-    // downstream clients, Micrometer). Grouping them into a "dependencies"
-    // DTO would just move the same parameters behind an extra indirection.
-    @SuppressWarnings("java:S107")
     public CustomerController(CustomerService service,
                               RecentCustomerBuffer recentCustomerBuffer,
                               AggregationService aggregationService,
                               AuditService auditService,
                               ObservationRegistry observationRegistry,
-                              ReplyingKafkaTemplate<String, CustomerEnrichRequest, CustomerEnrichReply> replyingKafkaTemplate,
-                              TodoService todoService,
-                              BioService bioService,
-                              @Value("${app.kafka.topics.customer-request}") String customerRequestTopic,
-                              @Value("${app.kafka.enrich-timeout-seconds}") long enrichTimeoutSeconds,
                               MeterRegistry meterRegistry) {
         this.service = service;
         this.recentCustomerBuffer = recentCustomerBuffer;
         this.aggregationService = aggregationService;
         this.auditService = auditService;
         this.observationRegistry = observationRegistry;
-        this.replyingKafkaTemplate = replyingKafkaTemplate;
-        this.todoService = todoService;
-        this.bioService = bioService;
-        this.customerRequestTopic = customerRequestTopic;
-        this.enrichTimeoutSeconds = enrichTimeoutSeconds;
         this.customerCreatedCounter = Counter.builder("customer.created.count")
                 .description("Number of customers created")
                 .register(meterRegistry);
@@ -170,10 +139,6 @@ public class CustomerController {
                 .register(meterRegistry);
         this.customerAggregateTimer = Timer.builder("customer.aggregate.duration")
                 .description("Duration of aggregate endpoint")
-                .publishPercentileHistogram()
-                .register(meterRegistry);
-        this.customerEnrichTimer = Timer.builder("customer.enrich.duration")
-                .description("Duration of Kafka request-reply enrich endpoint")
                 .publishPercentileHistogram()
                 .register(meterRegistry);
     }
@@ -433,147 +398,12 @@ public class CustomerController {
                 () -> customerAggregateTimer.record(aggregationService::aggregate));
     }
 
-    /**
-     * Generates a professional bio for the customer using a local LLM (Ollama).
-     *
-     * <p>Spring AI {@code ChatClient} abstracts the LLM provider — swapping to OpenAI or
-     * another model requires only a configuration change. The LLM call is synchronous and
-     * blocking, so response time depends on model and hardware (~1–5 s on a local machine).
-     */
-    @Operation(summary = "Generate AI bio (Ollama LLM)",
-            description = "Calls the local Ollama LLM (llama3.2) via Spring AI to generate a professional bio for the customer. "
-                    + "Protected by a Resilience4j **circuit breaker** + **retry** — returns 503 when the circuit is open. "
-                    + "Response time: 1–10 s depending on model and hardware.")
-    @ApiResponse(responseCode = "200", description = "Bio generated — `{\"bio\": \"...\"}` ")
-    @ApiResponse(responseCode = "404", description = "Customer not found", content = @Content)
-    @ApiResponse(responseCode = "503", description = "Ollama unavailable or circuit breaker open", content = @Content)
-    @GetMapping("/{id}/bio")
-    public java.util.Map<String, String> generateBio(
-            @Parameter(description = "Customer ID", example = "3") @PathVariable Long id) {
-        CustomerDto customer = service.findById(id)
-                .orElseThrow(() -> new NoSuchElementException(ERR_NOT_FOUND + id));
-        return java.util.Map.of("bio", bioService.generateBio(customer));
-    }
+    // ─── Bio / Todos / Enrich endpoints moved to CustomerEnrichmentController
+    //     (Phase B-7-7 follow-through, 2026-04-22). They share an
+    //     "external-system enrichment" theme (LLM, HTTP API, Kafka) that
+    //     warrants its own resilience-focused controller separate from the
+    //     CRUD/reporting endpoints kept here.
 
-    /**
-     * Fetches todos from the external JSONPlaceholder API for a given customer.
-     *
-     * <p>The call goes through {@link TodoService} which is decorated with:
-     * <ul>
-     *   <li>{@code @CircuitBreaker} — opens after configurable failure rate, preventing
-     *       cascading failures if JSONPlaceholder is down.</li>
-     *   <li>{@code @Retry} — retries up to N times with backoff before giving up.</li>
-     *   <li>Fallback — returns an empty list when the circuit is open or all retries fail,
-     *       ensuring graceful degradation rather than an error response.</li>
-     * </ul>
-     */
-    @Operation(summary = "Get todos from JSONPlaceholder (external API)",
-            description = "Fetches todos for the customer from the external JSONPlaceholder API (https://jsonplaceholder.typicode.com). "
-                    + "Decorated with Resilience4j **circuit breaker** + **retry** + fallback (empty list). "
-                    + "Demonstrates graceful degradation — never returns 5xx even if the external API is down.")
-    @ApiResponse(responseCode = "200", description = "List of todos (may be empty if circuit is open or API is down)")
-    @ApiResponse(responseCode = "404", description = "Customer not found", content = @Content)
-    @GetMapping("/{id}/todos")
-    public List<TodoItem> getTodos(
-            @Parameter(description = "Customer ID", example = "3") @PathVariable Long id) {
-        service.findById(id)
-                .orElseThrow(() -> new NoSuchElementException(ERR_NOT_FOUND + id));
-        return todoService.getTodos(id);
-    }
-
-    /**
-     * Enriches a customer with a computed {@code displayName} using synchronous Kafka request-reply
-     * (Pattern 2).
-     *
-     * <p>Flow:
-     * <ol>
-     *   <li>A {@link CustomerEnrichRequest} is published to {@code customer.request} via
-     *       {@code ReplyingKafkaTemplate}. A {@code KafkaReplyHeaders.REPLY_TOPIC} header is
-     *       automatically added by the template, instructing the consumer where to send the reply.</li>
-     *   <li>The call blocks on {@code .get()} until the reply arrives on {@code customer.reply},
-     *       or until {@code enrichTimeoutSeconds} elapses.</li>
-     *   <li>On timeout, {@code KafkaReplyTimeoutException} is wrapped in an
-     *       {@code IllegalStateException} whose cause is a {@code TimeoutException}, which is then
-     *       caught in {@link ApiExceptionHandler} and returned as HTTP 504.</li>
-     * </ol>
-     *
-     * <p>This pattern is demonstrated to show that Kafka can be used for synchronous
-     * interactions, not just asynchronous fire-and-forget messaging.
-     */
-    @Operation(summary = "Enrich customer via Kafka request-reply",
-            description = "Sends a `CustomerEnrichRequest` to the `customer.request` Kafka topic and **blocks** until the consumer "
-                    + "replies on `customer.reply` with a computed `displayName`. "
-                    + "Demonstrates synchronous Kafka request-reply (not just fire-and-forget). "
-                    + "Returns `504 Gateway Timeout` if no reply arrives within the configured timeout.")
-    @ApiResponse(responseCode = "200", description = "Enriched customer with displayName")
-    @ApiResponse(responseCode = "404", description = "Customer not found", content = @Content)
-    @ApiResponse(responseCode = "504", description = "Kafka consumer did not reply within the timeout", content = @Content)
-    @GetMapping("/{id}/enrich")
-    public EnrichedCustomerDto enrich(
-            @Parameter(description = "Customer ID", example = "3") @PathVariable Long id) {
-        return observe("customer.enrich", "/customers/{id}/enrich",
-                () -> customerEnrichTimer.record(() -> {
-                    CustomerDto customer = service.findById(id)
-                            .orElseThrow(() -> new NoSuchElementException(ERR_NOT_FOUND + id));
-
-                    // Build the Kafka record with the customer ID as the message key (partitioning)
-                    var producerRecord = new ProducerRecord<>(customerRequestTopic,
-                            String.valueOf(id),
-                            new CustomerEnrichRequest(customer.id(), customer.name(), customer.email()));
-
-                    try {
-                        CustomerEnrichReply reply = replyingKafkaTemplate
-                                .sendAndReceive(producerRecord, java.time.Duration.ofSeconds(enrichTimeoutSeconds))
-                                .get()  // blocks the current thread until reply or timeout
-                                .value();
-                        log.info("kafka_enrich_reply id={} displayName={}", id, reply.displayName());
-                        return new EnrichedCustomerDto(reply.id(), reply.name(), reply.email(), reply.displayName());
-                    } catch (InterruptedException e) {
-                        // Usually fires when the HTTP request was cancelled mid-flight
-                        // (browser closed tab, SSE proxy hang-up). Log at warn — not a
-                        // server fault but worth tracking under load.
-                        log.warn("kafka_enrich_interrupted id={} timeoutSec={}", id, enrichTimeoutSeconds);
-                        Thread.currentThread().interrupt();
-                        throw new IllegalStateException("Interrupted waiting for enrich reply", e);
-                    } catch (ExecutionException e) {
-                        // Delegate cause-classification + logging to the helper below
-                        // to keep `enrich()` under Sonar's cognitive-complexity budget
-                        // (java:S3776, was 18 — threshold 15).
-                        throw classifyEnrichExecutionException(id, e);
-                    }
-                }));
-    }
-
-    /**
-     * Classifies a Kafka {@link ExecutionException} surfaced from the request-reply blocking call
-     * and returns the {@link IllegalStateException} the API should propagate. Split out of
-     * {@link #enrich(Long)} purely to keep that method under Sonar's cognitive-complexity budget
-     * (rule {@code java:S3776}); the behaviour is identical to the previous inline branch.
-     *
-     * <p>Two shapes matter:</p>
-     * <ol>
-     *   <li>{@link KafkaReplyTimeoutException} — re-wrapped with a
-     *       {@link java.util.concurrent.TimeoutException} cause so {@code ApiExceptionHandler}
-     *       returns HTTP 504.</li>
-     *   <li>Anything else — logged with the cause's class + message (so the root cause is
-     *       searchable in Loki) and re-wrapped as a generic enrich failure.</li>
-     * </ol>
-     */
-    private IllegalStateException classifyEnrichExecutionException(Long id, ExecutionException e) {
-        Throwable cause = e.getCause();
-        if (cause instanceof KafkaReplyTimeoutException) {
-            // Warn, not error — the client-facing 504 is the right behaviour under broker
-            // slowness. Upgrade to error only if this fires repeatedly (downstream consumer dead?).
-            log.warn("kafka_enrich_timeout id={} timeoutSec={} topic={}",
-                    id, enrichTimeoutSeconds, customerRequestTopic);
-            return new IllegalStateException("kafka-timeout",
-                    new java.util.concurrent.TimeoutException("Kafka reply timed out for id=" + id));
-        }
-        String causeType = cause != null ? cause.getClass().getSimpleName() : "null";
-        String causeMsg = cause != null ? cause.getMessage() : "null";
-        log.error("kafka_enrich_failed id={} causeType={} causeMsg={}", id, causeType, causeMsg);
-        return new IllegalStateException("Enrich failed for id=" + id, cause);
-    }
 
     // ─── SSE stream / slow-query / CSV export moved to CustomerDiagnosticsController
     //     (Phase B-7-7, 2026-04-22). They share a "stream / one-shot unbounded
