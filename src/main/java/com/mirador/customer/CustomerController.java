@@ -18,7 +18,6 @@ import io.swagger.v3.oas.annotations.headers.Header;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -43,16 +42,9 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import org.springframework.data.domain.PageRequest;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
-import java.io.OutputStreamWriter;
-import java.io.PrintWriter;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -117,7 +109,9 @@ public class CustomerController {
     private final ReplyingKafkaTemplate<String, CustomerEnrichRequest, CustomerEnrichReply> replyingKafkaTemplate;
     private final TodoService todoService;
     private final BioService bioService;
-    private final SseEmitterRegistry sseEmitterRegistry;
+    // SseEmitterRegistry no longer injected here — moved to
+    // CustomerDiagnosticsController (Phase B-7-7, 2026-04-22) along with
+    // GET /stream that was its only consumer in this controller.
     // Injected from application.yml: app.kafka.topics.customer-request
     private final String customerRequestTopic;
     // Injected from application.yml: app.kafka.enrich-timeout-seconds
@@ -137,7 +131,7 @@ public class CustomerController {
      * {@code publishPercentileHistogram()} enables server-side histogram buckets so that
      * Prometheus can compute accurate percentiles without client-side approximation.
      */
-    // S107: 12 constructor params — this is the composition-root of the customer
+    // S107: 11 constructor params — this is the composition-root of the customer
     // feature slice (service, buffer, Kafka reply template, resilience-wrapped
     // downstream clients, Micrometer). Grouping them into a "dependencies"
     // DTO would just move the same parameters behind an extra indirection.
@@ -150,7 +144,6 @@ public class CustomerController {
                               ReplyingKafkaTemplate<String, CustomerEnrichRequest, CustomerEnrichReply> replyingKafkaTemplate,
                               TodoService todoService,
                               BioService bioService,
-                              SseEmitterRegistry sseEmitterRegistry,
                               @Value("${app.kafka.topics.customer-request}") String customerRequestTopic,
                               @Value("${app.kafka.enrich-timeout-seconds}") long enrichTimeoutSeconds,
                               MeterRegistry meterRegistry) {
@@ -162,7 +155,6 @@ public class CustomerController {
         this.replyingKafkaTemplate = replyingKafkaTemplate;
         this.todoService = todoService;
         this.bioService = bioService;
-        this.sseEmitterRegistry = sseEmitterRegistry;
         this.customerRequestTopic = customerRequestTopic;
         this.enrichTimeoutSeconds = enrichTimeoutSeconds;
         this.customerCreatedCounter = Counter.builder("customer.created.count")
@@ -583,27 +575,11 @@ public class CustomerController {
         return new IllegalStateException("Enrich failed for id=" + id, cause);
     }
 
-    // ─── SSE stream ─────────────────────────────────────────────────────────
-
-    /**
-     * Server-Sent Events stream that pushes newly created customers in real time.
-     *
-     * <p>Each new customer creation triggers a {@code customer} event containing
-     * the {@link CustomerDto} JSON payload. A {@code ping} event is sent every 30 s
-     * by {@link SseEmitterRegistry} to keep the connection alive.
-     *
-     * <p>Requires authentication (any authenticated user).
-     */
-    @Operation(summary = "Server-Sent Events stream",
-            description = "Opens an SSE connection that pushes `customer` events (JSON) whenever a new customer is created. "
-                    + "A `ping` event is sent every 30 s to keep the connection alive. "
-                    + "**No authentication required** — `EventSource` cannot send custom headers, so this endpoint is `permitAll`.")
-    @ApiResponse(responseCode = "200", description = "SSE stream — content-type: text/event-stream")
-    @SecurityRequirements
-    @GetMapping(value = "/stream", produces = org.springframework.http.MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter stream() {
-        return sseEmitterRegistry.register();
-    }
+    // ─── SSE stream / slow-query / CSV export moved to CustomerDiagnosticsController
+    //     (Phase B-7-7, 2026-04-22). They share a "stream / one-shot unbounded
+    //     payload / synthetic latency" theme distinct from the CRUD/reporting
+    //     endpoints kept here, and they don't use the observe() Observation
+    //     helper — clean SRP split that shrinks this file by ~100 LOC.
 
     // ─── Cursor-based pagination ────────────────────────────────────────────
 
@@ -649,59 +625,6 @@ public class CustomerController {
     public BatchImportResult batchCreate(@Valid @RequestBody List<CreateCustomerRequest> requests) {
         return observe("customer.batch-import", "/customers/batch",
                 () -> service.batchCreate(requests));
-    }
-
-    // ─── Slow query simulation ────────────────────────────────────────────
-
-    /**
-     * Simulates a slow database query using PostgreSQL {@code pg_sleep()}.
-     *
-     * <p>Useful for observability demos: the long-running DB span is clearly visible
-     * in Grafana Tempo traces, and the latency spike appears in Grafana dashboards.
-     *
-     * @param seconds duration of the simulated slow query (capped at 10s)
-     */
-    @Operation(summary = "Simulate a slow database query",
-            description = "Runs `SELECT pg_sleep(N)` to inject artificial latency. "
-                    + "The resulting DB span is visible in distributed traces (Grafana Tempo). "
-                    + "Max 10 seconds.")
-    @ApiResponse(responseCode = "200", description = "Query completed — returns `{status, duration}`")
-    @GetMapping("/slow-query")
-    public java.util.Map<String, String> slowQuery(
-            @Parameter(description = "Sleep duration in seconds (capped at 10)", example = "2")
-            @RequestParam(defaultValue = "2") double seconds) {
-        double capped = Math.min(seconds, 10);
-        service.simulateSlowQuery(capped);
-        return java.util.Map.of("status", "completed", "duration", capped + "s");
-    }
-
-    // ─── CSV export ─────────────────────────────────────────────────────────
-
-    @Operation(summary = "Export all customers as CSV",
-            description = "Streams all customers directly to the response output stream using `StreamingResponseBody` — "
-                    + "avoids loading the entire result set into memory. "
-                    + "Returns `Content-Disposition: attachment; filename=customers.csv`.")
-    @ApiResponse(responseCode = "200", description = "CSV file stream",
-            content = @Content(mediaType = "text/csv"))
-    @GetMapping("/export")
-    public ResponseEntity<StreamingResponseBody> exportCsv() {
-        StreamingResponseBody body = outputStream -> {
-            var writer = new PrintWriter(new OutputStreamWriter(outputStream, StandardCharsets.UTF_8));
-            writer.println("id,name,email,created_at");
-            for (Customer c : service.findAllForExport()) {
-                writer.printf("%d,\"%s\",\"%s\",%s%n",
-                        c.getId(),
-                        c.getName().replace("\"", "\"\""),
-                        c.getEmail().replace("\"", "\"\""),
-                        c.getCreatedAt());
-            }
-            writer.flush();
-        };
-
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=customers.csv")
-                .contentType(MediaType.parseMediaType("text/csv"))
-                .body(body);
     }
 
     // ─── Helpers ────────────────────────────────────────────────────────────
