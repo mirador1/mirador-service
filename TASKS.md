@@ -9,6 +9,12 @@ adding/starting/finishing a task. Delete when empty (per CLAUDE.md).
 
 Last meaningful checkpoints:
 
+- **`stable-v1.0.17`** (2026-04-22) — Phase B-7-7 + B-7-8 (svc)
+  - `run.sh` 763 → 46 LOC dispatcher + 31 `bin/run/<case>.sh`
+    sub-scripts + 2 alias symlinks (`check → test`, `ci → verify`)
+  - `CustomerDiagnosticsController` extracted (3 endpoints:
+    `/stream`, `/slow-query`, `/export`); `CustomerController`
+    shrinks 782 → 705 LOC
 - **`stable-v1.0.16`** (2026-04-22) — Phase B-2 CI modularisation (svc)
   - `.gitlab-ci.yml` 2609 → 173 LOC + 9 includes under `.gitlab-ci/`
   - Dead duplicate `hadolint:` (floating `:latest` tag) removed
@@ -131,7 +137,29 @@ security.yml (237), quality.yml (98), deploy.yml (143),
 release.yml (48). `.install:` hidden job stays in the parent because
 10+ jobs depend on it via `extends:` across includes.
 
-### B-5 — `quality.component.html` 1742 → `QualityPanel*` children (~4 h)
+### B-5 — `quality.component.html` 1708 → 298 + 9 children [DONE 2026-04-22]
+
+Shipped in UI MR !80 (commits 6b8d573 + b9be2d0 + 16d59d2 + bba2474 +
+68876dc + 9ebe237 + ceec449 + 3c4af18). Parent shrinks 1708 → 298 LOC
+(-82%). Every `@if (selectedTab() === 'xxx')` block moved to a
+standalone `<app-qt-xxx>` child:
+
+- app-qt-pipeline (41) — ADR-0052 external-link card
+- app-qt-branches (56) — git branches table
+- app-qt-runtime (71) — JVM uptime + JAR layers
+- app-qt-analysis (95) — SpotBugs
+- app-qt-security (124) — OWASP CVEs
+- app-qt-build (210) — build info + PMD + Checkstyle
+- app-qt-tests (259) — Surefire + JaCoCo
+- app-qt-overview (279) — at-a-glance cards + tabSelected output
+- app-qt-mutation (514) — PITEST + git + api + deps + licenses + metrics
+
+Plus `quality-helpers.ts` (84 LOC) with pure functions shared by all
+tabs. `quality.component.ts` also shrinks 806 → 764 LOC after orphan
+helper cleanup. Bug fix: `styleUrl: '../quality.component.scss'` added
+to each child (view encapsulation scoping).
+
+**Legacy plan below kept for reference**:
 
 10+ panels (coverage, SpotBugs, Pitest, OWASP, PMD, Checkstyle, Sonar,
 test results, …) → 1 child component per panel + parent template ~150 lines.
@@ -254,10 +282,10 @@ total → flip `failOnViolation=true` in the same MR and fix as we go.
 If > 20 → create a suppressions baseline and decide per-rule what's
 worth fixing before flipping.
 
-Blockers right now: B-5 (quality.component.html) and B-6 (dashboard)
-still carry > 1500 LOC which WILL trigger the FileLength rule →
-flipping before those land = immediate red MR. Sequence: B-5 → B-6 →
-Phase C inventory → Phase C flip. Then tag the next stable-vX.Y.Z.
+Blocker: B-6 (dashboard.component .ts 1022 + .scss 1258) still
+carries > 1000 LOC. Flipping Phase C before B-6 lands would trigger
+FileLength rule → immediate red MR. Sequence: B-6 → Phase C inventory
+→ Phase C flip. Then tag the next stable-vX.Y.Z. [B-5 done 2026-04-22]
 
 ---
 
