@@ -96,8 +96,9 @@ Plus doc updates in follow-up commits:
 
 ## Open follow-ups
 
-- `TF_STATE_BUCKET` provisioning — deferred; cost-bearing action needs
-  explicit user confirmation.
+- `TF_STATE_BUCKET` provisioning — deferred; creating a GCS bucket
+  costs money (Google Cloud Storage ~€0.02/GB/month + egress fees),
+  explicit user confirmation needed before provisioning.
 - `.compat-job` + `semgrep` + `native-image-build` shields — retroactive
   tickets pending (manual-only intent; no urgency).
 

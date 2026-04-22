@@ -11,7 +11,7 @@ OOMs (observed in pipelines #610, #612 — see `docs/audit/quality-thresholds-20
 Both jobs are currently shielded with `allow_failure: true` (commits
 3dcb2d0, d54c5e9; see [ADR-0049](../adr/0049-ci-shields-with-dated-exit-tickets.md))
 with **Revisit: 2026-05-21**. Raising the VM cap is the cleanest exit
-path — alternative is moving the jobs to a SaaS amd64 runner (cost-bearing).
+path — alternative is moving the jobs to a SaaS amd64 runner (cost-bearing — SaaS runners are billed per-minute vs the macbook-local runner which is free).
 
 ## Recommended approach — Docker Desktop UI (2 minutes)
 

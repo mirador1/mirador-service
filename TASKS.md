@@ -116,8 +116,8 @@ on both repos' main branches via `gh api -X POST
 Currently scoped-out via rules.if (was failing 5/5 with "bucket doesn't
 exist"). Either provision the GCS bucket via `terraform/bootstrap.sh` and
 remove the scope-out, OR drop terraform-plan from the pipeline entirely.
-Cost-bearing action — confirm with user before provisioning a new GCS
-bucket.
+Provisioning a new GCS bucket costs money (Cloud Storage ~€0.02/GB/month
++ egress fees). Confirm with user before running the terraform apply.
 
 ---
 
