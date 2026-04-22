@@ -1,5 +1,6 @@
 package com.mirador.observability;
 
+import com.mirador.observability.port.AuditEventPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -25,9 +26,15 @@ import java.util.List;
  *   <li>TOKEN_REFRESH</li>
  *   <li>API_KEY_AUTH</li>
  * </ul>
+ *
+ * <p><b>Port:</b> this class implements {@link AuditEventPort} for cross-feature
+ * write callers ({@code CustomerService}, {@code AuthController}). Intra-feature
+ * read callers ({@code AuditController}) keep depending on this concrete class
+ * until a read-side port is justified. Extracted 2026-04-22 as proposal #3 of
+ * the Clean Code audit.
  */
 @Service
-public class AuditService {
+public class AuditService implements AuditEventPort {
 
     private static final Logger log = LoggerFactory.getLogger(AuditService.class);
 
@@ -51,7 +58,8 @@ public class AuditService {
      *           Hibernate session management overhead on every audit write.
      */
     @Async
-    public void log(String userName, String action, String detail, String ipAddress) {
+    @Override
+    public void recordEvent(String userName, String action, String detail, String ipAddress) {
         log.info("audit_event user={} action={} detail={} ip={}", userName, action, detail, ipAddress);
         try {
             jdbc.update("INSERT INTO audit_event (user_name, action, detail, ip_address) VALUES (?, ?, ?, ?)",

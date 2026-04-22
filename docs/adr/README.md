@@ -21,7 +21,7 @@ navigational, no file layout change.
 
 ## Status snapshot
 
-- **Accepted**: 42
+- **Accepted**: 43
 - **Superseded**: 3 (ADR-0003 → ADR-0013; ADR-0008 → ADR-0044; ADR-0037 → Path B embedded)
 - **Deprecated**: 0
 
@@ -133,6 +133,7 @@ monotonic across supersessions.
 | 0048 | Accepted | [Mirador alert rules evaluate in Prometheus but don't route via Alertmanager](0048-prometheus-alert-rules-evaluate-but-dont-route.md) |
 | 0049 | Accepted | [CI shields (`allow_failure: true`) require a dated exit ticket](0049-ci-shields-with-dated-exit-tickets.md) |
 | 0050 | Proposed | [CI YAML modularisation — `ci/includes/*.yml` per concern](0050-ci-yaml-modularisation-plan.md) |
+| 0051 | Accepted | [JPA entity = domain model (accept the coupling)](0051-jpa-entity-as-domain-model.md) |
 <!-- ADR-INDEX:END -->
 
 ## Hierarchical index (by theme)
@@ -156,6 +157,7 @@ authoritative.
 - [ADR-0020](0020-api-versioning-via-header.md) — API versioning via `X-API-Version`
 - [ADR-0026](0026-spring-boot-scope-limit-no-third-party-tool-awareness.md) — Spring Boot scope limit
 - [ADR-0044](0044-hexagonal-considered-feature-slicing-retained.md) — Hexagonal considered, feature-slicing retained (+ `customer/port/` sub-package convention)
+- [ADR-0051](0051-jpa-entity-as-domain-model.md) — JPA entity = domain model (accept the coupling, document the invariants)
 
 ### 📨 Messaging & data
 

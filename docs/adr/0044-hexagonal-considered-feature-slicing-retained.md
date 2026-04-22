@@ -6,7 +6,10 @@
 - Supersedes: [ADR-0008](0008-feature-sliced-packages.md) (feature-sliced
   package layout — 2026-04-16)
 - Related: ADR-0011 (minimal `@Transactional` surface — analogous
-  "keep framework coupling shallow" heuristic)
+  "keep framework coupling shallow" heuristic);
+  [ADR-0051](0051-jpa-entity-as-domain-model.md) (intra-feature
+  corollary: JPA entity = domain model inside one feature slice;
+  cross-feature still uses DTOs via `port/`)
 
 ## Context
 

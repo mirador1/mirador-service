@@ -57,6 +57,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.concurrent.ExecutionException;
+import java.util.function.Supplier;
 
 /**
  * REST controller exposing the customer management API.
@@ -217,9 +218,8 @@ public class CustomerController {
             @Parameter(description = "Optional search term — filters on name and email (case-insensitive, partial match)")
             @RequestParam(required = false) String search) {
         Pageable capped = capPageSize(pageable);
-        Page<CustomerDto> page = Observation.createNotStarted("customer.find-all", observationRegistry)
-                .lowCardinalityKeyValue(KEY_ENDPOINT, PATH_CUSTOMERS)
-                .observe(() -> customerFindAllTimer.record(() ->
+        Page<CustomerDto> page = observe("customer.find-all", PATH_CUSTOMERS,
+                () -> customerFindAllTimer.record(() ->
                         search != null ? service.search(search, capped) : service.findAll(capped)));
         return withLinkHeaders(page, Map.of(
                 "Deprecation", "true",
@@ -254,11 +254,10 @@ public class CustomerController {
             @Parameter(description = "Optional search term — filters on name and email")
             @RequestParam(required = false) String search) {
         Pageable capped = capPageSize(pageable);
-        Page<CustomerDtoV2> page = Observation.createNotStarted("customer.find-all-v2", observationRegistry)
-                .lowCardinalityKeyValue(KEY_ENDPOINT, PATH_CUSTOMERS)
-                .lowCardinalityKeyValue("version", "2")
-                .observe(() -> customerFindAllTimer.record(() ->
-                        search != null ? service.searchV2(search, capped) : service.findAllV2(capped)));
+        Page<CustomerDtoV2> page = observe("customer.find-all-v2", PATH_CUSTOMERS,
+                () -> customerFindAllTimer.record(() ->
+                        search != null ? service.searchV2(search, capped) : service.findAllV2(capped)),
+                "version", "2");
         return withLinkHeaders(page);
     }
 
@@ -287,9 +286,8 @@ public class CustomerController {
     @PreAuthorize("hasAnyRole('ADMIN', 'USER')")   // ROLE_ADMIN or ROLE_USER — ROLE_READER is denied
     @PostMapping
     public CustomerDto create(@Valid @RequestBody CreateCustomerRequest request) {
-        return Observation.createNotStarted("customer.create", observationRegistry)
-                .lowCardinalityKeyValue(KEY_ENDPOINT, PATH_CUSTOMERS)
-                .observe(() -> customerCreateTimer.record(() -> {
+        return observe("customer.create", PATH_CUSTOMERS,
+                () -> customerCreateTimer.record(() -> {
                     CustomerDto result = service.create(request);
                     customerCreatedCounter.increment();
                     return result;
@@ -400,9 +398,8 @@ public class CustomerController {
     @ApiResponse(responseCode = "200", description = "Up to 10 most recently created customers")
     @GetMapping("/recent")
     public List<CustomerDto> getRecent() {
-        return Observation.createNotStarted("customer.recent", observationRegistry)
-                .lowCardinalityKeyValue(KEY_ENDPOINT, "/customers/recent")
-                .observe(recentCustomerBuffer::getRecent);
+        return observe("customer.recent", "/customers/recent",
+                recentCustomerBuffer::getRecent);
     }
 
     /**
@@ -440,9 +437,8 @@ public class CustomerController {
     @ApiResponse(responseCode = "200", description = "Aggregated result with count, average name length, and virtual-thread timing")
     @GetMapping("/aggregate")
     public AggregationService.AggregatedResponse aggregate() {
-        return Observation.createNotStarted("customer.aggregate", observationRegistry)
-                .lowCardinalityKeyValue(KEY_ENDPOINT, "/customers/aggregate")
-                .observe(() -> customerAggregateTimer.record(aggregationService::aggregate));
+        return observe("customer.aggregate", "/customers/aggregate",
+                () -> customerAggregateTimer.record(aggregationService::aggregate));
     }
 
     /**
@@ -523,9 +519,8 @@ public class CustomerController {
     @GetMapping("/{id}/enrich")
     public EnrichedCustomerDto enrich(
             @Parameter(description = "Customer ID", example = "3") @PathVariable Long id) {
-        return Observation.createNotStarted("customer.enrich", observationRegistry)
-                .lowCardinalityKeyValue(KEY_ENDPOINT, "/customers/{id}/enrich")
-                .observe(() -> customerEnrichTimer.record(() -> {
+        return observe("customer.enrich", "/customers/{id}/enrich",
+                () -> customerEnrichTimer.record(() -> {
                     CustomerDto customer = service.findById(id)
                             .orElseThrow(() -> new NoSuchElementException(ERR_NOT_FOUND + id));
 
@@ -652,9 +647,8 @@ public class CustomerController {
     @PreAuthorize("hasAnyRole('ADMIN', 'USER')")   // ROLE_ADMIN or ROLE_USER — ROLE_READER is denied
     @PostMapping("/batch")
     public BatchImportResult batchCreate(@Valid @RequestBody List<CreateCustomerRequest> requests) {
-        return Observation.createNotStarted("customer.batch-import", observationRegistry)
-                .lowCardinalityKeyValue(KEY_ENDPOINT, "/customers/batch")
-                .observe(() -> service.batchCreate(requests));
+        return observe("customer.batch-import", "/customers/batch",
+                () -> service.batchCreate(requests));
     }
 
     // ─── Slow query simulation ────────────────────────────────────────────
@@ -713,6 +707,46 @@ public class CustomerController {
     // ─── Helpers ────────────────────────────────────────────────────────────
 
     private static final int MAX_PAGE_SIZE = 100;
+
+    /**
+     * Wraps a {@link Supplier} in a Micrometer {@link Observation} with the
+     * standard {@code endpoint} low-cardinality tag. Collapses the 4-line
+     * Observation boilerplate into a single call at every use site.
+     *
+     * <p><b>Why a helper?</b> Every measured endpoint in this controller wants
+     * the same shape: {@code createNotStarted(name) → lowCardinalityKeyValue
+     * (endpoint, path) → observe(body)}. Writing it inline leaks 4 identical
+     * lines into each method, pushing the actual handler logic below the fold.
+     * The helper puts the logic first. Flagged as proposal #1 in the
+     * 2026-04-22 Clean Code audit.
+     *
+     * <p><b>Optional extra tags</b>: pass alternating {@code (key, value)}
+     * pairs via varargs for endpoints that need more than the base
+     * {@code endpoint} tag (e.g., API v2 needs {@code version=2}). Odd-length
+     * varargs throw {@link IllegalArgumentException} at call time — a bug
+     * in the caller, not a runtime condition to recover from.
+     *
+     * @param name       observation name — becomes the Prometheus metric name
+     *                   prefix (e.g. {@code customer.find-all.active})
+     * @param endpoint   path tag value — groups metrics by endpoint in Grafana
+     * @param body       the actual work to measure; its return value bubbles up
+     * @param extraTags  optional alternating low-cardinality {@code (k, v, k, v)}
+     *                   pairs appended to the observation
+     * @param <T>        return type of {@code body}
+     * @return whatever {@code body.get()} returns, timed + traced
+     */
+    private <T> T observe(String name, String endpoint, Supplier<T> body, String... extraTags) {
+        if (extraTags.length % 2 != 0) {
+            throw new IllegalArgumentException(
+                    "observe() extraTags must be alternating key/value pairs; got " + extraTags.length);
+        }
+        Observation obs = Observation.createNotStarted(name, observationRegistry)
+                .lowCardinalityKeyValue(KEY_ENDPOINT, endpoint);
+        for (int i = 0; i < extraTags.length; i += 2) {
+            obs = obs.lowCardinalityKeyValue(extraTags[i], extraTags[i + 1]);
+        }
+        return obs.observe(body);
+    }
 
     /** Caps the page size to prevent unbounded queries (e.g., ?size=999999). */
     private Pageable capPageSize(Pageable pageable) {

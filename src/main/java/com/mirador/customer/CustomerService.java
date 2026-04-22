@@ -1,7 +1,7 @@
 package com.mirador.customer;
 
 import com.mirador.customer.port.CustomerEventPort;
-import com.mirador.observability.AuditService;
+import com.mirador.observability.port.AuditEventPort;
 import io.micrometer.observation.annotation.Observed;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
@@ -58,20 +58,26 @@ public class CustomerService {
     private final CustomerEventPort eventPort;
     private final SimpMessagingTemplate websocket;
     private final SseEmitterRegistry sseEmitterRegistry;
-    private final AuditService auditService;
+    /**
+     * Write-side audit port — domain interface, zero framework coupling.
+     * Resolved by Spring to {@code AuditService} in production; unit tests
+     * substitute an in-memory fake. See ADR-0044 +
+     * {@link com.mirador.observability.port.AuditEventPort}.
+     */
+    private final AuditEventPort auditEventPort;
 
     public CustomerService(CustomerRepository repository,
                            RecentCustomerBuffer recentCustomerBuffer,
                            CustomerEventPort eventPort,
                            SimpMessagingTemplate websocket,
                            SseEmitterRegistry sseEmitterRegistry,
-                           AuditService auditService) {
+                           AuditEventPort auditEventPort) {
         this.repository = repository;
         this.recentCustomerBuffer = recentCustomerBuffer;
         this.eventPort = eventPort;
         this.websocket = websocket;
         this.sseEmitterRegistry = sseEmitterRegistry;
-        this.auditService = auditService;
+        this.auditEventPort = auditEventPort;
     }
 
     /** Returns a page of customers (v1 shape — no createdAt). */
@@ -137,7 +143,7 @@ public class CustomerService {
         // SSE — push to all active Server-Sent Events subscribers
         sseEmitterRegistry.send("customer", dto);
 
-        auditService.log(currentUser(), "CUSTOMER_CREATED",
+        auditEventPort.recordEvent(currentUser(), "CUSTOMER_CREATED",
                 "id=" + saved.getId() + LOG_NAME_FRAG + saved.getName(), null);
         org.slf4j.MDC.remove(MDC_CUSTOMER_ID);  // clean up MDC to avoid leaking across requests
         return dto;
@@ -159,7 +165,7 @@ public class CustomerService {
         Customer saved = repository.save(customer);
         // Enrich MDC so the audit log line carries the customer ID for log correlation
         org.slf4j.MDC.put(MDC_CUSTOMER_ID, String.valueOf(saved.getId()));
-        auditService.log(currentUser(), "CUSTOMER_UPDATED",
+        auditEventPort.recordEvent(currentUser(), "CUSTOMER_UPDATED",
                 "id=" + id + LOG_NAME_FRAG + saved.getName(), null);
         org.slf4j.MDC.remove(MDC_CUSTOMER_ID);  // clean up MDC to avoid leaking across requests
         return toDto(saved);
@@ -180,7 +186,7 @@ public class CustomerService {
         // Enrich MDC before deleteById so the audit log line carries the customer ID
         org.slf4j.MDC.put(MDC_CUSTOMER_ID, String.valueOf(id));
         repository.deleteById(id);
-        auditService.log(currentUser(), "CUSTOMER_DELETED", "id=" + id, null);
+        auditEventPort.recordEvent(currentUser(), "CUSTOMER_DELETED", "id=" + id, null);
         org.slf4j.MDC.remove(MDC_CUSTOMER_ID);  // clean up MDC to avoid leaking across requests
     }
 
@@ -202,7 +208,7 @@ public class CustomerService {
             customer.setEmail(request.email());
         }
         Customer saved = repository.save(customer);
-        auditService.log(currentUser(), "CUSTOMER_PATCHED",
+        auditEventPort.recordEvent(currentUser(), "CUSTOMER_PATCHED",
                 "id=" + id + LOG_NAME_FRAG + saved.getName(), null);
         return toDto(saved);
     }

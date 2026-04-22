@@ -34,20 +34,20 @@ class AuditServiceTest {
     }
 
     @Test
-    void log_insertsRowAndLogsEvent() {
-        service.log("alice", "LOGIN_SUCCESS", "via JWT", "1.2.3.4");
+    void recordEvent_insertsRowAndLogsEvent() {
+        service.recordEvent("alice", "LOGIN_SUCCESS", "via JWT", "1.2.3.4");
         // @Async makes this synchronous in unit tests (no async executor configured)
         verify(jdbc).update(anyString(), eq("alice"), eq("LOGIN_SUCCESS"), eq("via JWT"), eq("1.2.3.4"));
     }
 
     @Test
-    void log_dbFailure_doesNotThrow() {
+    void recordEvent_dbFailure_doesNotThrow() {
         when(jdbc.update(anyString(), any(), any(), any(), any()))
                 .thenThrow(new RuntimeException("DB is down"));
         // Assertion: the call must complete without throwing — audit failures must never
         // bubble up to the caller (audit is fire-and-forget, not a business invariant).
         org.junit.jupiter.api.Assertions.assertDoesNotThrow(
-                () -> service.log("bob", "CUSTOMER_CREATED", "id=1", "5.5.5.5"));
+                () -> service.recordEvent("bob", "CUSTOMER_CREATED", "id=1", "5.5.5.5"));
     }
 
     @Test

@@ -215,10 +215,13 @@ model, with a mapper translating between them.
 - Cost: changing the DB schema = changing the domain; JPA lazy-loading
   quirks surface in the domain
 
-**Proposal**: write ADR-0051 "Accept JPA entity = domain model" to
-document the deliberate deviation. Currently it's an unspoken choice
-inheriting from Spring Boot convention — future maintainers might see
-the `@Entity` on `Customer.java` as a bug waiting to be fixed.
+**Proposal**: ~~write ADR-0051 "Accept JPA entity = domain model" to
+document the deliberate deviation.~~ **Done 2026-04-22** — shipped as
+[ADR-0051](../adr/0051-jpa-entity-as-domain-model.md). The
+`@Entity` on `Customer.java` is no longer an unspoken choice;
+future maintainers see the ADR + its 3 invariants (no cross-feature
+entity leak, no entity as REST return type, no `@OneToMany` lazy
+collections without a DTO mapper).
 
 ### 🟢 DTOs well-separated from entities
 
@@ -278,15 +281,28 @@ Nothing new at this priority.
    commit or during Phase B-2 CI-modu session (it's a quick detour on
    the same file).
 
-2. **ADR-0051 "JPA entity = domain model"** (~45 min, doc-only) —
+2. ~~**ADR-0051 "JPA entity = domain model"** (~45 min, doc-only) —
    document the deliberate deviation so future reviewers don't file
-   it as tech debt. Cross-reference from ADR-0044 Hexagonal Lite.
+   it as tech debt. Cross-reference from ADR-0044 Hexagonal Lite.~~
+   **Done 2026-04-22** — shipped as
+   [ADR-0051](../adr/0051-jpa-entity-as-domain-model.md); ADR-0044
+   "Related" line points at it; 3 invariants documented (no
+   cross-feature leak, no REST return type, no lazy collections).
 
 ### 🟡 Could do (medium priority)
 
-3. **`AuditEventPort`** (~1 h) — extract port for cross-feature auditing.
+3. ~~**`AuditEventPort`** (~1 h) — extract port for cross-feature auditing.
    Mirrors the `CustomerEventPort` pattern from ADR-0044. Unit tests
-   stop needing Spring context.
+   stop needing Spring context.~~ **Done 2026-04-22** — shipped under
+   `com.mirador.observability.port.AuditEventPort`. `AuditService
+   implements AuditEventPort`; `CustomerService` + `AuthController` now
+   depend on the port (write side), read-side callers
+   (`CustomerController.findByCustomerId`, `AuditController.findAll`)
+   still depend on `AuditService` directly — a read-side port is a
+   separate justified-when decision (only 1 cross-feature consumer).
+   ArchUnit `domain_ports_must_not_depend_on_framework_packages` still
+   green. Method renamed `log` → `recordEvent` to stop clashing with
+   SLF4J `Logger log` in every caller.
 
 4. ~~**Rename `authenticateKeycloak`** (~15 min) — misleading method
    name; actually dispatches to all 3 auth modes (built-in, Keycloak,

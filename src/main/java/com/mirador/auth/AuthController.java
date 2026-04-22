@@ -1,6 +1,6 @@
 package com.mirador.auth;
 
-import com.mirador.observability.AuditService;
+import com.mirador.observability.port.AuditEventPort;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -66,18 +66,23 @@ public class AuthController {
 
     private final JwtTokenProvider jwtTokenProvider;
     private final LoginAttemptService loginAttemptService;
-    private final AuditService auditService;
+    /**
+     * Write-side audit port — domain interface, zero framework coupling.
+     * Resolved by Spring to {@code AuditService} in production. See
+     * {@link com.mirador.observability.port.AuditEventPort}.
+     */
+    private final AuditEventPort auditEventPort;
     /** Database-backed user store — replaces the previous hardcoded in-memory map. */
     private final AppUserDetailsService userDetailsService;
     /** BCrypt encoder used to verify the submitted password against the stored hash. */
     private final PasswordEncoder passwordEncoder;
 
     public AuthController(JwtTokenProvider jwtTokenProvider, LoginAttemptService loginAttemptService,
-                          AuditService auditService, AppUserDetailsService userDetailsService,
+                          AuditEventPort auditEventPort, AppUserDetailsService userDetailsService,
                           PasswordEncoder passwordEncoder) {
         this.jwtTokenProvider = jwtTokenProvider;
         this.loginAttemptService = loginAttemptService;
-        this.auditService = auditService;
+        this.auditEventPort = auditEventPort;
         this.userDetailsService = userDetailsService;
         this.passwordEncoder = passwordEncoder;
     }
@@ -108,7 +113,7 @@ public class AuthController {
 
         if (loginAttemptService.isBlocked(ip)) {
             log.warn("audit_login_blocked ip={} reason=brute_force_lockout", ip);
-            auditService.log(request.username(), "LOGIN_BLOCKED", "Brute-force lockout", ip);
+            auditEventPort.recordEvent(request.username(), "LOGIN_BLOCKED", "Brute-force lockout", ip);
             return ResponseEntity.status(429)
                     .body(Map.of(KEY_ERROR, "Too many failed attempts. Try again later.",
                                  "retryAfterMinutes", LoginAttemptService.LOCKOUT_MINUTES));
@@ -122,7 +127,7 @@ public class AuthController {
             loginAttemptService.recordFailure(ip);
             int remaining = loginAttemptService.getRemainingAttempts(ip);
             log.warn("audit_login_failed ip={} username={} remaining_attempts={}", ip, request.username(), remaining);
-            auditService.log(request.username(), "LOGIN_FAILED",
+            auditEventPort.recordEvent(request.username(), "LOGIN_FAILED",
                     "User not found, " + remaining + " attempts remaining", ip);
             return ResponseEntity.status(401)
                     .body(Map.of(KEY_ERROR, "Invalid credentials", "remainingAttempts", remaining));
@@ -132,7 +137,7 @@ public class AuthController {
             loginAttemptService.recordFailure(ip);
             int remaining = loginAttemptService.getRemainingAttempts(ip);
             log.warn("audit_login_failed ip={} username={} remaining_attempts={}", ip, request.username(), remaining);
-            auditService.log(request.username(), "LOGIN_FAILED",
+            auditEventPort.recordEvent(request.username(), "LOGIN_FAILED",
                     "Invalid credentials, " + remaining + " attempts remaining", ip);
             return ResponseEntity.status(401)
                     .body(Map.of(KEY_ERROR, "Invalid credentials",
@@ -151,7 +156,7 @@ public class AuthController {
         String accessToken = jwtTokenProvider.generateToken(request.username(), role);
         String refreshToken = jwtTokenProvider.generateRefreshToken(request.username());
         log.info("audit_login_success ip={} username={}", ip, request.username());
-        auditService.log(request.username(), "LOGIN_SUCCESS", "JWT issued", ip);
+        auditEventPort.recordEvent(request.username(), "LOGIN_SUCCESS", "JWT issued", ip);
         return ResponseEntity.ok(Map.of("accessToken", accessToken, "refreshToken", refreshToken));
     }
 
@@ -178,7 +183,7 @@ public class AuthController {
             String accessToken = jwtTokenProvider.generateToken(username, role);
             String refreshToken = jwtTokenProvider.generateRefreshToken(username);
             log.info("audit_token_refresh username={}", username);
-            auditService.log(username, "TOKEN_REFRESH", "Refresh token rotated", null);
+            auditEventPort.recordEvent(username, "TOKEN_REFRESH", "Refresh token rotated", null);
             return ResponseEntity.ok(Map.of("accessToken", accessToken, "refreshToken", refreshToken));
         } catch (IllegalArgumentException e) {
             // Log at warn — a refresh failure is not routine but not a server fault.
@@ -215,7 +220,7 @@ public class AuthController {
         }
         if (principal != null) {
             jwtTokenProvider.deleteRefreshTokensByUsername(principal.getUsername());
-            auditService.log(principal.getUsername(), "LOGOUT", "JWT blacklisted, refresh tokens deleted", null);
+            auditEventPort.recordEvent(principal.getUsername(), "LOGOUT", "JWT blacklisted, refresh tokens deleted", null);
         }
         return ResponseEntity.ok(Map.of("message", "Logged out successfully"));
     }
