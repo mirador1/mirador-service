@@ -172,3 +172,18 @@ Unleash        : http://localhost:24242
 
 Shut everything down with: bin/cluster/demo/down.sh
 EOF
+
+# 7. Optional observability stack for OpenLens / k9s metrics tabs.
+#    Prometheus + kube-state-metrics. Autopilot-compatible (no node-exporter).
+#    Skip with WITH_PROMETHEUS=false.
+if [ "${WITH_PROMETHEUS:-true}" = "true" ]; then
+  "$REPO_ROOT/bin/cluster/demo/install-observability.sh"
+fi
+
+# 8. Optional GitLab Agent for Kubernetes — registers cluster under
+#    https://gitlab.com/mirador1/mirador-service/-/clusters.
+#    Requires /tmp/gitlab-agent-mirador.token (created via API on first run).
+#    Skip with WITH_GITLAB_AGENT=false.
+if [ "${WITH_GITLAB_AGENT:-true}" = "true" ] && [ -f /tmp/gitlab-agent-mirador.token ]; then
+  "$REPO_ROOT/bin/cluster/demo/install-gitlab-agent.sh"
+fi
