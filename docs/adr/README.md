@@ -141,7 +141,7 @@ monotonic across supersessions.
 | 0051 | Accepted | [JPA entity = domain model (accept the coupling)](0051-jpa-entity-as-domain-model.md) |
 | 0052 | Accepted | [Backend stays ignorant of build/quality tools (tightens ADR-0026)](0052-backend-not-coupled-to-build-tools.md) |
 | 0053 | Accepted | [OVH Cloud as 2nd canonical Kubernetes target](0053-ovh-canonical-target.md) |
-| 0054 | Scaffolded | [Dual-export OTLP telemetry to GitLab Observability](0054-gitlab-observability-dual-export.md) |
+| 0054 | Active | [Dual-export OTLP telemetry to GitLab Observability](0054-gitlab-observability-dual-export.md) |
 | 0055 | Accepted | [Shell-based release automation (no semantic-release)](0055-shell-based-release-automation.md) |
 <!-- ADR-INDEX:END -->
 
