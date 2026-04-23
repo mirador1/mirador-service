@@ -1,0 +1,8 @@
+List of 5 third-party dependencies.
+     (Apache License 2.0) org.springframework.boot:spring-boot-starter:3.2.0 - https://projects.spring.io/spring-boot/
+     (MIT License) org.projectlombok:lombok:1.18.30 - https://projectlombok.org
+     (Apache License 2.0) com.fasterxml.jackson.core:jackson-databind:2.16.0 - https://github.com/FasterXML/jackson
+     (LGPL 2.1) org.hibernate.orm:hibernate-core:6.4.0.Final - https://hibernate.org
+     (GPL v3) com.example:restricted:1.0.0
+malformed-line-without-paren
+     (MIT License) malformed-no-coords
