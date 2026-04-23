@@ -86,10 +86,15 @@ classify() {
     refactor)            echo "♻️  Refactoring|${subj#*: }" ;;
     docs)                echo "📚 Documentation|${subj#*: }" ;;
     test)                echo "🧪 Tests|${subj#*: }" ;;
-    chore)               [ "$INCLUDE_CHORE" -eq 1 ] && echo "🔧 Chore|${subj#*: }" ;;
-    ci)                  [ "$INCLUDE_CHORE" -eq 1 ] && echo "👷 CI|${subj#*: }" ;;
-    build)               [ "$INCLUDE_CHORE" -eq 1 ] && echo "📦 Build|${subj#*: }" ;;
-    style)               [ "$INCLUDE_CHORE" -eq 1 ] && echo "💄 Style|${subj#*: }" ;;
+    # `|| true` is required : `set -e` is on, and `[ 0 -eq 1 ]` returns
+    # exit code 1, which kills `cls=$(classify ...)` callers immediately
+    # when --include-chore is off. Without the `|| true`, the script
+    # exits silently the first time it sees a chore/ci/build/style
+    # commit, producing no output (observed 2026-04-23 — fix below).
+    chore)               { [ "$INCLUDE_CHORE" -eq 1 ] && echo "🔧 Chore|${subj#*: }"; } || true ;;
+    ci)                  { [ "$INCLUDE_CHORE" -eq 1 ] && echo "👷 CI|${subj#*: }"; }    || true ;;
+    build)               { [ "$INCLUDE_CHORE" -eq 1 ] && echo "📦 Build|${subj#*: }"; } || true ;;
+    style)               { [ "$INCLUDE_CHORE" -eq 1 ] && echo "💄 Style|${subj#*: }"; } || true ;;
     *)                   echo "📌 Other|${subj}" ;;
   esac
 }
@@ -115,7 +120,11 @@ NEW_ENTRY=$(mktemp)
 
   # Second pass : emit per-section. Order matters (most important first).
   for section in "💥 Breaking" "✨ Features" "🐛 Bug fixes" "⚡ Performance" "♻️  Refactoring" "📚 Documentation" "🧪 Tests" "🔧 Chore" "👷 CI" "📦 Build" "💄 Style" "📌 Other"; do
-    matches=$(grep -F "^$section|" "$CAT_FILE" 2>/dev/null || grep "^$section|" "$CAT_FILE" 2>/dev/null || true)
+    # Plain `grep` (regex). Earlier `grep -F "^…|"` was buggy : -F treats
+    # `^` and `|` as literal characters, never matches → first attempt
+    # always failed, fell through to plain grep — but `set -e` + `$()`
+    # tripped the script before reaching the fallback. One grep, one path.
+    matches=$(grep "^$section|" "$CAT_FILE" 2>/dev/null || true)
     if [ -n "$matches" ]; then
       echo "### $section"
       echo ""
