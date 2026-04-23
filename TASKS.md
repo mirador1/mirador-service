@@ -5,6 +5,49 @@ adding/starting/finishing a task. Delete when empty (per CLAUDE.md).
 
 ---
 
+## 🌍 Phase OVH — OVH Cloud as 2nd canonical delivery target (decided 2026-04-23)
+
+**Decision** : Promote OVH to a **canonical-tier deployment target alongside GCP** (NOT a "reference module" like Scaleway/AWS/Azure). Motivation : **French sovereignty** + **HDS certification** (health-data hosting — what Scaleway lacks). Scope **complet** : TF + CI + apply + observability overlay + cost tracking + lifecycle scripts.
+
+This OVERRIDES the "OVH ≈ Scaleway, not scaffolded" position from [ADR-0036](docs/adr/0036-multi-cloud-terraform-posture.md) — that was a "reference modules only" decision; OVH joins GCP at the canonical tier with full delivery capability.
+
+### Sub-tasks (in order)
+
+- [ ] **OVH-1** ADR-0053 — Pose the decision : OVH alongside GCP, motivation souveraineté + HDS, scope complet → `docs/adr/0053-ovh-canonical-target.md`
+- [ ] **OVH-2** Amend ADR-0036 footer ("Amended by ADR-0053") to flag the elevation
+- [ ] **OVH-3** Terraform module `deploy/terraform/ovh/` — full canonical-grade module:
+  - `main.tf` — provider + `ovh_cloud_project_kube` + `ovh_cloud_project_kube_nodepool`
+  - `network.tf` — vRack + private network + node placement
+  - `variables.tf` — region (GRA9, SBG5...), application_key/secret/consumer_key, project_id
+  - `outputs.tf` — kubeconfig, cluster_id, node IPs
+  - `README.md` — cost breakdown, prerequisites (ovh-cli login flow), apply/destroy commands, runbook
+- [ ] **OVH-4** K8s overlay `deploy/kubernetes/overlays/ovh-prom/` — mirror `gke-prom/` with OVH-specific tweaks (LoadBalancer annotations, storage class, ingress controller)
+- [ ] **OVH-5** Cost audit script `bin/budget/ovh-cost-audit.sh` — query OVH `/me/order` API; integrate into `bin/budget/budget.sh`
+- [ ] **OVH-6** CI : add `terraform-plan-ovh` (auto on MR, default `terraform`) + `terraform-plan-ovh-tofu` (parallel, `TF_BIN=tofu` to prove dual-compat) + `terraform-apply-ovh` (`when: manual`) jobs in `.gitlab-ci/terraform.yml`. Per ADR-0053 tooling section : Terraform default, OpenTofu opt-in via `TF_BIN=tofu`.
+- [ ] **OVH-7** Cluster lifecycle scripts : `bin/cluster/ovh-up.sh` + `bin/cluster/ovh-down.sh` analogous to `gcp-up.sh` / `gcp-down.sh`
+- [ ] **OVH-8** README updates :
+  - `deploy/terraform/README.md` — add OVH row + tier indicator
+  - top-level `README.md` § "Multi-cloud delivery" — list OVH alongside GCP
+  - `docs/architecture/deployment.md` — describe OVH topology
+- [ ] **OVH-9** `.env.example` — add `OVH_APPLICATION_KEY` / `OVH_APPLICATION_SECRET` / `OVH_CONSUMER_KEY` / `OVH_PROJECT_ID` with comments pointing to `https://eu.api.ovh.com/createToken/`
+- [ ] **OVH-10** Smoke test : `terraform init && terraform validate` in `deploy/terraform/ovh/` — must pass before bundling
+- [ ] **OVH-11** Final MR : bundle all 10 above with self-contained description
+
+### Limitations / handoff to user
+- Apply requires OVH credentials (Mirador session has none) → user runs the first `terraform apply` themselves
+- The CI `terraform-apply-ovh` job stays `when: manual` until first credentials are wired — clear comment in YAML
+
+### Estimated effort
+- Without credentials testing : 8-10 h (TF + CI + scripts + docs)
+- Plus first-apply session with user credentials : +2-3 h
+
+### Related ADRs (read first)
+- [ADR-0030](docs/adr/0030-choose-gcp-as-the-kubernetes-target.md) — why GCP was the canonical pick
+- [ADR-0036](docs/adr/0036-multi-cloud-terraform-posture.md) — what Phase OVH amends
+- [ADR-0007](docs/adr/0007-workload-identity-federation.md) — auth pattern to mirror
+
+---
+
 ## ✅ Recently shipped — refer to git log for full history
 
 Last meaningful checkpoints:

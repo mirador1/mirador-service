@@ -1,7 +1,8 @@
 # ADR-0036: Multi-cloud Terraform posture
 
-- **Status**: Accepted
+- **Status**: Accepted (amended 2026-04-23 by [ADR-0053](0053-ovh-canonical-target.md))
 - **Date**: 2026-04-19
+- **Amended by**: [ADR-0053](0053-ovh-canonical-target.md) — promotes OVH from "not scaffolded" to canonical-tier delivery target alongside GCP, motivated by HDS certification (the regulatory axis that makes "OVH ≈ Scaleway" collapse). The reference-tier framing (AWS / Azure / Scaleway) of this ADR remains intact ; only OVH moves up to canonical.
 - **Related**: [ADR-0030](0030-choose-gcp-as-the-kubernetes-target.md),
   [ADR-0022](0022-ephemeral-demo-cluster.md),
   [ADR-0021](0021-cost-deferred-industrial-patterns.md)
