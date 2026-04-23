@@ -10,6 +10,13 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtException;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -192,5 +199,126 @@ class JwtAuthenticationFilterTest {
         // the request span — pinned because it's the load-bearing
         // observability link.
         verify(currentSpan).tag("user.name", "alice");
+    }
+
+    // ── External JWT path (Keycloak / Auth0) ──────────────────────────────────
+
+    private JwtAuthenticationFilter filterWithExternalDecoder(JwtDecoder decoder) {
+        JwtAuthenticationFilter f = new JwtAuthenticationFilter(jwt, decoder, tracer);
+        return f;
+    }
+
+    private static Jwt sampleExternalJwt(String subject, Map<String, Object> claims) {
+        return Jwt.withTokenValue("external.jwt.value")
+                .header("alg", "RS256")
+                .subject(subject)
+                .issuer("https://issuer.example.com")
+                .issuedAt(Instant.now())
+                .expiresAt(Instant.now().plusSeconds(3600))
+                .claims(c -> c.putAll(claims))
+                .build();
+    }
+
+    @Test
+    void externalJwt_invalidBuiltinFallsBackToKeycloakDecoder_strategy1() throws Exception {
+        // Strategy 1: Keycloak — roles in realm_access.roles
+        when(request.getHeader("Authorization")).thenReturn("Bearer external-token");
+        when(jwt.validateToken("external-token")).thenReturn(false); // built-in fails
+
+        JwtDecoder decoder = mock(JwtDecoder.class);
+        Jwt keycloakJwt = sampleExternalJwt("alice@example.com",
+                Map.of("realm_access", Map.of("roles", List.of("ROLE_ADMIN", "ROLE_USER"))));
+        when(decoder.decode("external-token")).thenReturn(keycloakJwt);
+
+        var f = filterWithExternalDecoder(decoder);
+        f.doFilter(request, response, chain);
+
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        assertThat(auth).isNotNull();
+        assertThat(auth.getName()).isEqualTo("alice@example.com");
+        assertThat(auth.getAuthorities()).extracting(Object::toString)
+                .containsExactlyInAnyOrder("ROLE_ADMIN", "ROLE_USER");
+    }
+
+    @Test
+    void externalJwt_auth0RolesInCustomNamespaceClaim_strategy2() throws Exception {
+        // Strategy 2: Auth0 with custom namespace claim
+        when(request.getHeader("Authorization")).thenReturn("Bearer auth0-token");
+        when(jwt.validateToken("auth0-token")).thenReturn(false);
+
+        JwtDecoder decoder = mock(JwtDecoder.class);
+        Jwt auth0Jwt = sampleExternalJwt("auth0|abc123",
+                Map.of("https://mirador-api/roles", List.of("ROLE_ADMIN")));
+        when(decoder.decode("auth0-token")).thenReturn(auth0Jwt);
+
+        filterWithExternalDecoder(decoder).doFilter(request, response, chain);
+
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        assertThat(auth).isNotNull();
+        assertThat(auth.getAuthorities()).extracting(Object::toString)
+                .containsExactly("ROLE_ADMIN");
+    }
+
+    @Test
+    void externalJwt_noRolesClaim_defaultsToRoleUser_strategy3() throws Exception {
+        // Strategy 3: Auth0 without RBAC — fallback to ROLE_USER so the
+        // tenant can authenticate even before Auth0 RBAC is provisioned.
+        // Pinned because removing this fallback would lock out new tenants.
+        when(request.getHeader("Authorization")).thenReturn("Bearer no-roles-token");
+        when(jwt.validateToken("no-roles-token")).thenReturn(false);
+
+        JwtDecoder decoder = mock(JwtDecoder.class);
+        // No realm_access, no Auth0 namespace — empty claims
+        Jwt jwtNoRoles = sampleExternalJwt("user@example.com", Map.of());
+        when(decoder.decode("no-roles-token")).thenReturn(jwtNoRoles);
+
+        filterWithExternalDecoder(decoder).doFilter(request, response, chain);
+
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        assertThat(auth).isNotNull();
+        assertThat(auth.getAuthorities()).extracting(Object::toString)
+                .containsExactly("ROLE_USER");
+    }
+
+    @Test
+    void externalJwt_invalidSignature_doesNotSetContext() throws Exception {
+        // External decoder rejects the token (bad signature, wrong issuer, etc.)
+        // → SecurityContext stays empty, request continues unauthenticated.
+        when(request.getHeader("Authorization")).thenReturn("Bearer forged-token");
+        when(jwt.validateToken("forged-token")).thenReturn(false);
+
+        JwtDecoder decoder = mock(JwtDecoder.class);
+        when(decoder.decode("forged-token"))
+                .thenThrow(new JwtException("Signature verification failed"));
+
+        filterWithExternalDecoder(decoder).doFilter(request, response, chain);
+
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+        verify(chain).doFilter(request, response);
+    }
+
+    @Test
+    void externalJwt_keycloakRolesTakePriorityOverAuth0Namespace() throws Exception {
+        // Pinned: Strategy 1 (realm_access) wins when BOTH claims are
+        // present. Order matters — without it, an Auth0 token issued via a
+        // Keycloak-bridged identity provider could end up with the wrong
+        // role set.
+        when(request.getHeader("Authorization")).thenReturn("Bearer hybrid-token");
+        when(jwt.validateToken("hybrid-token")).thenReturn(false);
+
+        JwtDecoder decoder = mock(JwtDecoder.class);
+        Jwt hybrid = sampleExternalJwt("user",
+                Map.of(
+                        "realm_access", Map.of("roles", List.of("ROLE_ADMIN")),
+                        "https://mirador-api/roles", List.of("ROLE_USER")
+                ));
+        when(decoder.decode("hybrid-token")).thenReturn(hybrid);
+
+        filterWithExternalDecoder(decoder).doFilter(request, response, chain);
+
+        // Strategy 1 wins → ROLE_ADMIN from realm_access, NOT ROLE_USER from Auth0 namespace
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        assertThat(auth.getAuthorities()).extracting(Object::toString)
+                .containsExactly("ROLE_ADMIN");
     }
 }
