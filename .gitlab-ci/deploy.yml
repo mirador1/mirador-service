@@ -81,10 +81,14 @@ terraform-plan:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   script:
+    # 2026-04-23 : removed `-var="db_password=..."` — the GCP module no
+    # longer declares `db_password` (Cloud SQL was dropped ; in-cluster
+    # postgres is the single DB now). terraform-plan failed pipeline
+    # #763 with "Value for undeclared variable" after TF_STATE_BUCKET
+    # was finally wired up. Fix = match the module's actual shape.
     - terraform plan
         -var="project_id=${TF_VAR_project_id}"
         -var="app_host=${TF_VAR_app_host}"
-        -var="db_password=${TF_VAR_db_password}"
         -out=tfplan
         -input=false
   artifacts:
