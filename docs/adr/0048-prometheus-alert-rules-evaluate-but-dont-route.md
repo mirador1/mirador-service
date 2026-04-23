@@ -1,7 +1,7 @@
 # ADR-0048: Mirador alert rules evaluate in Prometheus but don't route via Alertmanager
 
-- **Status**: Accepted
-- **Date**: 2026-04-21
+- **Status**: Amended 2026-04-23 — Alertmanager flipped ON with a null-receiver to demo the routing pipeline end-to-end. See § Amendment 2026-04-23 at bottom. Original intent (no external paging receiver) stands for production posture.
+- **Date**: 2026-04-21 (amended 2026-04-23)
 - **Deciders**: Mirador maintainers
 - **Related**: [ADR-0014](0014-single-replica-for-demo.md) (single-replica demo), [ADR-0039](0039-two-observability-deployment-modes.md) (two observability modes)
 
@@ -136,3 +136,19 @@ subdir, only referenced from prom overlays) avoids that trap.
 - [ADR-0014](0014-single-replica-for-demo.md) — originating no-Alertmanager decision
 - [ADR-0039](0039-two-observability-deployment-modes.md) — overlay split (local / local-prom / gke-prom)
 - [kube-prometheus-stack defaults](https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-prometheus-stack/values.yaml) — severity label convention + ruleSelector behaviour
+
+---
+
+## Amendment 2026-04-23 — Alertmanager ON with null-receiver (demo-tier)
+
+**Change** : `alertmanager.enabled: true` in both `gke-prom/` and `local-prom/` overlays, with a minimal `config` block that routes every firing alert to a single `'null'` receiver (accepts the payload, does nothing — equivalent of `/dev/null`).
+
+**Why** : demonstrate the full alert pipeline end-to-end (Prometheus fires → Alertmanager groups by `{alertname, namespace}` → emits on `/api/v2/alerts` for the UI to surface). Before the amendment, alerts fired in Prometheus UI but Alertmanager was off so there was no proof the project understood Alertmanager integration — a gap for portfolio review.
+
+**Why still "don't route" in intent** : the null receiver is LITERALLY a non-delivery sink. No Slack, no email, no PagerDuty, no pager. The original ADR position (no external receiver until a real SLO + on-call rotation exists) is preserved in practice ; what changed is the demonstration of the wiring itself.
+
+**Cost** : Alertmanager pod = +~50m CPU / ~50 MiB RAM (minimal). Negligible on both the €0.26/h GKE ephemeral cluster (ADR-0022) and the local-prom kind cluster.
+
+**Swapping to a real receiver** (Slack webhook, PagerDuty, email) : comment block in `values-kube-prom-stack.yaml` has the exact replacement — change the `receivers:` entry from `- name: 'null'` to e.g. `- name: 'slack-demo'` + `slack_configs: [...]`. 5-minute change, zero ADR implications.
+
+**Revisit** : still gated on "project gains real users + SLO + on-call". The null-receiver demo stays until that threshold. When it's time for real delivery, file ADR-00XX "Alertmanager receiver configuration" with the chosen integration.

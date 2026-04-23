@@ -82,8 +82,44 @@ grafana:
 # alert rules cover the basic routing the demo needs. Re-enable when moving
 # to a real production SLO (see ADR-0038 "Revisit criteria"). Same call as
 # local-prom for consistency.
+#
+# 2026-04-23 : flipped to `enabled: true` to DEMONSTRATE the full
+# alert pipeline (Prometheus fires → Alertmanager routes → sink). The
+# default receiver below is a **null sink** (logs only, no external
+# delivery) — sufficient to show that Alertmanager picks up firing
+# alerts, groups them, and emits the processed payload on the
+# /api/v2/alerts endpoint for the UI to surface. For real delivery
+# (Slack, email, PagerDuty), swap the receiver in `alertmanager.config`
+# below with a matching destination. ADR-0048's "evaluate but don't
+# route" stays the production posture ; the demo-tier flip here is
+# for visual proof of the capability.
 alertmanager:
-  enabled: false
+  enabled: true
+  # Minimal config : one route catches everything, sends to a null
+  # receiver. Alertmanager UI still shows alerts as "fired" — the
+  # routing + grouping works end-to-end even without an external
+  # delivery target. Swap the receiver below to hook a real webhook.
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      # Default route — catches every firing alert.
+      receiver: 'null'
+      group_by: ['alertname', 'namespace']
+      group_wait: 10s
+      group_interval: 5m
+      repeat_interval: 12h
+    receivers:
+      # Null receiver : accepts the alert payload but does nothing. The
+      # log line in the Alertmanager pod confirms delivery :
+      #   "msg=Notify integration=webhook receiver=null ..."
+      # To swap for real Slack delivery, replace with :
+      #   - name: 'slack-demo'
+      #     slack_configs:
+      #       - api_url: 'https://hooks.slack.com/services/XXX/YYY/ZZZ'
+      #         channel: '#mirador-alerts'
+      - name: 'null'
+    inhibit_rules: []
 
 # ── Disable shipped recording / alerting rules ──────────────────────────────
 # The chart bundles 200+ PrometheusRule objects (kube-state-metrics SLOs,

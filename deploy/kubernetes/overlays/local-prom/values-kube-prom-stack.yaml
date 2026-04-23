@@ -40,12 +40,27 @@ crds:
 grafana:
   enabled: false
 
-# ── Disable Alertmanager ─────────────────────────────────────────────────────
-# ADR-0014 (single-replica demo) accepts no Alertmanager. Grafana's built-in
-# alert rules cover the basic routing the demo needs. Re-enable when moving
-# to a real production SLO (see ADR-0038 "Revisit criteria").
+# ── Enable Alertmanager — demo mode (null receiver) ──────────────────────────
+# 2026-04-23 : flipped to enabled=true with a null-receiver to
+# demonstrate the full alert routing pipeline end-to-end. Same config
+# as gke-prom — see that file's comment block for the rationale and
+# the Slack-swap recipe (replace `null` receiver with slack_configs).
+# ADR-0048 amended : "evaluate but don't route" stays the production
+# posture intent ; demo-tier flip here is for visual proof.
 alertmanager:
-  enabled: false
+  enabled: true
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      receiver: 'null'
+      group_by: ['alertname', 'namespace']
+      group_wait: 10s
+      group_interval: 5m
+      repeat_interval: 12h
+    receivers:
+      - name: 'null'
+    inhibit_rules: []
 
 # ── Disable shipped recording / alerting rules ──────────────────────────────
 # The chart bundles 200+ PrometheusRule objects (kube-state-metrics SLOs,
