@@ -191,9 +191,15 @@ variable "k8s_version" {
 #               a side experiment — accepted overhead per ADR-0053).
 # =============================================================================
 variable "node_flavor" {
-  description = "Node flavor (B2-7 = 2 vCPU / 7 GB / €25/month)"
+  description = "Node flavor (b2-7 = 2 vCPU / 7 GB / €25/month)"
   type        = string
-  default     = "B2-7"
+  # NB : OVH flavor names are CASE-SENSITIVE. 2026-04-23 terraform apply
+  # failed with "Flavor B2-7 not found" on GRA9 ; switched to lowercase
+  # `b2-7` which matches the current OVH API response shape (verified via
+  # GET /cloud/project/{id}/flavor?region=GRA9). If B3 or newer family is
+  # needed for HDS add-ons, bump here — the resource is force-replace
+  # on flavor change so the cluster will rebuild on next apply.
+  default     = "b2-7"
 }
 
 # =============================================================================

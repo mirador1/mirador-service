@@ -154,7 +154,15 @@ resource "ovh_cloud_project_kube" "mirador" {
 
   # Attach to vRack private network — see network.tf for the gateway +
   # subnet that this cluster's nodes will live on.
-  private_network_id = ovh_cloud_project_network_private.mirador.id
+  # NB : the kube API requires the OpenStack UUID of the network, NOT the
+  # vRack-style `.id` (e.g. `pn-1310613_100`). The provider exposes it
+  # under `regions_attributes[*].openstackid`. Pipeline failed 2026-04-23
+  # with "Private network pn-1310613_100 is not a correct uuid" before
+  # this fix. See OVH provider issue github.com/ovh/terraform-provider-ovh/issues/355
+  private_network_id = one([
+    for a in ovh_cloud_project_network_private.mirador.regions_attributes :
+    a.openstackid if a.region == var.region
+  ])
 
   # Required when private_network_id is set: the gateway IP for the
   # subnet the nodes attach to. Computed in network.tf and exposed as

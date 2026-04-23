@@ -172,7 +172,20 @@ openapi-lint:
       export MANAGEMENT_TRACING_ENABLED=false
       export MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED=false
       export PYROSCOPE_ENABLED=false
-      nohup java -jar target/mirador-*.jar > /tmp/app.log 2>&1 &
+      # Debug : pipelines #745/#749/#755/#759/#761 all failed with Spring's
+      # Flyway reporting "password authentication failed for user demo"
+      # despite our psql probe confirming demo/demo works seconds before.
+      # Hardcode DB password via -D (Spring picks it up with highest
+      # precedence over env DB_PASSWORD via application.yml ${DB_PASSWORD:...}
+      # indirection) as a belt-and-braces measure to eliminate any
+      # env-var-not-inherited-by-JVM hypothesis. Echo the var too — if
+      # shell says "demo" but Spring still fails, the issue is elsewhere.
+      echo "Debug env at Spring launch : DB_USER='$DB_USER' DB_PASSWORD_IS_DEMO=$([ \"$DB_PASSWORD\" = demo ] && echo yes || echo no) DB_HOST='$DB_HOST'"
+      nohup java \
+        -Dspring.datasource.username=demo \
+        -Dspring.datasource.password=demo \
+        -Dspring.datasource.url="jdbc:postgresql://postgres:5432/customer-service" \
+        -jar target/mirador-*.jar > /tmp/app.log 2>&1 &
       APP_PID=$!
       # 600 iterations × 1 s sleep = up to 10 min. SB4 + JDK 25 under
       # runner contention measured 8-9 min in #612 (still hadn't bound
