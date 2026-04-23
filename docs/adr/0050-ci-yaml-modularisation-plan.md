@@ -1,6 +1,6 @@
 # ADR-0050: CI YAML modularisation — `ci/includes/*.yml` per concern
 
-- **Status**: Accepted (svc implemented 2026-04-22: 2619 → 173 LOC parent + 9 includes; UI pending in Phase B-4)
+- **Status**: Accepted (svc 2619 → 173 LOC + 9 includes 2026-04-22 ; UI 1086 → 144 LOC + 7 includes 2026-04-22 ; release.yml pruned to `pages` only 2026-04-23 when release-please removed — see ADR-0055)
 - **Date**: 2026-04-22
 - **Deciders**: Mirador maintainers
 - **Related**: [ADR-0041](0041-ci-hygiene-honest-green-discipline.md) (CI
