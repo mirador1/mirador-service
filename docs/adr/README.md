@@ -24,6 +24,11 @@ navigational, no file layout change.
 - **Accepted**: 44
 - **Superseded**: 3 (ADR-0003 → ADR-0013; ADR-0008 → ADR-0044; ADR-0037 → Path B embedded)
 - **Deprecated**: 0
+- **Reserved (never drafted)**: 0045, 0046 — consolidated into 0041/0042
+  before acceptance (see commit
+  [`33e31e5`](https://gitlab.com/mirador1/mirador-service/-/commit/33e31e5)).
+  The numbers are intentionally skipped in the flat index ; don't
+  re-use them for new ADRs.
 
 ### Supersession graph
 
