@@ -432,3 +432,118 @@ deploy:k3s:
       kubectl config set-context default --cluster=self-hosted --user=ci-runner
       kubectl config use-context default
     - !reference [.kubectl-apply, script]
+
+# =============================================================================
+# OVH Cloud — canonical 2nd K8s target per ADR-0053.
+#
+# Same pattern as terraform-plan / terraform-apply (GCP), with three
+# differences :
+#   1. Auth via OVH_* CI variables (long-lived API tokens — OVH has no
+#      WIF/OIDC equivalent yet). Variables MUST be marked "Protected" +
+#      "Masked" in GitLab UI to avoid leaking to job logs.
+#   2. Local backend (no remote state — see deploy/terraform/ovh/backend.tf
+#      for the migration path to OVH Object Storage).
+#   3. TWO plan jobs — one with the default `terraform` binary, one with
+#      OpenTofu via the official image — to prove the dual-tool compat
+#      promised by ADR-0053 § Tooling. If one passes and the other
+#      fails, we have a real divergence to investigate the day it ships.
+#
+# Cost reminder : when terraform-apply-ovh runs, OVH starts billing
+# ~€25/month per running B2-7 node. The default node_count_max=2 caps
+# at ~€50/month worst case. Run bin/cluster/ovh/down.sh when done.
+# =============================================================================
+
+.terraform-base-ovh:
+  stage: infra
+  before_script:
+    - cd deploy/terraform/ovh
+  rules:
+    # Skip on scheduled pipelines (would re-apply on every cron tick).
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    # Skip entirely if OVH credentials are unset — same pattern as the
+    # TF_STATE_BUCKET gate on the GCP jobs. Prevents the OVH jobs from
+    # red-squaring every pipeline view until first credentials are wired.
+    - if: '$OVH_APPLICATION_KEY == null || $OVH_APPLICATION_KEY == ""'
+      when: never
+    # Run on MR (so reviewers see the OVH plan when an OVH file is
+    # touched) and on main.
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        # Only trigger on changes to OVH files — avoids running this on
+        # every UI / unrelated MR. List intentionally narrow.
+        - deploy/terraform/ovh/**/*
+        - deploy/kubernetes/overlays/ovh-prom/**/*
+        - bin/cluster/ovh/**/*
+        - bin/budget/ovh-cost-audit.sh
+
+# Plan with the default tool (Terraform 1.9 — same as GCP module).
+terraform-plan-ovh:
+  extends: .terraform-base-ovh
+  image:
+    name: hashicorp/terraform:1.9
+    entrypoint: [""]
+  script:
+    - terraform init -input=false
+    - terraform plan
+        -var="ovh_project_id=${OVH_PROJECT_ID}"
+        -var="ovh_application_key=${OVH_APPLICATION_KEY}"
+        -var="ovh_application_secret=${OVH_APPLICATION_SECRET}"
+        -var="ovh_consumer_key=${OVH_CONSUMER_KEY}"
+        -out=tfplan
+        -input=false
+  artifacts:
+    paths:
+      - deploy/terraform/ovh/tfplan
+    expire_in: 1 day
+
+# Parallel plan with OpenTofu — proves dual-compat per ADR-0053 § Tooling.
+# If `terraform-plan-ovh` succeeds but this fails (or vice-versa), our
+# HCL has accidentally drifted to one tool's quirks. Catches the
+# divergence on day 1 instead of "the day a sovereignty reviewer tries
+# tofu apply".
+terraform-plan-ovh-tofu:
+  extends: .terraform-base-ovh
+  image:
+    name: ghcr.io/opentofu/opentofu:1.8
+    entrypoint: [""]
+  script:
+    - tofu init -input=false
+    - tofu plan
+        -var="ovh_project_id=${OVH_PROJECT_ID}"
+        -var="ovh_application_key=${OVH_APPLICATION_KEY}"
+        -var="ovh_application_secret=${OVH_APPLICATION_SECRET}"
+        -var="ovh_consumer_key=${OVH_CONSUMER_KEY}"
+        -out=tofuplan
+        -input=false
+  artifacts:
+    paths:
+      - deploy/terraform/ovh/tofuplan
+    expire_in: 1 day
+
+# Apply — manual gate. NEVER let CI auto-apply OVH infra : a rogue
+# main commit could spin up a B2-7 node and bill silently.
+terraform-apply-ovh:
+  extends: .terraform-base-ovh
+  image:
+    name: hashicorp/terraform:1.9
+    entrypoint: [""]
+  interruptible: false
+  script:
+    - terraform apply -input=false tfplan
+  needs:
+    - job: terraform-plan-ovh
+      artifacts: true
+      optional: true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: '$OVH_APPLICATION_KEY == null || $OVH_APPLICATION_KEY == ""'
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+      allow_failure: true
+  environment:
+    name: production/ovh
+    url: "$CI_PROJECT_URL/-/jobs/$CI_JOB_ID"
