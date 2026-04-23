@@ -57,36 +57,33 @@ exporters:
   # Dual-export to the GitLab group's Observability endpoint so traces/metrics/
   # logs are visible directly in GitLab's UI (no Grafana/Tempo needed locally).
   #
-  # REQUIRES user action BEFORE activating the pipelines below :
-  #   1. Enable the feature on the group at
-  #      https://gitlab.com/groups/mirador1/-/observability/setup
-  #      (free for all tiers — no Premium/Ultimate needed per 2025 GitLab pricing)
-  #   2. The UI provides the exact endpoint URL — the shape below is a
-  #      placeholder ; the real endpoint will be something like
-  #      https://observability.gitlab.com/v3/<group-id>/otlp/v1/{traces,metrics,logs}
-  #   3. Generate a group access token with scope `read_observability` +
-  #      `write_observability` at
-  #      https://gitlab.com/groups/mirador1/-/settings/access_tokens
-  #   4. Export as env var before starting the LGTM container :
-  #        export GITLAB_OBSERVABILITY_ENDPOINT="https://..."
-  #        export GITLAB_OBSERVABILITY_TOKEN="glat-..."
-  #   5. Uncomment the `gitlab` entries in `service.pipelines.*` below
+  # Enabled 2026-04-23 on mirador1 group (group-id 130289716). Beta /
+  # experimental / free during beta period per GitLab's own UI. Endpoint
+  # uses TLS HTTPS on port 14318 (OTLP over HTTP).
   #
-  # Once activated, every trace/metric/log Mirador emits lands in BOTH
-  # local LGTM (for offline review) AND GitLab's UI (for portfolio reviewers
-  # who don't want to boot a local cluster just to see the traces).
-  # otlphttp/traces-gitlab:
-  #   endpoint: ${env:GITLAB_OBSERVABILITY_ENDPOINT}/traces
-  #   headers:
-  #     Authorization: Bearer ${env:GITLAB_OBSERVABILITY_TOKEN}
-  # otlphttp/metrics-gitlab:
-  #   endpoint: ${env:GITLAB_OBSERVABILITY_ENDPOINT}/metrics
-  #   headers:
-  #     Authorization: Bearer ${env:GITLAB_OBSERVABILITY_TOKEN}
-  # otlphttp/logs-gitlab:
-  #   endpoint: ${env:GITLAB_OBSERVABILITY_ENDPOINT}/logs
-  #   headers:
-  #     Authorization: Bearer ${env:GITLAB_OBSERVABILITY_TOKEN}
+  # The group-id 130289716 is visible in the GitLab UI to any group member
+  # and in the repo via this config ; not treated as secret. Forks should
+  # either override via $GITLAB_OBSERVABILITY_ENDPOINT or remove the
+  # `otlphttp/*-gitlab` entries from `service.pipelines.*.exporters` below.
+  #
+  # No auth token needed in beta : the group-id embedded in the subdomain
+  # is the identifier. If/when GA adds token auth, add a `headers:
+  # Authorization: Bearer ${env:GITLAB_OBSERVABILITY_TOKEN}` block.
+  #
+  # The otlphttp exporter auto-appends `/v1/{traces,metrics,logs}` to the
+  # endpoint based on pipeline signal — don't include it in the URL.
+  otlphttp/traces-gitlab:
+    endpoint: ${env:GITLAB_OBSERVABILITY_ENDPOINT:-https://130289716.otel.gitlab-o11y.com:14318}
+    tls:
+      insecure: false
+  otlphttp/metrics-gitlab:
+    endpoint: ${env:GITLAB_OBSERVABILITY_ENDPOINT:-https://130289716.otel.gitlab-o11y.com:14318}
+    tls:
+      insecure: false
+  otlphttp/logs-gitlab:
+    endpoint: ${env:GITLAB_OBSERVABILITY_ENDPOINT:-https://130289716.otel.gitlab-o11y.com:14318}
+    tls:
+      insecure: false
 
 service:
   extensions: [health_check]
@@ -94,19 +91,20 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      # Activate GitLab dual-export by adding `otlphttp/traces-gitlab`
-      # (requires the user setup above). Commented out by default so the
-      # collector doesn't crash on missing env vars for users who haven't
-      # enabled GitLab Observability yet.
-      exporters: [otlphttp/traces]  # + otlphttp/traces-gitlab when enabled
+      # Dual-export : local LGTM (primary) + GitLab Observability (shared).
+      # If GITLAB_OBSERVABILITY_ENDPOINT is unset, the collector crashes on
+      # startup with "required env var missing". Users who haven't enabled
+      # GitLab Observability should either export the var OR remove the
+      # `otlphttp/traces-gitlab` entry from this list.
+      exporters: [otlphttp/traces, otlphttp/traces-gitlab]
     metrics:
       receivers: [otlp, prometheus/collector]
       processors: [batch]
-      exporters: [otlphttp/metrics]  # + otlphttp/metrics-gitlab when enabled
+      exporters: [otlphttp/metrics, otlphttp/metrics-gitlab]
     logs:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp/logs]  # + otlphttp/logs-gitlab when enabled
+      exporters: [otlphttp/logs, otlphttp/logs-gitlab]
     profiles:
       receivers: [otlp]
       exporters: [otlp/profiles]

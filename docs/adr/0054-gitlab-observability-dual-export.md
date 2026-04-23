@@ -1,6 +1,9 @@
 # ADR-0054 — Dual-export OTLP telemetry to GitLab Observability
 
-- **Status**: Scaffolded (awaiting user activation via GitLab UI)
+- **Status**: Active 2026-04-23 — mirador1 group (id 130289716) enabled
+  on GitLab Observability beta. Endpoint hardcoded as default in
+  `otelcol-override.yaml`, overridable via `$GITLAB_OBSERVABILITY_ENDPOINT`
+  for forks.
 - **Date**: 2026-04-23
 - **Related**:
   [ADR-0010](0010-otlp-push-to-collector.md) (OTLP push model),
@@ -31,18 +34,27 @@ but it has **one sharp limit for a portfolio demo** :
 - The reviewer's own cloud footprint is irrelevant — they don't want
   to pay anything to look at Mirador's telemetry.
 
-**GitLab Observability** (feature announced late 2024, GA'd 2025 free-
-tier for all GitLab.com groups per GitLab's pricing page) ships an OTLP
-ingest endpoint *inside GitLab itself*, backed by a managed Clickhouse
-cluster. Crucially :
+**GitLab Observability** (feature in public **beta** 2026, free during
+beta period per GitLab's UI banner) ships an OTLP ingest endpoint
+*inside GitLab itself*, backed by a managed Clickhouse cluster.
+Verified on activation 2026-04-23 :
 
-1. **Free on every tier** — no Premium/Ultimate gate per 2025 pricing.
-2. **Unlimited** — no retention cap, no volume cap announced.
-3. **Auth via group access token** with `read_observability` +
-   `write_observability` scopes (no separate deploy token needed).
-4. **Endpoint shape** : `https://observability.gitlab.com/v3/<group-
-   id>/otlp/v1/{traces,metrics,logs}` — one HTTPS POST per signal.
-5. **UI surface** : traces / metrics / logs show up in the **group's
+1. **Free during beta** — no Premium/Ultimate gate. Beta banner on
+   the setup page : "No cost — Free during beta period".
+2. **Experimental** — GitLab flags the feature as beta ; API shape
+   may change before GA.
+3. **Endpoint shape** : `https://<group-id>.otel.gitlab-o11y.com:14318`
+   for TLS HTTPS (port 14318), or `:14317` for gRPCS. The `otlphttp`
+   exporter auto-appends `/v1/{traces,metrics,logs}` based on signal.
+4. **No auth token in beta** — the group-id embedded in the subdomain
+   is the identifier. GitLab's own UI curl example shows POSTs
+   without an `Authorization` header. If GA adds bearer-token auth,
+   add `headers: Authorization: Bearer ${env:GITLAB_OBSERVABILITY_TOKEN}`
+   to the exporter blocks.
+5. **CI/CD Observability too** — the same feature flag activates
+   GitLab-CI-pipeline telemetry export (separate from Mirador's app
+   telemetry). That's a bonus, not what this ADR is about.
+6. **UI surface** : traces / metrics / logs show up in the **group's
    sidebar** under Observability, no cluster to click into.
 
 The "reviewer can see telemetry without booting anything" argument is
@@ -68,12 +80,14 @@ exporters:
   otlphttp/metrics:  { endpoint: http://127.0.0.1:9090/api/v1/otlp, ... }
   otlphttp/logs:     { endpoint: http://127.0.0.1:3100/otlp, ... }
 
-  # NEW — GitLab Observability dual-sink
+  # GitLab Observability dual-sink. Hardcoded default endpoint for the
+  # mirador1 group ; `$GITLAB_OBSERVABILITY_ENDPOINT` env var overrides
+  # for forks that want their own group.
   otlphttp/traces-gitlab:
-    endpoint: ${env:GITLAB_OBSERVABILITY_ENDPOINT}/traces
-    headers:
-      Authorization: Bearer ${env:GITLAB_OBSERVABILITY_TOKEN}
-  # + matching metrics-gitlab / logs-gitlab blocks
+    endpoint: ${env:GITLAB_OBSERVABILITY_ENDPOINT:-https://130289716.otel.gitlab-o11y.com:14318}
+    tls: { insecure: false }
+  # + matching metrics-gitlab / logs-gitlab blocks (same endpoint ;
+  # otlphttp exporter auto-appends /v1/{traces,metrics,logs})
 
 service:
   pipelines:
@@ -82,25 +96,27 @@ service:
     logs:     { exporters: [otlphttp/logs, otlphttp/logs-gitlab] }
 ```
 
-**Activation is gated by env vars** — if `GITLAB_OBSERVABILITY_ENDPOINT`
-and `GITLAB_OBSERVABILITY_TOKEN` are unset, the Collector crashes on
-startup with "required env var missing". So the dual-export exporters
-ship **commented out by default** ; uncomment once the user :
+**Activation out of the box** — the mirador1 group endpoint is
+hardcoded as the env-var default. Anyone cloning + running
+`./run.sh obs` automatically dual-exports to GitLab Observability
+without additional setup. Forks that want their own group's endpoint
+set `GITLAB_OBSERVABILITY_ENDPOINT=https://<their-group-id>.otel.gitlab-o11y.com:14318`.
 
-1. Visits <https://gitlab.com/groups/mirador1/-/observability/setup>
-   and enables the feature on the `mirador1` group.
-2. Reads the exact endpoint from the UI (shape is
-   `https://observability.gitlab.com/v3/<group-id>/otlp/v1/`).
-3. Generates a group access token at
-   <https://gitlab.com/groups/mirador1/-/settings/access_tokens>
-   with scopes `read_observability` + `write_observability`.
-4. Exports both as env vars :
-   ```bash
-   export GITLAB_OBSERVABILITY_ENDPOINT="https://observability.gitlab.com/v3/<group-id>/otlp/v1"
-   export GITLAB_OBSERVABILITY_TOKEN="glat-..."
-   ```
-5. Uncomments the `otlphttp/*-gitlab` exporter blocks + adds them to
-   the `service.pipelines.*.exporters` lists.
+Users who want to **opt-out** of the dual-sink (e.g. airgapped work)
+remove the `otlphttp/*-gitlab` entries from the
+`service.pipelines.*.exporters` lists in `otelcol-override.yaml`.
+
+One-time user activation (once per group) :
+
+1. Visit <https://gitlab.com/groups/mirador1/-/observability/setup>
+   and click "Enable Observability" (or equivalent).
+2. GitLab provisions the endpoint and displays it in the UI
+   (shape : `https://<group-id>.otel.gitlab-o11y.com:14318` for TLS
+   HTTPS, or `:14317` for gRPCS).
+3. Beta doesn't require a token ; the group-id in the subdomain is
+   the identifier. No `Authorization: Bearer` header needed.
+4. (Mirador repo only) Record the group-id in this ADR + the OTel
+   Collector config. For forks, override via env var.
 
 Once active, every trace / metric / log Mirador emits lands in
 **BOTH** local LGTM (for offline review) AND GitLab's UI (for

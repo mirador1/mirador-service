@@ -106,7 +106,7 @@ if glab release view "$TAG" >/dev/null 2>&1; then
   exit 0
 fi
 
-echo "▶️  Creating GitLab Release for $TAG…"
+echo "▶️  Creating GitLab Release for ${TAG}…"
 echo "   Notes:"
 echo "$NOTES" | sed 's/^/     /'
 echo ""
