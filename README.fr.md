@@ -105,7 +105,7 @@ pour l'index complet.
 | **Ingestion observabilité** | Push OTLP vers un collecteur (LGTM in-cluster) | **Scrape Prometheus** — pull-based nécessite un accès nœud par pod, pénible sur Autopilot. **Grafana Cloud direct** — marche bien mais coûte de l'argent dès qu'on sort du free tier (voir [ADR-0010](docs/adr/0010-otlp-push-to-collector.md)). |
 | **Runner CI** | MacBook local (m1) | **Minutes SaaS** — épuise les 400 minutes gratuites en deux jours. **Auto-hébergé sur GKE** — chicken-and-egg si la CI construit le cluster (voir [ADR-0004](docs/adr/0004-local-ci-runner.md)). |
 | **Coût cluster** | Autopilot éphémère (up seulement pendant les démos) | **GKE Standard 1 × e2-small always-on** — €30/mois vs €2/mois pour un cluster qui ne sert pas de trafic 99 % du temps (voir [ADR-0022](docs/adr/0022-ephemeral-demo-cluster.md)). |
-| **Cloud** | GKE Autopilot sur GCP | **AWS EKS** éliminé mécaniquement : le control-plane coûte €66/mois = 33× le budget. **Azure AKS Automatic** — viable, rejeté sur tie-break pragmatique (voir [ADR-0030](docs/adr/0030-choose-gcp-as-the-kubernetes-target.md)). |
+| **Cloud** | GKE Autopilot sur GCP (cible par défaut) **+ OVH Managed K8s** (2ᵉ cible canonique pour souveraineté française + HDS — voir [ADR-0053](docs/adr/0053-ovh-canonical-target.md)) | **AWS EKS** éliminé mécaniquement : le control-plane coûte €66/mois = 33× le budget. **Azure AKS Automatic** — viable, rejeté sur tie-break pragmatique (voir [ADR-0030](docs/adr/0030-choose-gcp-as-the-kubernetes-target.md)). **Scaleway Kapsule** — souverain EU mais pas HDS, donc resté en module de référence (voir [ADR-0036](docs/adr/0036-multi-cloud-terraform-posture.md) amendée par 0053). |
 
 Principe directeur : si une technologie est retenue, il doit être
 possible d'articuler pourquoi une alternative *spécifique* a été
@@ -293,10 +293,14 @@ Pour aller plus loin :
 - [`docs/reference/technologies.md`](docs/reference/technologies.md) — glossaire complet
 - [`docs/ops/`](docs/ops/) — runbooks, politique coûts, mirror CI, CI philosophy
 - [`docs/architecture/`](docs/architecture/) — vue détaillée par couche
-- [`deploy/terraform/`](deploy/terraform/README.md) — IaC : GCP (cible
-  canonique, appliquée en CI) + modules de référence AWS, Azure, Scaleway
-  (prêts à être revus, pas à être appliqués — voir
-  [ADR-0036](docs/adr/0036-multi-cloud-terraform-posture.md))
+- [`deploy/terraform/`](deploy/terraform/README.md) — IaC : **deux cibles
+  canoniques** GCP (par défaut, appliqué en CI) et **OVH** (appliqué à la
+  demande, certifié HDS pour les données de santé — voir
+  [ADR-0053](docs/adr/0053-ovh-canonical-target.md)) + modules de
+  référence AWS, Azure, Scaleway (prêts à être revus, pas à être
+  appliqués — voir [ADR-0036](docs/adr/0036-multi-cloud-terraform-posture.md)
+  amendée par 0053). Tous les modules sont **dual-compatibles** Terraform
+  par défaut et OpenTofu en option (`TF_BIN=tofu` pour basculer).
 
 ---
 

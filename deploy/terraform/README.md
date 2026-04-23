@@ -21,17 +21,30 @@ is only relevant when deploying to a managed cloud.
 
 ## Cloud targets
 
-Four cloud providers have Terraform modules. Only **GCP** is applied
-in CI and covered by the demo; AWS / Azure / Scaleway are reference
-implementations kept for portability review (see
-[ADR-0036](../../docs/adr/0036-multi-cloud-terraform-posture.md)).
+Five cloud providers have Terraform modules. **GCP and OVH** are both
+applied (or apply-able) — they are the canonical-tier delivery targets.
+AWS / Azure / Scaleway are reference implementations kept for
+portability review. See
+[ADR-0036](../../docs/adr/0036-multi-cloud-terraform-posture.md)
+(amended by [ADR-0053](../../docs/adr/0053-ovh-canonical-target.md)
+which promoted OVH to canonical).
 
-| Directory                     | Provider  | Stack                                    | Status                           | `terraform apply`? |
-| ----------------------------- | --------- | ---------------------------------------- | -------------------------------- | ------------------ |
-| [`gcp/`](gcp/)                | Google    | GKE Autopilot, default VPC               | **Canonical** — applied in CI    | Yes (CI)           |
-| [`aws/`](aws/)                | Amazon    | ECS Fargate, default VPC, ALB            | Reference — stage 1              | Never              |
-| [`azure/`](azure/)            | Microsoft | AKS (Standard_B2s), dedicated VNet       | Reference — stage 1              | Never              |
-| [`scaleway/`](scaleway/)      | Scaleway  | Kapsule (Dev tier), DEV1-S node          | Reference — stage 1, EU-sovereign | Never              |
+| Directory                     | Provider  | Stack                                    | Status                                           | `terraform apply`?                |
+| ----------------------------- | --------- | ---------------------------------------- | ------------------------------------------------ | --------------------------------- |
+| [`gcp/`](gcp/)                | Google    | GKE Autopilot, default VPC               | **Canonical** — applied in CI (default deploy)   | Yes (CI)                          |
+| [`ovh/`](ovh/)                | OVH       | Managed K8s (B2-7), vRack private network | **Canonical** — applied on-demand (HDS-eligible) | Yes (manual, both Terraform + tofu) |
+| [`aws/`](aws/)                | Amazon    | ECS Fargate, default VPC, ALB            | Reference — stage 1                              | Never                             |
+| [`azure/`](azure/)            | Microsoft | AKS (Standard_B2s), dedicated VNet       | Reference — stage 1                              | Never                             |
+| [`scaleway/`](scaleway/)      | Scaleway  | Kapsule (Dev tier), DEV1-S node          | Reference — stage 1, EU-sovereign                | Never                             |
+
+### Tooling — Terraform default, OpenTofu opt-in
+
+Per [ADR-0053 § Tooling](../../docs/adr/0053-ovh-canonical-target.md#tooling--terraform-by-default-opentofu-opt-in), every module here is **dual-compatible** :
+
+- **Default** : `terraform 1.9.8` (BSL — Business Source License, HashiCorp/IBM)
+- **Opt-in** : `OpenTofu 1.8.4` (MPL-2.0 — fully open source, Linux Foundation, drop-in replacement = même HCL + mêmes providers + état compatible)
+
+Switch by exporting `TF_BIN=tofu` before running the helper scripts (`bin/cluster/<cloud>/up.sh`). The CI runs both planners in parallel on every MR touching the OVH module so dual-compat is proven on day 1.
 
 ## When to pick which
 
@@ -44,7 +57,8 @@ a demo and don't have a strong reason to pick differently, stay on GCP.
 | You're running the reference demo or forking the project with no mandate. | `gcp/`     | Canonical, tested, €2/month ephemeral (ADR-0022). GKE Autopilot free control plane + per-pod billing. |
 | Your org is on AWS and can't adopt a second cloud.                        | `aws/`     | ECS Fargate (no EKS control-plane fee). Loses Kubernetes-native features but keeps the cost story.     |
 | Your org is on Azure.                                                     | `azure/`   | AKS has the same "free control plane" story as GKE. Closest to GCP semantically. Keeps K8s stack.      |
-| You need EU data sovereignty (GDPR-only, no CLOUD Act exposure).          | `scaleway/`| French company (Iliad), Paris/Amsterdam/Warsaw regions. Cheapest of the four for single-node demos.    |
+| You need EU data sovereignty (GDPR-only, no CLOUD Act exposure).          | `scaleway/` OR `ovh/` | Both French companies. Pick `ovh/` if you also need **HDS** (Hébergeur de Données de Santé — French health-data certification — Scaleway lacks this). Pick `scaleway/` if cost is the priority (~€10/month vs €25/month). |
+| You need French sovereignty AND HDS (health-data hosting).                | `ovh/`     | OVH is HDS-certified at GRA9 + SBG5 ; Scaleway is not. The only French-jurisdiction option for any health-related personal data. |
 | You're prototyping and don't know which cloud yet.                        | `gcp/`     | Cheapest ephemeral option + the best docs. Switch later if a mandate appears.                          |
 
 ### Cost comparison (single-node demo, always-on vs ephemeral)
@@ -54,6 +68,7 @@ Ballpark costs in the default sizing of each module (EU regions):
 | Provider | Cluster / control plane | Compute (1 node/task)    | Misc (LB / logs)   | Total 24/7 | Total ephemeral (~8h/month) |
 | -------- | ----------------------- | ------------------------ | ------------------ | ---------- | --------------------------- |
 | GCP      | €0 (first Autopilot)    | ~€190/mo (if left up)    | €0 (ingress-nginx) | ~€190      | **~€2**                     |
+| OVH      | €0 (Managed K8s)        | ~€25/mo (B2-7)           | €0 (port-fwd) / €20/mo (LB Classic) | ~€25-45 | ~€0.30 |
 | AWS      | €0 (no EKS)             | ~€18/mo (0.5 vCPU / 1GB) | ~€16/mo (ALB)      | ~€34       | ~€0.40                      |
 | Azure    | €0 (AKS control plane)  | ~€30/mo (Standard_B2s)   | €0 (no LB yet)     | ~€30       | <€1                         |
 | Scaleway | €0 (Kapsule Dev)        | ~€10/mo (DEV1-S)         | €0 (no LB yet)     | **~€10**   | <€0.50                      |
