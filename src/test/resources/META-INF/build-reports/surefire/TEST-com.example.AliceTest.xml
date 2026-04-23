@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.example.AliceTest" tests="3" failures="0" errors="0" skipped="0" time="0.500"
+           timestamp="2026-04-23T02:00:00">
+  <testcase name="firstTest" time="0.100"/>
+  <testcase name="secondTest" time="0.200"/>
+  <testcase name="thirdTest" time="0.200"/>
+</testsuite>

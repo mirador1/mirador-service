@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.example.BobTest" tests="2" failures="1" errors="0" skipped="0" time="0.300"
+           timestamp="2026-04-23T02:00:30">
+  <testcase name="testPasses" time="0.100"/>
+  <testcase name="testFails" time="0.200">
+    <failure type="java.lang.AssertionError">expected: A but was: B</failure>
+  </testcase>
+</testsuite>
