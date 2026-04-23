@@ -114,8 +114,28 @@ openapi-lint:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   needs: []
   before_script:
-    - apk add --no-cache bash curl openjdk25-jre-headless maven
+    # postgresql-client adds `pg_isready` so we can wait for the demo user
+    # to actually exist before Spring's Flyway tries to migrate. Pipelines
+    # #745, #749 (and earlier) failed with "FATAL: password authentication
+    # failed for user demo" — the postgres container's TCP port was up but
+    # docker-entrypoint.sh hadn't finished CREATE USER yet, so Spring
+    # connected against a postgres still in its init state.
+    - apk add --no-cache bash curl openjdk25-jre-headless maven postgresql-client
   script:
+    # Wait for the demo user to be createable (postgres docker-entrypoint.sh
+    # finishes CREATE USER + GRANT before pg_isready returns 0 with `-d` set).
+    # 30 × 2 s = up to 60 s — typical postgres init is 3-5 s on macbook-local.
+    - |
+      echo "Waiting for postgres demo user to be ready…"
+      for i in $(seq 1 30); do
+        if pg_isready -h postgres -p 5432 -U demo -d customer-service -t 2 >/dev/null 2>&1; then
+          echo "postgres ready (t+${i}×2s)"
+          break
+        fi
+        sleep 2
+      done
+      pg_isready -h postgres -p 5432 -U demo -d customer-service -t 2 \
+        || { echo "postgres never became ready in 60s"; exit 1; }
     # Start the app with the special 'openapi-export' profile (auto-exit
     # after writing the spec). Alternative: boot + curl + kill — more fragile.
     # We use Spring's standalone openapi endpoint: boot briefly, fetch, kill.
