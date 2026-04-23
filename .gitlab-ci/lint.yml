@@ -122,14 +122,19 @@ openapi-lint:
     # connected against a postgres still in its init state.
     - apk add --no-cache bash curl openjdk25-jre-headless maven postgresql-client
   script:
-    # Wait for the demo user to ACTUALLY authenticate. pg_isready alone
-    # returns 0 as soon as postgres' TCP port is open — BEFORE
-    # docker-entrypoint.sh finishes `CREATE USER demo` + `GRANT`. In
-    # pipeline #755 pg_isready returned ready at t+2s but Spring
-    # Flyway still got "FATAL: password authentication failed for user
-    # demo" a minute later. Fix : use `psql -c 'SELECT 1'` with the
-    # actual auth flow — fails until the user is truly provisioned.
-    # 30 × 2 s = up to 60 s. Typical postgres init is 3-5 s.
+    # Start the app with the special 'openapi-export' profile (auto-exit
+    # after writing the spec). Alternative: boot + curl + kill — more fragile.
+    # We use Spring's standalone openapi endpoint: boot briefly, fetch, kill.
+    - mvn -q -DskipTests package -Dmaven.javadoc.skip=true
+    # Wait for the demo user to ACTUALLY authenticate, IMMEDIATELY before
+    # java -jar. Running this at top-of-script failed pipeline #759
+    # because `mvn package` took ~4 min between the probe and `java -jar` ;
+    # within that window the postgres service container apparently gets
+    # reclaimed / restarted (runner pressure ?) and Spring Flyway then
+    # hits a fresh postgres where `demo` doesn't exist yet. Probing here
+    # ensures the user is authenticatable at the moment Spring connects.
+    # 30 × 2 s = up to 60 s ; typical postgres init is 3-5 s after the
+    # container has been running ~4 min so effectively instantaneous.
     - |
       echo "Waiting for postgres demo user to be authenticatable…"
       export PGPASSWORD=demo
@@ -143,10 +148,6 @@ openapi-lint:
       psql -h postgres -p 5432 -U demo -d customer-service -c "SELECT 1" >/dev/null \
         || { echo "postgres demo user never authenticatable in 60s"; exit 1; }
       unset PGPASSWORD
-    # Start the app with the special 'openapi-export' profile (auto-exit
-    # after writing the spec). Alternative: boot + curl + kill — more fragile.
-    # We use Spring's standalone openapi endpoint: boot briefly, fetch, kill.
-    - mvn -q -DskipTests package -Dmaven.javadoc.skip=true
     - |
       # Boot the app in the background, wait up to 5 min for it to serve,
       # then fetch /v3/api-docs and kill. Pipeline #610 measured a 310 s
