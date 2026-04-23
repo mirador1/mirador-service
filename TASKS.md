@@ -545,32 +545,34 @@ Defer `semantic-release` unless the team grows past 2 contributors.
 
 
 
-### GitLab Observability integration (potentiel 2e OTLP exporter)
+### GitLab Observability integration — SCAFFOLDED ✅ 2026-04-23 (awaiting user activation)
 
-User signalait 2026-04-22 l'URL <https://gitlab.com/groups/mirador1/-/observability/setup>
-— GitLab a une feature Observability intégrée (OTLP ingest avec auth
-group-level, cf. [docs.gitlab.com/ee/operations/tracing.html](https://docs.gitlab.com/ee/operations/tracing.html)).
+**Status** : wiring committed, commented out ; user just needs to
+toggle the feature on + uncomment 6 lines.
 
-**Ce que ça apporterait** : telemetry visualisable DIRECTEMENT dans
-l'UI GitLab (pas besoin de démarrer Grafana/Tempo localement pour un
-reviewer), + conservation cross-session sans coûter de VM GCP.
+**Committed (svc) 2026-04-23** :
+- [ADR-0054](adr/0054-gitlab-observability-dual-export.md) — decision + alternatives
+- [`infra/observability/otelcol-override.yaml`](../infra/observability/otelcol-override.yaml) — commented-out `otlphttp/{traces,metrics,logs}-gitlab` exporters with `${env:GITLAB_OBSERVABILITY_ENDPOINT}` + `${env:GITLAB_OBSERVABILITY_TOKEN}` placeholders
+- [`.env.example`](../.env.example) — 2 new env vars with setup instructions inline
 
-**Questions à trancher avant d'implémenter** :
-- Disponibilité sur free tier ? (`plan: None` sur le groupe = free
-  tier probablement ; API `observability_config` retourne 404).
-- Format d'auth (Bearer token group-level ? deploy token ?).
-- Dual-export depuis l'OTel Collector (actuel → LGTM local + GitLab)
-  ou exporter directement depuis Spring Boot ?
-- Cohabitation avec ADR-0010 "OTLP push to Collector, not Prometheus
-  scrape" — OK en complément, pas en remplacement.
+**Decision summary** : GitLab Observability is **free on every tier**
+per 2025 pricing (confirmed via docs + web search). OTLP endpoint
+accepts `Bearer <group-access-token>` with scopes `read_observability`
++ `write_observability`. Dual-export keeps local LGTM as primary
+debug surface ; GitLab is the shared read-only portfolio surface for
+reviewers who don't want to clone the repo.
 
-**Estimation rough** : si faisable sur free tier, ~3-4 h : OTel
-Collector config (pipeline dual), env vars GitLab token, ADR
-documentant le flow.
+**User activation (one-time, ~5 min)** :
+1. Open <https://gitlab.com/groups/mirador1/-/observability/setup> — enable
+2. Copy the exact endpoint shown (shape : `https://observability.gitlab.com/v3/<group-id>/otlp/v1`)
+3. Generate a group access token at <https://gitlab.com/groups/mirador1/-/settings/access_tokens> with scopes `read_observability` + `write_observability`
+4. Export both env vars before `./run.sh obs` / demo-up
+5. Uncomment the 3 `otlphttp/*-gitlab` exporter blocks + add them to `service.pipelines.*.exporters` in `otelcol-override.yaml`
 
-**Prérequis user** : valider la dispo free tier en ouvrant
-<https://gitlab.com/groups/mirador1/-/observability/setup> et
-reportant ce qui est proposé (tokens, endpoints, plan-lock).
+No further Claude-side work needed until the user completes the UI
+activation. Once telemetry lands in GitLab's UI, test the dual-path
+(local LGTM + GitLab) end-to-end and flip the commented blocks into
+the default active path.
 
 ---
 
