@@ -1,0 +1,79 @@
+# =============================================================================
+# grafana-datasource-patch.yaml — adds the kube-prom Prometheus as a 5th
+# Grafana datasource in the lgtm pod (GKE).
+#
+# This file ships TWO objects:
+#   1. ConfigMap `grafana-extra-datasources` in `infra` ns — the new
+#      datasource provisioning YAML (loaded as a `resources:` entry in
+#      kustomization.yaml).
+#   2. (NOT here, see lgtm-mount-patch.yaml in the same directory)
+#      Deployment patch that mounts the ConfigMap into the lgtm pod's
+#      provisioning/datasources/ directory.
+#
+# Why the split? kustomize rejects `resources:` files that contain an
+# object with the same {apiVersion, kind, name, namespace} as one
+# already in the base — the base ships the lgtm Deployment, so a
+# Deployment in the resources list collides. The mount patch lives in
+# `patches:` instead, where strategic-merge is the explicit semantics.
+#
+# Identical to local-prom's grafana-datasource-patch.yaml — the path
+# (`infra` ns → `monitoring/prometheus-stack-kube-prom-prometheus:9090`)
+# is the same on GKE as on kind, because both clusters use the same
+# base/observability lgtm Deployment.
+#
+# The new datasource UID is `prometheus-kps` so dashboards that explicitly
+# target it (e.g. a "Cluster overview" dashboard built on
+# kube-state-metrics) won't collide with the default `prometheus` UID
+# that points at lgtm's Mimir.
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-extra-datasources
+  namespace: infra
+  labels:
+    app.kubernetes.io/name: lgtm
+    app.kubernetes.io/component: grafana-datasources
+data:
+  kubeprom-datasource.yaml: |
+    apiVersion: 1
+    datasources:
+      # Primary cluster-metrics datasource — bridges Google Managed
+      # Prometheus to the PromQL API via gmp-frontend. See
+      # bin/cluster/demo/install-gmp-frontend.sh + docs/ops/runbooks/
+      # gmp-frontend-openlens.md for the why (Autopilot locks kube-system
+      # so native kube-prometheus-stack scrape of kubelet fails — GMP's
+      # managed collector does it instead, frontend exposes PromQL).
+      #
+      # What this datasource adds to Grafana (on top of the default
+      # lgtm Mimir that ships OTel-pushed app metrics):
+      #   • cAdvisor per-pod CPU / memory / network (container_*).
+      #   • kube-state-metrics (kube_pod_*, kube_deployment_*, kube_node_*)
+      #     — pod status, deployment replicas, resource requests/limits.
+      #   • kubelet metrics (volume stats, eviction signals).
+      #   • Lets community Grafana Kubernetes dashboards (e.g.
+      #     grafana.com/dashboards/315 "Kubernetes cluster monitoring")
+      #     work out of the box — they PromQL-query standard metric
+      #     names that GMP matches via its `frontend` binary.
+      #
+      # UID `prometheus-kps` stays (kubeprom-stack = kubernetes-prom),
+      # so existing dashboards / panels wired to this UID keep working.
+      - name: Prometheus (GMP — cluster metrics)
+        type: prometheus
+        # Default `prometheus` UID stays bound to lgtm's Mimir (OTel-
+        # pushed app metrics + the kubeletstats / k8s_cluster receivers).
+        uid: prometheus-kps
+        # gmp-frontend lives in `monitoring` ns — cross-ns URL from lgtm
+        # (infra) resolved via K8s DNS. GMP then proxies PromQL queries
+        # to Cloud Monitoring (Google's managed Prometheus backend).
+        url: http://gmp-frontend.monitoring.svc.cluster.local:9090
+        editable: true
+        # Default to lgtm's Mimir for app metrics; switch to this in
+        # dashboard variables when querying ksm/cAdvisor/kubelet.
+        isDefault: false
+        jsonData:
+          timeInterval: 30s
+          # cache Cloud Monitoring responses briefly — GMP has per-query
+          # rate limits. 30s is the scrape interval, so dashboards that
+          # poll faster don't hit the backend twice for the same second.
+          httpMethod: POST

@@ -1,0 +1,33 @@
+# =============================================================================
+# OVH-specific patch — exposes the lgtm Grafana via an OVH Public Cloud
+# LoadBalancer at the cheapest tier (~€20/month).
+#
+# Apply this patch only when you want a public Internet-facing Grafana.
+# For demos, prefer `kubectl port-forward svc/lgtm 3000:3000` (free).
+#
+# How to enable: uncomment the corresponding `patches:` entry in
+# kustomization.yaml that points at this file.
+#
+# Why the annotation matters:
+#   - WITHOUT `service.beta.kubernetes.io/ovh-loadbalancer-type: classic`,
+#     OVH's cloud-controller defaults to the `Premium` tier (~€100/month).
+#     Easy to miss until the next bill arrives.
+#   - WITH the annotation, you get the `Classic` tier (~€20/month — still
+#     non-trivial but predictable). Sufficient for HTTP traffic without
+#     SSL termination needs.
+#
+# Reference: https://help.ovhcloud.com/csm/en-public-cloud-kubernetes-
+#            loadbalancer-options
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: lgtm
+  namespace: observability
+  annotations:
+    # Pick the cheapest tier — Classic ~€20/month vs Premium ~€100/month.
+    service.beta.kubernetes.io/ovh-loadbalancer-type: "classic"
+    # Optional: pin to a specific OVH region (defaults to cluster region).
+    # service.beta.kubernetes.io/ovh-loadbalancer-region: "GRA9"
+spec:
+  type: LoadBalancer
