@@ -134,6 +134,8 @@ monotonic across supersessions.
 | 0042 | Accepted | [Quality reports routing: SonarCloud vs Maven Site](0042-quality-reports-routing-sonarcloud-vs-maven-site.md) |
 | 0043 | Accepted | [Pin GitHub Actions by full commit SHA (not tag)](0043-pin-github-actions-by-commit-sha.md) |
 | 0044 | Accepted | [Hexagonal considered, feature-slicing retained (with ports-and-adapters lite on outbound events)](0044-hexagonal-considered-feature-slicing-retained.md) |
+| 0045 | Superseded | [Superseded (consolidated into ADR-0041..0044)](0045-superseded-consolidated-into-0041-0044.md) |
+| 0046 | Skip | [Numéro non utilisé (skip de numérotation)](0046-skipped-numbering-only.md) |
 | 0047 | Accepted | [Auth0 consent screen stays for social logins (Google OAuth2)](0047-auth0-consent-for-social-logins.md) |
 | 0048 | Amended | [Mirador alert rules evaluate in Prometheus but don't route via Alertmanager](0048-prometheus-alert-rules-evaluate-but-dont-route.md) |
 | 0049 | Accepted | [CI shields (`allow_failure: true`) require a dated exit ticket](0049-ci-shields-with-dated-exit-tickets.md) |
@@ -144,6 +146,7 @@ monotonic across supersessions.
 | 0054 | Active | [Dual-export OTLP telemetry to GitLab Observability](0054-gitlab-observability-dual-export.md) |
 | 0055 | Accepted | [Shell-based release automation (no semantic-release)](0055-shell-based-release-automation.md) |
 | 0056 | Accepted | [Widget extraction pattern for large Angular components](0056-widget-extraction-pattern.md) |
+| 0057 | Accepted | [Conserver le polyrepo (svc + UI séparés), pas de migration vers monorepo](0057-polyrepo-vs-monorepo.md) |
 <!-- ADR-INDEX:END -->
 
 ## Hierarchical index (by theme)

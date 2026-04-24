@@ -1,8 +1,8 @@
 # ADR-0057 — Conserver le polyrepo (svc + UI séparés), pas de migration vers monorepo
 
-**Statut** : Accepté
-**Date** : 2026-04-24
-**Auteur(s)** : benoit.besson, Claude
+- **Status**: Accepted
+- **Date**: 2026-04-24
+- **Auteur(s)**: benoit.besson, Claude
 
 ## Contexte
 
