@@ -3,17 +3,18 @@
 Source of truth across Claude sessions. Read this first. Update when
 adding/starting/finishing a task. Delete when empty (per CLAUDE.md).
 
-**Last refresh** : 2026-04-24 09:10 — morning session shipped :
+**Last refresh** : 2026-04-24 14:00 — long morning session delivered :
 - UI 1.0.46 (run.sh → bin/run.sh + SONAR doc + CLAUDE rule "Réduire vagues CI")
 - svc 1.0.45 (CLAUDE rule mirror + ADR-0057 polyrepo + ADR-0045/0046 stubs + regen-index fix)
 - svc 1.0.46 (Phase C Checkstyle 121→0 violations + RateLimit 57→86% branches)
 - UI 1.0.47 (diagnostic widget + database HealthTab + customers ImportExport service)
-- UI 1.0.48 pending (customers Selection + Crud services, 838→573 LOC total -32%)
-- svc 1.0.47 pending (Ollama probeOllama refactor + 7 tests, 20→95% branches)
+- svc 1.0.47 (Ollama probeOllama refactor + 7 tests 20→95% branches + trivy timeout fix)
+- UI 1.0.48 (customers Selection + Crud services)
+- UI 1.0.49 (customers ListStateService D1 finale + eslint.config.mjs→config/)
 
-B-7-5 ✅ DONE. Phase C ✅ DONE. D1 customers split ✅ DONE (3 services).
-D2 Sonar coverage chip ongoing (2 classes meaningfully improved).
-Remaining B-7 (chaos/database SqlExplorer) skipped as marginal.
+B-7-5 ✅. Phase C ✅. D1 customers split ✅ COMPLETE (4 services, 838→457 LOC -46%).
+D2 Sonar coverage chips : RateLimit 57→86% + Ollama 20→95% branches.
+Remaining B-7 (chaos ImpactMonitor, database SqlExplorer) skipped as marginal.
 
 ---
 
@@ -23,6 +24,9 @@ Last 10 stable checkpoints (most recent first) :
 
 | Tag | Theme |
 |---|---|
+| UI [stable-v1.0.49](https://gitlab.com/mirador1/mirador-ui/-/releases/stable-v1.0.49) | **D1 finale** : ListStateService + eslint.config→config/ (root 16→15) |
+| UI [stable-v1.0.48](https://gitlab.com/mirador1/mirador-ui/-/releases/stable-v1.0.48) | D1 customers Selection + Crud services (838→573 LOC) |
+| svc [stable-v1.0.47](https://gitlab.com/mirador1/mirador-service/-/releases/stable-v1.0.47) | **D2 Ollama 20→95% branches** + trivy --timeout 5m→15m fix |
 | UI [stable-v1.0.47](https://gitlab.com/mirador1/mirador-ui/-/releases/stable-v1.0.47) | B-7-6 diagnostic widget + B-7-7 database HealthTab + B-7-2c step 1 customers ImportExport |
 | svc [stable-v1.0.46](https://gitlab.com/mirador1/mirador-service/-/releases/stable-v1.0.46) | **Phase C Checkstyle failOnViolation=true** (121→0) + RateLimit +3 branch tests (57→86%) |
 | UI [stable-v1.0.46](https://gitlab.com/mirador1/mirador-ui/-/releases/stable-v1.0.46) | run.sh → bin/run.sh + SONAR doc + CLAUDE.md "Réduire vagues CI" rule |
@@ -30,13 +34,6 @@ Last 10 stable checkpoints (most recent first) :
 | UI [stable-v1.0.45](https://gitlab.com/mirador1/mirador-ui/-/releases/stable-v1.0.45) | About 3-widget extraction B-7-5 P1B (about.html 613→251 LOC) |
 | svc [stable-v1.0.44](https://gitlab.com/mirador1/mirador-service/-/releases/stable-v1.0.44) | `bin/cluster/test-all.sh` batched cluster validation (4 layers, --json + --quick) |
 | svc [stable-v1.0.43](https://gitlab.com/mirador1/mirador-service/-/releases/stable-v1.0.43) | ADR-0056 (widget extraction pattern) |
-| UI [stable-v1.0.44](https://gitlab.com/mirador1/mirador-ui/-/releases/stable-v1.0.44) | Security 5-widget batch (B-7-4 ✅) + About data extraction Phase 1A |
-| UI [stable-v1.0.43](https://gitlab.com/mirador1/mirador-ui/-/releases/stable-v1.0.43) | TASKS.md cleanup (635→115 LOC) |
-| UI [stable-v1.0.42](https://gitlab.com/mirador1/mirador-ui/-/releases/stable-v1.0.42) | Security MechanismsTab widget extraction (B-7-4) |
-
-**In-flight (auto-merge armed)** :
-- svc !186 → 1.0.47 : Ollama probeOllama refactor + 7 branch tests (20→95%)
-- UI main post-merge → 1.0.48 : customers Selection + Crud services (B-7-2c steps 2+3)
 
 **Major waves shipped 2026-04-22** : Phase B-2/B-4 CI modularisation
 (svc 2619→173 LOC + UI 1086→144 LOC) ; Phase Q (backend ↔ build-tool
@@ -86,7 +83,7 @@ Diminishing returns ; no SonarCloud blocker. Defer until Phase C lands.
 | `diagnostic.component.html` | 381 | ✅ B-7-6 partial (DiagnosticScenarioComponent for 5/10 uniform scenarios ; 5 custom-output scenarios stay inline) |
 | `database.component.html` | 141 | ✅ B-7-7 partial (DatabaseHealthTabComponent extracted ; SqlExplorer + preset row still inline, marginal win if extracted) |
 | `chaos.component.html` | 185 | ⏭ B-7-8 skipped — file already DRY via `@for actions`, under 1000 LOC cap, extraction would be marginal |
-| `customers.component.ts` | 813 | 🔧 PENDING B-7-2c — needs CustomerStateService abstraction (shared signals : customers[], selectedCustomer, selectedIds, editingCustomer, batchDelete) ; 2-3h focused refactor. Deferred. |
+| `customers.component.ts` | 457 | ✅ B-7-2c DONE (4 services : ImportExport + Selection + Crud + ListState ; 838→457 LOC -46%) |
 | `diagnostic.component.ts` | 628 | 🔧 PENDING — 7 scenario methods (~50-100 LOC each), tightly coupled to parent signals + log lines. Multi-hour refactor. |
 | `about.component.ts` | 652 | 🔧 PENDING — 8 tabs, similar pattern to security. |
 | `chaos.component.ts` | 625 | 🔧 PENDING — TS-heavy (185 LOC html only) ; refactor harder than template extractions. |
