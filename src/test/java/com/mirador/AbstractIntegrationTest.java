@@ -1,6 +1,7 @@
 package com.mirador;
 
 import com.mirador.config.TestAiConfig;
+import org.junit.jupiter.api.Tag;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -33,6 +34,12 @@ import org.testcontainers.utility.DockerImageName;
  */
 @SpringBootTest
 @Import(TestAiConfig.class)
+// Tag-gate : the compat profile (`-Dcompat`) excludes this tag via
+// surefire's <excludedGroups> so IT tests don't run when Testcontainers
+// infra (Docker, Keycloak, etc.) isn't available in the compat job env.
+// Per CLAUDE.md "Surgical fixes not allow_failure bypasses" : prefer
+// tag-gating over `allow_failure: true` shielding.
+@Tag("integration")
 public abstract class AbstractIntegrationTest {
 
     // ─── Kafka container ──────────────────────────────────────────────────────

@@ -228,7 +228,11 @@ public class CustomerService {
                 cursor, PageRequest.of(0, size + 1));
         boolean hasNext = customers.size() > size;
         List<Customer> page = hasNext ? customers.subList(0, size) : customers;
-        Long nextCursor = hasNext ? page.getLast().getId() : null;
+        // page.get(page.size() - 1) instead of page.getLast() — getLast() is
+        // a J21+ SequencedCollection API (JEP 431), broken on the SB3+J17 +
+        // SB4+J17 compat profiles. The index form is one extra char and works
+        // on every Java version we target.
+        Long nextCursor = hasNext ? page.get(page.size() - 1).getId() : null;
         return new CursorPage<>(page.stream().map(this::toDto).toList(), nextCursor, hasNext, size);
     }
 
