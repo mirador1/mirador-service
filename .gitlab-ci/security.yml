@@ -108,8 +108,15 @@ trivy:scan:
   # `allow_failure: true` back here with a dated TODO per CLAUDE.md
   # → "Pipelines stay green".
   script:
+    # --timeout 15m — bumped 2026-04-24 after pipeline #796 hit
+    # "context deadline exceeded" on `walk dir error` during layer
+    # analysis. Default is 5m ; large Spring Boot + Java 25 amd64
+    # image + slow macbook-local runner combine to need ~8-10 min
+    # walk time. 15m gives a comfortable margin without making
+    # failures too slow to surface.
     - |
       trivy image \
+        --timeout 15m \
         --exit-code 0 \
         --severity HIGH,CRITICAL \
         --format json \
@@ -122,6 +129,7 @@ trivy:scan:
       # Trivy's sarif template attaches CVE → rule/finding so Sonar
       # shows them on the Issues page next to native rules.
       trivy image \
+        --timeout 15m \
         --exit-code 0 \
         --severity HIGH,CRITICAL \
         --format sarif \
@@ -132,6 +140,7 @@ trivy:scan:
     - |
       # Human-readable summary to CI log
       trivy image \
+        --timeout 15m \
         --exit-code 0 \
         --severity HIGH,CRITICAL \
         "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA"
@@ -172,8 +181,9 @@ sbom:syft:
     when: runner_system_failure
   script:
     - trivy registry login "$CI_REGISTRY" --username "$CI_REGISTRY_USER" --password "$CI_REGISTRY_PASSWORD"
-    - trivy image --format cyclonedx --output bom.cdx.json "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA"
-    - trivy image --format spdx-json --output bom.spdx.json "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA"
+    # --timeout 15m — same as trivy:scan (same underlying walk-dir issue).
+    - trivy image --timeout 15m --format cyclonedx --output bom.cdx.json "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA"
+    - trivy image --timeout 15m --format spdx-json --output bom.spdx.json "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA"
   artifacts:
     when: always
     expire_in: 90 days
