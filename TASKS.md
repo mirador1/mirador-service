@@ -3,11 +3,12 @@
 Source of truth across Claude sessions. Read this first. Update when
 adding/starting/finishing a task. Delete when empty (per CLAUDE.md).
 
-**Last refresh** : 2026-04-24 01:39 — after 2 fresh tags : svc 1.0.44
-(`bin/cluster/test-all.sh` cluster validation) + UI 1.0.44 (security 5
-widgets batched in `!112` + about data extraction Phase 1A → about.ts
-652→92 LOC). Historical DONE entries collapsed to one-line refs ;
-detail lives in `git log` + ADRs + tag annotations.
+**Last refresh** : 2026-04-24 02:21 — after 3 fresh tags : svc 1.0.44
+(cluster test-all.sh) + UI 1.0.44 (security 5-widget batch + about
+data P1A) + UI 1.0.45 (about 3-widget P1B → about.html 613→251 LOC).
+Phase B-7-5 fully DONE. Next B-7 offenders : diagnostic (628),
+chaos (625), database (603). Historical DONE entries collapsed to
+one-line refs ; detail lives in `git log` + ADRs + tag annotations.
 
 ---
 
@@ -17,6 +18,7 @@ Last 10 stable checkpoints (most recent first) :
 
 | Tag | Theme |
 |---|---|
+| UI [stable-v1.0.45](https://gitlab.com/mirador1/mirador-ui/-/releases/stable-v1.0.45) | About 3-widget extraction B-7-5 P1B (about.html 613→251 LOC) |
 | svc [stable-v1.0.44](https://gitlab.com/mirador1/mirador-service/-/releases/stable-v1.0.44) | `bin/cluster/test-all.sh` batched cluster validation (4 layers, --json + --quick) |
 | svc [stable-v1.0.43](https://gitlab.com/mirador1/mirador-service/-/releases/stable-v1.0.43) | ADR-0056 (widget extraction pattern) |
 | svc [stable-v1.0.42](https://gitlab.com/mirador1/mirador-service/-/releases/stable-v1.0.42) | ADR index refresh + audit artefact |
@@ -26,8 +28,6 @@ Last 10 stable checkpoints (most recent first) :
 | UI [stable-v1.0.44](https://gitlab.com/mirador1/mirador-ui/-/releases/stable-v1.0.44) | Security 5-widget batch (B-7-4 ✅) + About data extraction Phase 1A |
 | UI [stable-v1.0.43](https://gitlab.com/mirador1/mirador-ui/-/releases/stable-v1.0.43) | TASKS.md cleanup (635→115 LOC) |
 | UI [stable-v1.0.42](https://gitlab.com/mirador1/mirador-ui/-/releases/stable-v1.0.42) | Security MechanismsTab widget extraction (B-7-4) |
-| UI [stable-v1.0.41](https://gitlab.com/mirador1/mirador-ui/-/releases/stable-v1.0.41) | CustomerDetailPanel + CreateForm + ConfirmModal widgets (B-7-2b) |
-| UI [stable-v1.0.40](https://gitlab.com/mirador1/mirador-ui/-/releases/stable-v1.0.40) | Dashboard B-6b widget split (3 widgets) |
 
 **Major waves shipped 2026-04-22** : Phase B-2/B-4 CI modularisation
 (svc 2619→173 LOC + UI 1086→144 LOC) ; Phase Q (backend ↔ build-tool
@@ -71,8 +71,8 @@ Diminishing returns ; no SonarCloud blocker. Defer until Phase C lands.
 | `customers.component.html` | 252 | ✅ B-7-2b done (-49 %) |
 | `security.component.ts` | 430 | ✅ B-7-4 done (8 widgets : Mechanisms + CORS + Headers + SqliTab + XssTab + IdorTab + JwtTab + AuditTab — all extracted) |
 | `security.component.html` | 135 | ✅ B-7-4 done (-77 % from 586) |
-| `about.component.ts` | 92 | ✅ B-7-5 P1A done (-86 % from 652 ; data → about-data.ts) |
-| `about.component.html` | 613 | 🔧 PENDING — B-7-5 P1B = 14 per-tab widget extraction (~50 min batch, decision pending) |
+| `about.component.ts` | 77 | ✅ B-7-5 P1A+P1B done (-88 % from 652) |
+| `about.component.html` | 251 | ✅ B-7-5 P1B done (-59 % ; 3 widgets extracted, 11 tiny doc-panes stay inline) |
 | `diagnostic.component.ts` | 628 | 🔧 PENDING — 7 scenario methods (~50-100 LOC each), tightly coupled to parent signals + log lines. Multi-hour refactor. |
 | `about.component.ts` | 652 | 🔧 PENDING — 8 tabs, similar pattern to security. |
 | `chaos.component.ts` | 625 | 🔧 PENDING — TS-heavy (185 LOC html only) ; refactor harder than template extractions. |
