@@ -3,17 +3,16 @@
 Source of truth across Claude sessions. Read this first. Update when
 adding/starting/finishing a task. Delete when empty (per CLAUDE.md).
 
-**Last refresh** : 2026-04-24 16:30 — afternoon session shipped 12 tags total today :
-- UI 1.0.46 (run.sh → bin/run.sh + SONAR doc + CLAUDE rule "Réduire vagues CI")
-- svc 1.0.45 (CLAUDE rule mirror + ADR-0057 polyrepo + ADR-0045/0046 stubs + regen-index fix)
-- svc 1.0.46 (Phase C Checkstyle 121→0 violations + RateLimit 57→86% branches)
-- UI 1.0.47 (diagnostic widget + database HealthTab + customers ImportExport service)
-- svc 1.0.47 (Ollama probeOllama refactor + 7 tests 20→95% branches + trivy timeout fix)
-- UI 1.0.48 (customers Selection + Crud services)
-- UI 1.0.49 (customers ListStateService D1 finale + eslint.config.mjs→config/)
-- svc 1.0.48 (Grafana Cloud AI Observability POC ADR-0059 + 5 CLAUDE.md rules)
-- svc 1.0.49 PENDING (4 surgical compat-matrix fixes via !189)
-- COMPATIBILITY_MATRIX.md doc generated from svc pipeline #800 (4 compat jobs)
+**Last refresh** : 2026-04-24 21:20 — evening session shipped 4 more tags :
+- svc 1.0.49 (4 surgical compat-matrix fixes via [!189](https://gitlab.com/mirador1/mirador-service/-/merge_requests/189))
+- svc 1.0.50 (switch case `_` fix + COMPATIBILITY_MATRIX.md doc via [!190](https://gitlab.com/mirador1/mirador-service/-/merge_requests/190))
+- svc 1.0.51 (J17 API overlays + IT tag-gating via [!191](https://gitlab.com/mirador1/mirador-service/-/merge_requests/191))
+- UI 1.0.50 (B-7-7b database data extraction 522→128 LOC via [!119](https://gitlab.com/mirador1/mirador-ui/-/merge_requests/119))
+- svc 1.0.52 PENDING (4 more surgical compat fixes via [!192](https://gitlab.com/mirador1/mirador-service/-/merge_requests/192) :
+  SB3 PATH_CUSTOMERS + SecurityConfig throws + IT getFirst + J17 test overlay)
+
+Day total : 16 tags shipped. Compat matrix work crossed 4 cells (3 still red on
+SB3 structural debt, 1 SB4+J21 turned green via IT tag-gate).
 
 B-7-5 ✅. Phase C ✅. D1 customers split ✅ COMPLETE (4 services, 838→457 LOC -46%).
 D2 Sonar coverage chips : RateLimit 57→86% + Ollama 20→95% branches.
@@ -30,6 +29,10 @@ Last 10 stable checkpoints (most recent first) :
 
 | Tag | Theme |
 |---|---|
+| svc [stable-v1.0.51](https://gitlab.com/mirador1/mirador-service/-/releases/stable-v1.0.51) | **J17 API overlays + IT tag-gating** (AggregationService J17 overlay + page.get(size-1) + @Tag("integration") + failsafe excludes) |
+| UI [stable-v1.0.50](https://gitlab.com/mirador1/mirador-ui/-/releases/stable-v1.0.50) | **B-7-7b database split** : 522→128 LOC via 2 sibling data files (HEALTH_CHECKS + SQL_PRESET_CATEGORIES) |
+| svc [stable-v1.0.50](https://gitlab.com/mirador1/mirador-service/-/releases/stable-v1.0.50) | switch case `_` fix + COMPATIBILITY_MATRIX.md doc generated from svc pipeline #800 |
+| svc [stable-v1.0.49](https://gitlab.com/mirador1/mirador-service/-/releases/stable-v1.0.49) | **4 surgical compat fixes** : Maven java17 profile order + 29× catch `_` + ArchTest kafka method-level + ArchTest demo exclusion |
 | UI [stable-v1.0.49](https://gitlab.com/mirador1/mirador-ui/-/releases/stable-v1.0.49) | **D1 finale** : ListStateService + eslint.config→config/ (root 16→15) |
 | UI [stable-v1.0.48](https://gitlab.com/mirador1/mirador-ui/-/releases/stable-v1.0.48) | D1 customers Selection + Crud services (838→573 LOC) |
 | svc [stable-v1.0.47](https://gitlab.com/mirador1/mirador-service/-/releases/stable-v1.0.47) | **D2 Ollama 20→95% branches** + trivy --timeout 5m→15m fix |
@@ -90,10 +93,11 @@ Diminishing returns ; no SonarCloud blocker. Defer until Phase C lands.
 | `database.component.html` | 141 | ✅ B-7-7 partial (DatabaseHealthTabComponent extracted ; SqlExplorer + preset row still inline, marginal win if extracted) |
 | `chaos.component.html` | 185 | ⏭ B-7-8 skipped — file already DRY via `@for actions`, under 1000 LOC cap, extraction would be marginal |
 | `customers.component.ts` | 457 | ✅ B-7-2c DONE (4 services : ImportExport + Selection + Crud + ListState ; 838→457 LOC -46%) |
-| `diagnostic.component.ts` | 628 | 🔧 PENDING — 7 scenario methods (~50-100 LOC each), tightly coupled to parent signals + log lines. Multi-hour refactor. |
-| `about.component.ts` | 652 | 🔧 PENDING — 8 tabs, similar pattern to security. |
-| `chaos.component.ts` | 625 | 🔧 PENDING — TS-heavy (185 LOC html only) ; refactor harder than template extractions. |
-| `database.component.ts` | 603 | 🔧 PENDING — same shape as chaos. |
+| `database.component.ts` | 128 | ✅ B-7-7b DONE (data extracted to HEALTH_CHECKS + SQL_PRESET_CATEGORIES files ; 522→128 LOC -75%) |
+| `diagnostic.component.ts` | 628 | 🔧 PENDING — 7 scenario methods (~50-100 LOC each), tightly coupled to parent signals + log lines. Below 1000 LOC threshold (no urgency per hygiene rule), multi-hour refactor when touched. |
+| `about.component.ts` | 77 | ✅ B-7-5 DONE (parent kept thin ; data in about-data.ts 605 LOC ; 3 widgets extracted) |
+| `chaos.component.ts` | 625 | 🔧 PENDING — TS-heavy (185 LOC html only) ; below 1000 LOC threshold (no urgency), refactor harder than template extractions. |
+| `dashboard.component.ts` | 670 | 🔧 PENDING — below 1000 LOC threshold (no urgency), 3 widgets already extracted (B-6b). Remaining ~5 visualisation panels could go but each refactor is ~30-60 min. |
 
 ---
 
@@ -105,6 +109,48 @@ Diminishing returns ; no SonarCloud blocker. Defer until Phase C lands.
 - **SonarCloud security_hotspots_reviewed = 0 %** — manual UI step on
   https://sonarcloud.io for both projects ; mark hotspots as "safe"
   with justification.
+
+## 🔴 Compat matrix structural debt (deferred — needs dedicated wave)
+
+After 1.0.51 + 1.0.52 surgical waves, 3 SB3 structural issues remain :
+
+1. **`AutoConfigureMockMvc.java` shim** — references SB3 package
+   `org.springframework.boot.test.autoconfigure.web.servlet` which
+   isn't on test classpath in the SB3 profile. Either spring-boot-
+   test-autoconfigure (SB3 version) needs explicit dep wiring in
+   the SB3 profile, OR the shim needs a different bridge mechanism.
+2. **`CustomerRestClientITest.java`** — uses `RestTestClient` (SB4-
+   only API). Needs `<excludes>` rule in SB3 profile maven-failsafe
+   or surefire plugin.
+3. **SB4+J17 cell** — depending on remaining J21+ APIs in main src
+   that haven't been overlayed. The current J17 overlay covers
+   AggregationService + AggregationServicePropertyTest. Re-trigger
+   compat-sb4-java17 after !192 merge to surface anything else.
+
+Estimated dedicated wave : 1-2 hours per item.
+
+## 🔴 UI CI debt — 4 jobs allow_failure=True (pre-existing)
+
+The UI main pipeline has 4 jobs shielded with `allow_failure: true` :
+
+- **dockle** : `no image found in image index for architecture "arm64", variant "v8"` —
+  Kaniko build produces amd64 only, dockle tries to scan multi-arch
+  index and finds no arm64 variant. Fix : either build multi-arch
+  via `docker buildx --platform linux/amd64,linux/arm64` OR pin
+  dockle to scan amd64 only.
+- **grype:scan** : `/busybox/sh: eval: line 186: grype: not found` —
+  binary path issue in `anchore/grype:v0.111.0-debug` image. Either
+  switch to non-debug variant or use `which grype` to locate.
+- **sonarcloud** : flaky `WebSocket connection closed abnormally`
+  on the JS plugin's `WebSensor`. Sonar's JS analyzer opens a
+  child Node process WebSocket — sometimes flaky on shared CI.
+  Fix : retry policy OR upgrade sonar-scanner-cli.
+- **e2e:kind** : Playwright failure (cleanup successful but artifacts
+  missing). Need full job log to diagnose root spec failure.
+
+Per CLAUDE.md "Pipelines stay green — no `allow_failure: true` as
+a permanent shield" → these need fixing. Each is ~30-60 min of
+investigation. Bundle into a "ui-ci-cleanup" wave.
 
 ---
 
