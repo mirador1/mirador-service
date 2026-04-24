@@ -3,12 +3,17 @@
 Source of truth across Claude sessions. Read this first. Update when
 adding/starting/finishing a task. Delete when empty (per CLAUDE.md).
 
-**Last refresh** : 2026-04-24 02:21 — after 3 fresh tags : svc 1.0.44
-(cluster test-all.sh) + UI 1.0.44 (security 5-widget batch + about
-data P1A) + UI 1.0.45 (about 3-widget P1B → about.html 613→251 LOC).
-Phase B-7-5 fully DONE. Next B-7 offenders : diagnostic (628),
-chaos (625), database (603). Historical DONE entries collapsed to
-one-line refs ; detail lives in `git log` + ADRs + tag annotations.
+**Last refresh** : 2026-04-24 09:10 — morning session shipped :
+- UI 1.0.46 (run.sh → bin/run.sh + SONAR doc + CLAUDE rule "Réduire vagues CI")
+- svc 1.0.45 (CLAUDE rule mirror + ADR-0057 polyrepo + ADR-0045/0046 stubs + regen-index fix)
+- svc 1.0.46 (Phase C Checkstyle 121→0 violations + RateLimit 57→86% branches)
+- UI 1.0.47 (diagnostic widget + database HealthTab + customers ImportExport service)
+- UI 1.0.48 pending (customers Selection + Crud services, 838→573 LOC total -32%)
+- svc 1.0.47 pending (Ollama probeOllama refactor + 7 tests, 20→95% branches)
+
+B-7-5 ✅ DONE. Phase C ✅ DONE. D1 customers split ✅ DONE (3 services).
+D2 Sonar coverage chip ongoing (2 classes meaningfully improved).
+Remaining B-7 (chaos/database SqlExplorer) skipped as marginal.
 
 ---
 
@@ -18,16 +23,20 @@ Last 10 stable checkpoints (most recent first) :
 
 | Tag | Theme |
 |---|---|
+| UI [stable-v1.0.47](https://gitlab.com/mirador1/mirador-ui/-/releases/stable-v1.0.47) | B-7-6 diagnostic widget + B-7-7 database HealthTab + B-7-2c step 1 customers ImportExport |
+| svc [stable-v1.0.46](https://gitlab.com/mirador1/mirador-service/-/releases/stable-v1.0.46) | **Phase C Checkstyle failOnViolation=true** (121→0) + RateLimit +3 branch tests (57→86%) |
+| UI [stable-v1.0.46](https://gitlab.com/mirador1/mirador-ui/-/releases/stable-v1.0.46) | run.sh → bin/run.sh + SONAR doc + CLAUDE.md "Réduire vagues CI" rule |
+| svc [stable-v1.0.45](https://gitlab.com/mirador1/mirador-service/-/releases/stable-v1.0.45) | CLAUDE rule mirror + ADR-0057 polyrepo + ADR-0045/0046 stubs + regen-adr-index hardening |
 | UI [stable-v1.0.45](https://gitlab.com/mirador1/mirador-ui/-/releases/stable-v1.0.45) | About 3-widget extraction B-7-5 P1B (about.html 613→251 LOC) |
 | svc [stable-v1.0.44](https://gitlab.com/mirador1/mirador-service/-/releases/stable-v1.0.44) | `bin/cluster/test-all.sh` batched cluster validation (4 layers, --json + --quick) |
 | svc [stable-v1.0.43](https://gitlab.com/mirador1/mirador-service/-/releases/stable-v1.0.43) | ADR-0056 (widget extraction pattern) |
-| svc [stable-v1.0.42](https://gitlab.com/mirador1/mirador-service/-/releases/stable-v1.0.42) | ADR index refresh + audit artefact |
-| svc [stable-v1.0.41](https://gitlab.com/mirador1/mirador-service/-/releases/stable-v1.0.41) | Coverage : ApiError 0→100% + Ollama DOWN branch |
-| svc [stable-v1.0.40](https://gitlab.com/mirador1/mirador-service/-/releases/stable-v1.0.40) | OVH per-resource timing docs |
-| svc [stable-v1.0.39](https://gitlab.com/mirador1/mirador-service/-/releases/stable-v1.0.39) | Q2 OVH activated + GitLab Observability + 4 CI fixes |
 | UI [stable-v1.0.44](https://gitlab.com/mirador1/mirador-ui/-/releases/stable-v1.0.44) | Security 5-widget batch (B-7-4 ✅) + About data extraction Phase 1A |
 | UI [stable-v1.0.43](https://gitlab.com/mirador1/mirador-ui/-/releases/stable-v1.0.43) | TASKS.md cleanup (635→115 LOC) |
 | UI [stable-v1.0.42](https://gitlab.com/mirador1/mirador-ui/-/releases/stable-v1.0.42) | Security MechanismsTab widget extraction (B-7-4) |
+
+**In-flight (auto-merge armed)** :
+- svc !186 → 1.0.47 : Ollama probeOllama refactor + 7 branch tests (20→95%)
+- UI main post-merge → 1.0.48 : customers Selection + Crud services (B-7-2c steps 2+3)
 
 **Major waves shipped 2026-04-22** : Phase B-2/B-4 CI modularisation
 (svc 2619→173 LOC + UI 1086→144 LOC) ; Phase Q (backend ↔ build-tool

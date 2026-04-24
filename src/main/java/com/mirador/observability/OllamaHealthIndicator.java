@@ -32,14 +32,7 @@ public class OllamaHealthIndicator implements HealthIndicator {
     @Override
     public Health health() {
         try {
-            // Call /api/tags just for the side-effect of proving the server is
-            // reachable; the response body is discarded (this is a probe, not
-            // a metrics fetch).
-            RestClient.create(baseUrl)
-                    .get()
-                    .uri("/api/tags")
-                    .retrieve()
-                    .toBodilessEntity();
+            probeOllama();
             return Health.up()
                     .withDetail(DETAIL_ENDPOINT, baseUrl)
                     .build();
@@ -60,5 +53,22 @@ public class OllamaHealthIndicator implements HealthIndicator {
                     .withDetail(DETAIL_ENDPOINT, baseUrl)
                     .build();
         }
+    }
+
+    /**
+     * Probe /api/tags for the side-effect of proving the server is reachable ;
+     * the response body is discarded (this is a health probe, not a metrics
+     * fetch). Extracted into a protected method so unit tests can substitute
+     * a pre-configured outcome (no-op for UP, throw for DOWN/UNKNOWN) without
+     * needing a live Ollama server OR a heavyweight MockWebServer / WireMock
+     * setup. Subclass + override pattern keeps the production path unchanged
+     * (zero overhead vs inlining the RestClient chain).
+     */
+    protected void probeOllama() {
+        RestClient.create(baseUrl)
+                .get()
+                .uri("/api/tags")
+                .retrieve()
+                .toBodilessEntity();
     }
 }

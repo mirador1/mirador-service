@@ -9,52 +9,98 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Unit tests for the optional Ollama health indicator.
+ *
+ * Strategy : subclass + override the {@code probeOllama()} protected
+ * method to substitute a pre-configured outcome (no-op for UP, throw
+ * for DOWN/UNKNOWN). The REAL {@code health()} method runs — that's
+ * what we want to cover. Previous implementation used the anonymous
+ * subclass pattern on {@code health()} itself which bypassed the
+ * production logic entirely and gave 20 % branch coverage (2/10).
+ *
+ * With this refactor, all 10 branches of {@code health()} are
+ * exercised : the try-block UP path, the catch-block classification
+ * (ResourceAccessException / msg contains Connection-refused / msg
+ * contains Failed-to-connect / msg contains I/O-error / none-match →
+ * DOWN), and the null-message guard.
  */
 class OllamaHealthIndicatorTest {
 
     @Test
-    void ollamaNotRunning_connectionRefused_returnsUnknown() {
-        // Port 1 will always refuse — simulates Ollama not started
-        var indicator = new OllamaHealthIndicator("http://127.0.0.1:1");
+    void probeSucceeds_returnsUp() {
+        // No-op probe → UP branch exercised.
+        var indicator = new OllamaHealthIndicator("http://localhost:11434") {
+            @Override
+            protected void probeOllama() {
+                // success — do nothing
+            }
+        };
         Health h = indicator.health();
-        assertThat(h.getStatus()).isEqualTo(Status.UNKNOWN);
-        assertThat(h.getDetails().get("reason").toString())
-                .contains("Ollama not running");
+        assertThat(h.getStatus()).isEqualTo(Status.UP);
+        assertThat(h.getDetails()).containsEntry("endpoint", "http://localhost:11434");
     }
 
     @Test
-    void defaultBaseUrl_usedWhenNoPropertySet() {
-        // Verify constructor wiring works with the default value
-        var indicator = new OllamaHealthIndicator("http://localhost:11434");
-        // Just verify instantiation and health() doesn't throw unexpectedly
+    void resourceAccessException_returnsUnknown() {
+        // ResourceAccessException (typical "Connection refused" wrapper) → UNKNOWN.
+        var indicator = new OllamaHealthIndicator("http://localhost:11434") {
+            @Override
+            protected void probeOllama() {
+                throw new ResourceAccessException("I/O error on GET request");
+            }
+        };
         Health h = indicator.health();
-        // Depending on environment: UP (Ollama running) or UNKNOWN (not running)
-        assertThat(h.getStatus()).isIn(Status.UP, Status.UNKNOWN, Status.DOWN);
+        assertThat(h.getStatus()).isEqualTo(Status.UNKNOWN);
+        assertThat(h.getDetails().get("reason").toString()).contains("Ollama not running");
+    }
+
+    @Test
+    void connectionRefusedMessage_nonResourceAccessException_returnsUnknown() {
+        // A plain RuntimeException whose message contains "Connection refused" →
+        // also classified as UNKNOWN (covers the msg.contains branch).
+        var indicator = new OllamaHealthIndicator("http://localhost:11434") {
+            @Override
+            protected void probeOllama() {
+                throw new RuntimeException("Connection refused to 127.0.0.1:11434");
+            }
+        };
+        Health h = indicator.health();
+        assertThat(h.getStatus()).isEqualTo(Status.UNKNOWN);
+    }
+
+    @Test
+    void failedToConnectMessage_returnsUnknown() {
+        // msg.contains("Failed to connect") branch.
+        var indicator = new OllamaHealthIndicator("http://localhost:11434") {
+            @Override
+            protected void probeOllama() {
+                throw new RuntimeException("Failed to connect to Ollama backend");
+            }
+        };
+        Health h = indicator.health();
+        assertThat(h.getStatus()).isEqualTo(Status.UNKNOWN);
+    }
+
+    @Test
+    void ioErrorMessage_returnsUnknown() {
+        // msg.contains("I/O error") branch.
+        var indicator = new OllamaHealthIndicator("http://localhost:11434") {
+            @Override
+            protected void probeOllama() {
+                throw new RuntimeException("I/O error during probe");
+            }
+        };
+        Health h = indicator.health();
+        assertThat(h.getStatus()).isEqualTo(Status.UNKNOWN);
     }
 
     @Test
     void unexpectedException_returnsDown() {
-        // Any exception that is NOT a ResourceAccessException and whose message
-        // doesn't contain "Connection refused" / "Failed to connect" / "I/O error"
-        // should fall through to Health.down() rather than Health.unknown().
-        // Validates the else-branch of the is-Ollama-just-not-running check.
+        // An exception that doesn't match any of the "Ollama not running" patterns
+        // falls through to Health.down() — covers the else-branch of the catch.
         var indicator = new OllamaHealthIndicator("http://localhost:11434") {
             @Override
-            public Health health() {
-                try {
-                    throw new IllegalStateException("unexpected server state");
-                } catch (Exception ex) {
-                    String msg = ex.getMessage() != null ? ex.getMessage() : "";
-                    if (ex instanceof ResourceAccessException
-                            || msg.contains("Connection refused")
-                            || msg.contains("Failed to connect")
-                            || msg.contains("I/O error")) {
-                        return Health.unknown()
-                                .withDetail("endpoint", "http://localhost:11434")
-                                .build();
-                    }
-                    return Health.down(ex).withDetail("endpoint", "http://localhost:11434").build();
-                }
+            protected void probeOllama() {
+                throw new IllegalStateException("unexpected server state");
             }
         };
         Health h = indicator.health();
@@ -63,29 +109,27 @@ class OllamaHealthIndicatorTest {
     }
 
     @Test
-    void resourceAccessException_returnsUnknown() {
-        // Subclass to inject a specific exception without needing a live server
+    void exceptionWithNullMessage_returnsDown() {
+        // Guard against NPE when ex.getMessage() returns null — the code
+        // uses `ex.getMessage() != null ? ex.getMessage() : ""` to avoid it.
+        // This test locks that defensive branch.
         var indicator = new OllamaHealthIndicator("http://localhost:11434") {
             @Override
-            public Health health() {
-                try {
-                    throw new ResourceAccessException("I/O error on GET request for http://localhost:11434/api/tags");
-                } catch (Exception ex) {
-                    String msg = ex.getMessage() != null ? ex.getMessage() : "";
-                    if (ex instanceof ResourceAccessException
-                            || msg.contains("Connection refused")
-                            || msg.contains("Failed to connect")
-                            || msg.contains("I/O error")) {
-                        return Health.unknown()
-                                .withDetail("endpoint", "http://localhost:11434")
-                                .withDetail("reason", "Ollama not running (optional — required for /bio endpoint)")
-                                .build();
-                    }
-                    return Health.down(ex).withDetail("endpoint", "http://localhost:11434").build();
-                }
+            protected void probeOllama() {
+                throw new IllegalStateException();  // null message
             }
         };
         Health h = indicator.health();
-        assertThat(h.getStatus()).isEqualTo(Status.UNKNOWN);
+        assertThat(h.getStatus()).isEqualTo(Status.DOWN);
+    }
+
+    @Test
+    void defaultBaseUrl_usedWhenNoPropertySet() {
+        // Verify constructor wiring works with the default value — this test
+        // hits the real RestClient.create() path so its outcome depends on
+        // the environment (UP if Ollama is running, UNKNOWN otherwise).
+        var indicator = new OllamaHealthIndicator("http://localhost:11434");
+        Health h = indicator.health();
+        assertThat(h.getStatus()).isIn(Status.UP, Status.UNKNOWN, Status.DOWN);
     }
 }
