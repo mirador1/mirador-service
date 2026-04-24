@@ -60,13 +60,13 @@ public final class ReportParsers {
     /** {@code null} for empty/blank/malformed input — keeps JSON shape "missing = null". */
     public static Integer parseIntOrNull(String v) {
         if (v == null || v.isBlank()) return null;
-        try { return Integer.parseInt(v.trim()); } catch (NumberFormatException _) { return null; }
+        try { return Integer.parseInt(v.trim()); } catch (NumberFormatException ignored) { return null; }
     }
 
     /** {@code null} for empty/blank/malformed input; result is {@link #round1}-trimmed. */
     public static Double parseDoubleOrNull(String v) {
         if (v == null || v.isBlank()) return null;
-        try { return round1(Double.parseDouble(v.trim())); } catch (NumberFormatException _) { return null; }
+        try { return round1(Double.parseDouble(v.trim())); } catch (NumberFormatException ignored) { return null; }
     }
 
     /**
@@ -78,7 +78,7 @@ public final class ReportParsers {
     public static int intAttr(Element el, String attr) {
         try {
             return Integer.parseInt(el.getAttribute(attr));
-        } catch (NumberFormatException _) {
+        } catch (NumberFormatException ignored) {
             return 0;
         }
     }
@@ -104,7 +104,7 @@ public final class ReportParsers {
     public static double doubleAttr(Element el, String attr) {
         try {
             return Double.parseDouble(el.getAttribute(attr));
-        } catch (NumberFormatException _) {
+        } catch (NumberFormatException ignored) {
             return 0.0;
         }
     }
@@ -119,7 +119,7 @@ public final class ReportParsers {
             Instant start  = Instant.parse(startIso);
             Instant finish = Instant.parse(finishIso);
             return OptionalLong.of(Duration.between(start, finish).getSeconds());
-        } catch (Exception _) {
+        } catch (Exception ignored) {
             return OptionalLong.empty();
         }
     }
@@ -176,7 +176,7 @@ public final class ReportParsers {
         if (res.exists()) {
             try {
                 return res.getInputStream();
-            } catch (IOException _) {
+            } catch (IOException ignored) {
                 // fall through
             }
         }
@@ -184,7 +184,7 @@ public final class ReportParsers {
         if (devFile.exists()) {
             try {
                 return new java.io.FileInputStream(devFile);
-            } catch (IOException _) {
+            } catch (IOException ignored) {
                 // fall through
             }
         }

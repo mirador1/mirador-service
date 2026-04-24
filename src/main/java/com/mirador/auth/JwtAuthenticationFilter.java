@@ -123,9 +123,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             // try-with-resources guarantees the scope is closed after the entire filter chain completes.
             // [OpenTelemetry / Micrometer Tracing — baggage propagation]
             // try-with-resources scope is only held to close the baggage entry
-            // after the downstream chain completes — the handle itself is unused,
-            // so Java 25's underscore pattern avoids the `unused` local (S1481).
-            try (var _ = tracer.createBaggageInScope("user.name", name)) {
+            // after the downstream chain completes — the handle itself is unused.
+            // Use `ignored` (not Java 25's `_` unnamed pattern) so SB3+J21 builds
+            // compile — underscore is preview in J21, stable only from J22+.
+            try (var ignored = tracer.createBaggageInScope("user.name", name)) {
                 filterChain.doFilter(request, response);
             }
             return;

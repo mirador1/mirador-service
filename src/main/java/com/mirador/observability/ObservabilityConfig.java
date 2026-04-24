@@ -63,7 +63,7 @@ public class ObservabilityConfig {
                     try {
                         // Redis LLEN is O(1) — cheaper than fetching all entries and counting
                         return (double) buffer.size();
-                    } catch (Exception _) {
+                    } catch (Exception ignored) {
                         return 0;
                     }
                 })

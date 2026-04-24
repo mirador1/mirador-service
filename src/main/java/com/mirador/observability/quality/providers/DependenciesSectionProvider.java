@@ -172,9 +172,9 @@ public class DependenciesSectionProvider {
         try {
             CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
                     .get(8, TimeUnit.SECONDS);
-        } catch (InterruptedException _) {
+        } catch (InterruptedException ignored) {
             Thread.currentThread().interrupt();
-        } catch (Exception _) {
+        } catch (Exception ignored) {
             // timeout / interruption — return whatever was collected
         }
         return deps.stream().filter(d -> Boolean.TRUE.equals(d.get("outdated"))).count();
@@ -201,9 +201,9 @@ public class DependenciesSectionProvider {
             if (latest.isBlank()) return;
             dep.put("latestVersion", latest);
             dep.put("outdated", isOutdated(version, latest));
-        } catch (InterruptedException _) {
+        } catch (InterruptedException ignored) {
             Thread.currentThread().interrupt();
-        } catch (Exception _) {
+        } catch (Exception ignored) {
             // non-critical; dep appears without latestVersion
         }
     }
@@ -235,7 +235,7 @@ public class DependenciesSectionProvider {
             result.put("tree", rawTree);
             result.put("totalTransitive", transitiveCount);
             return result;
-        } catch (IOException _) {
+        } catch (IOException ignored) {
             return null;
         }
     }
@@ -263,7 +263,7 @@ public class DependenciesSectionProvider {
                     if ("unused".equals(section)) unusedDeclared.add(trimmed);
                 }
             }
-        } catch (IOException _) {
+        } catch (IOException ignored) {
             return null;
         }
         Map<String, Object> result = new LinkedHashMap<>();

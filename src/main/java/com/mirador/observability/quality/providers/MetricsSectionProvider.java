@@ -119,7 +119,7 @@ public class MetricsSectionProvider {
                     if (methodCovered == 0 && methods > 0) {
                         untestedClasses.add(simpleClass);
                     }
-                } catch (NumberFormatException _) {
+                } catch (NumberFormatException ignored) {
                     // JaCoCo occasionally leaks non-numeric totals on synthetic classes — skip row.
                 }
             }

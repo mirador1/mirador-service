@@ -209,7 +209,7 @@ public class QualityReportEndpoint {
         if (!res.exists()) return Map.of();
         try (InputStream is = res.getInputStream()) {
             return (Map<String, Object>) BUILD_TIME_MAPPER.readValue(is, Map.class);
-        } catch (Exception _) {
+        } catch (Exception ignored) {
             return Map.of();
         }
     }
@@ -243,10 +243,10 @@ public class QualityReportEndpoint {
                 proc.waitFor();
                 return (line != null && !line.isBlank()) ? line.trim() : null;
             }
-        } catch (InterruptedException _) {
+        } catch (InterruptedException ignored) {
             Thread.currentThread().interrupt();
             return null;
-        } catch (Exception _) {
+        } catch (Exception ignored) {
             return null;
         }
     }
@@ -402,7 +402,7 @@ public class QualityReportEndpoint {
                 layers.add(l);
             }
             return layers;
-        } catch (Exception _) {
+        } catch (Exception ignored) {
             return List.of();
         }
     }
@@ -462,7 +462,7 @@ public class QualityReportEndpoint {
             result.put(K_BRANCHES, branches);
             result.put(K_TOTAL, branches.size());
             return result;
-        } catch (InterruptedException _) {
+        } catch (InterruptedException ignored) {
             Thread.currentThread().interrupt();
             return Map.of(K_AVAILABLE, false, K_REASON, "git call interrupted");
         } catch (Exception e) {

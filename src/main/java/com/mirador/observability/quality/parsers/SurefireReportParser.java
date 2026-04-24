@@ -211,7 +211,7 @@ public class SurefireReportParser {
             }
             return new ParsedSuite(shortName, suiteMap, tests, failures, errors, skipped, time,
                     tcTimes, tcNames);
-        } catch (Exception _) {
+        } catch (Exception ignored) {
             return null;  // malformed XML silently skipped
         }
     }
@@ -233,7 +233,7 @@ public class SurefireReportParser {
                 }
             }
             if (!streams.isEmpty()) return streams;
-        } catch (IOException _) {
+        } catch (IOException ignored) {
             // fall through to dev fallback
         }
         File dir = new File(DEV_SUREFIRE_DIR);
@@ -243,7 +243,7 @@ public class SurefireReportParser {
                 for (File f : xmlFiles) {
                     try {
                         streams.add(new java.io.FileInputStream(f));
-                    } catch (IOException _) {
+                    } catch (IOException ignored) {
                         // skip unreadable files
                     }
                 }

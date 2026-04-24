@@ -123,7 +123,7 @@ public class AuthController {
         UserDetails userDetails;
         try {
             userDetails = userDetailsService.loadUserByUsername(request.username());
-        } catch (UsernameNotFoundException _) {
+        } catch (UsernameNotFoundException ignored) {
             loginAttemptService.recordFailure(ip);
             int remaining = loginAttemptService.getRemainingAttempts(ip);
             log.warn("audit_login_failed ip={} username={} remaining_attempts={}", ip, request.username(), remaining);
