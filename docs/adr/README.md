@@ -143,6 +143,7 @@ monotonic across supersessions.
 | 0053 | Accepted | [OVH Cloud as 2nd canonical Kubernetes target](0053-ovh-canonical-target.md) |
 | 0054 | Active | [Dual-export OTLP telemetry to GitLab Observability](0054-gitlab-observability-dual-export.md) |
 | 0055 | Accepted | [Shell-based release automation (no semantic-release)](0055-shell-based-release-automation.md) |
+| 0056 | Accepted | [Widget extraction pattern for large Angular components](0056-widget-extraction-pattern.md) |
 <!-- ADR-INDEX:END -->
 
 ## Hierarchical index (by theme)
