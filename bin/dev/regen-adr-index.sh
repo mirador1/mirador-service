@@ -78,10 +78,16 @@ generate_table() {
             | sed -E 's/^ADR-[0-9]{4}:[[:space:]]*//')"
 
         # Status — accepts both "- Status: X" and "- **Status**: X" shapes.
-        status="$(grep -m1 -iE '^-[[:space:]]+(\*\*)?Status(\*\*)?:' "$f" \
+        # `|| true` shields against grep exit 1 when an ADR has a non-standard
+        # status block (e.g. French "Statut" or none) ; under `set -euo pipefail`
+        # a grep miss would otherwise abort the whole script and silently
+        # truncate the table at the first offending ADR.
+        status="$( { grep -m1 -iE '^-[[:space:]]+(\*\*)?Status(\*\*)?:' "$f" || true; } \
             | sed -E 's/^-[[:space:]]+(\*\*)?Status(\*\*)?:[[:space:]]*//' \
             | sed -E 's/\*\*//g' \
             | awk '{print $1}')"
+        # Default when no Status line found — keeps the row visible in the table.
+        [ -z "$status" ] && status="Unknown"
 
         # Superseded-by link — only when status is "Superseded" AND the ADR
         # body carries a "Superseded by [ADR-XXXX](XXXX-slug.md)" reference.
