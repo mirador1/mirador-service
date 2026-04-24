@@ -68,6 +68,7 @@ workflow:
         - "scripts/**/*"
         - "bin/**/*"        # Stability check + cluster lifecycle scripts
         - "docs/**/*"
+        - "matrix-results/**/*"  # Compat matrix doc — added 2026-04-24 so doc-only MRs trigger a (mostly-skipped) pipeline that satisfies branch protection
         - "README.md"
         - "README.fr.md"
         - "CLAUDE.md"
@@ -83,6 +84,7 @@ workflow:
         - "Dockerfile*"
         - ".dockerignore"
         - "docs/**/*"
+        - "matrix-results/**/*"  # Compat matrix doc — added 2026-04-24 so post-merge main pipelines fire on doc-only changes
         - "README.md"
         - "README.fr.md"
         - "CLAUDE.md"
