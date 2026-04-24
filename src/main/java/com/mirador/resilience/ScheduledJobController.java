@@ -40,7 +40,11 @@ public class ScheduledJobController {
      * Each row represents the last lock state for a scheduled job.
      */
     @Operation(summary = "List ShedLock-tracked scheduled jobs",
-            description = "Returns one entry per scheduled job registered with ShedLock, including the last lock holder + lock-until timestamp. Useful to verify that scheduled tasks are not silently failing or deadlocked across replicas. Read-only; queries the `shedlock` table directly via JdbcTemplate.")
+            description = """
+                    Returns one entry per scheduled job registered with ShedLock, including the \
+                    last lock holder + lock-until timestamp. Useful to verify that scheduled tasks \
+                    are not silently failing or deadlocked across replicas. Read-only; queries the \
+                    `shedlock` table directly via JdbcTemplate.""")
     @ApiResponse(responseCode = "200", description = "List of `{name, lockUntil, lockedAt, lockedBy}` rows from the shedlock table.")
     @ApiResponse(responseCode = "401", description = "Missing or invalid JWT token (this endpoint requires authentication)")
     @GetMapping

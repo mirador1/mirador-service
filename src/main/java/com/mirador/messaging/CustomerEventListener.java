@@ -1,6 +1,5 @@
 package com.mirador.messaging;
 
-import com.mirador.messaging.CustomerCreatedEvent;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;

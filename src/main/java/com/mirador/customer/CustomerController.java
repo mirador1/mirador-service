@@ -372,7 +372,11 @@ public class CustomerController {
      * [Spring Data JPA — interface projection]
      */
     @Operation(summary = "Customer summary page (id + name only)",
-            description = "Lightweight paginated list using a Spring Data **interface projection** — emits `SELECT id, name FROM customer` instead of `SELECT *`. Useful for read-heavy list views where the full DTO is overkill. The `CustomerSummary` interface is resolved by Spring Data JPA without any DTO mapper.")
+            description = """
+                    Lightweight paginated list using a Spring Data **interface projection** — \
+                    emits `SELECT id, name FROM customer` instead of `SELECT *`. Useful for \
+                    read-heavy list views where the full DTO is overkill. The `CustomerSummary` \
+                    interface is resolved by Spring Data JPA without any DTO mapper.""")
     @ApiResponse(responseCode = "200", description = "Page of `{id, name}` projections")
     @GetMapping("/summary")
     public Page<CustomerSummary> getSummary(@PageableDefault(size = 20, sort = "id") Pageable pageable) {

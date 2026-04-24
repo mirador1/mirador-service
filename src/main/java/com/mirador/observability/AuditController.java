@@ -50,8 +50,10 @@ public class AuditController {
             @Parameter(description = "Page size (max 100)", example = "20") @RequestParam(defaultValue = "20") int size,
             @Parameter(description = "Filter by action type, e.g. LOGIN_FAILED, CUSTOMER_CREATED", example = "LOGIN_FAILED") @RequestParam(required = false) String action,
             @Parameter(description = "Filter by username") @RequestParam(required = false) String user,
-            @Parameter(description = "Start of time range (ISO-8601)", example = "2024-01-01T00:00:00Z") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
-            @Parameter(description = "End of time range (ISO-8601)", example = "2024-12-31T23:59:59Z") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to) {
+            @Parameter(description = "Start of time range (ISO-8601)", example = "2024-01-01T00:00:00Z")
+                @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
+            @Parameter(description = "End of time range (ISO-8601)", example = "2024-12-31T23:59:59Z")
+                @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to) {
         int cappedSize = Math.min(size, 100);
         return auditService.findAll(page, cappedSize, action, user, from, to);
     }

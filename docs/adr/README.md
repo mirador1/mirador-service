@@ -147,6 +147,7 @@ monotonic across supersessions.
 | 0055 | Accepted | [Shell-based release automation (no semantic-release)](0055-shell-based-release-automation.md) |
 | 0056 | Accepted | [Widget extraction pattern for large Angular components](0056-widget-extraction-pattern.md) |
 | 0057 | Accepted | [Conserver le polyrepo (svc + UI séparés), pas de migration vers monorepo](0057-polyrepo-vs-monorepo.md) |
+| 0058 | Accepted | [Phase C : Checkstyle `failOnViolation=true`](0058-phase-c-checkstyle-flip.md) |
 <!-- ADR-INDEX:END -->
 
 ## Hierarchical index (by theme)

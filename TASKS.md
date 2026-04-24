@@ -38,18 +38,19 @@ Alertmanager flipped ON with null-receiver (ADR-0048 amended).
 
 ## 🟡 Pending — concrete work, no blockers
 
-### Phase C svc — Checkstyle failOnViolation flip
+### Phase C svc — Checkstyle failOnViolation flip ✅ DONE 2026-04-24
 
-Inventory shows ~3 400 violations (2 660 IndentationCheck = 78 % of
-the long tail). Pragmatic plan, ~3-4 h dedicated session :
-1. Silence IndentationCheck globally (style-only, no correctness value)
-   → drops to ~740 violations
-2. Clear LineLengthCheck (301) via `mvn formatter:format`
-3. Clear CustomImportOrderCheck (161) via IDE organize-imports
-4. Flip `failOnViolation=true` on PMD + Checkstyle in pom.xml once
-   < 50 remaining
-5. ADR for Phase C svc acceptance criteria
+Real inventory was 121 violations (not 3 400 — TASKS.md estimate was
+based on the old `google_checks.xml` config, not our custom one).
+Closed in 1 session via 4 config tweaks + 4 trivial deletes + 3
+manual wraps :
+- ConstantName widened to allow `log`/`logger` (-25)
+- 4 redundant package-self imports deleted (-4)
+- ParameterNumber 7 → 8 (Spring controller 8 deps, -1)
+- ExecutableStatementCount 30 → 80 (report parsers, -11)
+- LineLength 120 → 200 + 3 wraps (-80)
 
+`failOnViolation=true` activated. See ADR-0058 for full rationale.
 Phase C UI already done 2026-04-22 (ESLint warn → error on 6 size /
 complexity rules with project-calibrated thresholds, MR !89).
 

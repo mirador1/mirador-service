@@ -1,6 +1,5 @@
 package com.mirador.observability;
 
-import com.mirador.observability.RequestContext;
 import org.springframework.stereotype.Service;
 
 /**

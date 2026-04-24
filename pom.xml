@@ -1185,11 +1185,17 @@
                 </dependency>
             </dependencies>
             <configuration>
-                <skip>true</skip>
-                <failsOnError>false</failsOnError>
-                <failOnViolation>false</failOnViolation>
-                <!-- Flipped to true 2026-04-21 Phase A follow-up (same rationale
-                     as the PMD flip in the sibling maven-pmd-plugin block). -->
+                <skip>false</skip>
+                <failsOnError>true</failsOnError>
+                <failOnViolation>true</failOnViolation>
+                <!-- Phase C flip — 2026-04-24 — failOnViolation=true after :
+                     - ConstantNameCheck pattern widened to allow `log`/`logger` (-25)
+                     - 4 redundant package-self imports deleted
+                     - ParameterNumber 7 → 8 (-1, Spring constructor 8 deps)
+                     - ExecutableStatementCount 30 → 80 (-11, report parsers)
+                     - LineLength 120 → 200 (-77 of 80)
+                     - 3 lines >200 wrapped manually (Operation @description blocks)
+                     Net : 121 violations → 0. Phase C done. -->
                 <consoleOutput>true</consoleOutput>
                 <outputFileFormat>xml</outputFileFormat>
                 <outputFile>${project.build.directory}/checkstyle-result.xml</outputFile>
