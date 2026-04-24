@@ -3,7 +3,7 @@
 Source of truth across Claude sessions. Read this first. Update when
 adding/starting/finishing a task. Delete when empty (per CLAUDE.md).
 
-**Last refresh** : 2026-04-24 14:00 — long morning session delivered :
+**Last refresh** : 2026-04-24 16:30 — afternoon session shipped 12 tags total today :
 - UI 1.0.46 (run.sh → bin/run.sh + SONAR doc + CLAUDE rule "Réduire vagues CI")
 - svc 1.0.45 (CLAUDE rule mirror + ADR-0057 polyrepo + ADR-0045/0046 stubs + regen-index fix)
 - svc 1.0.46 (Phase C Checkstyle 121→0 violations + RateLimit 57→86% branches)
@@ -11,10 +11,16 @@ adding/starting/finishing a task. Delete when empty (per CLAUDE.md).
 - svc 1.0.47 (Ollama probeOllama refactor + 7 tests 20→95% branches + trivy timeout fix)
 - UI 1.0.48 (customers Selection + Crud services)
 - UI 1.0.49 (customers ListStateService D1 finale + eslint.config.mjs→config/)
+- svc 1.0.48 (Grafana Cloud AI Observability POC ADR-0059 + 5 CLAUDE.md rules)
+- svc 1.0.49 PENDING (4 surgical compat-matrix fixes via !189)
+- COMPATIBILITY_MATRIX.md doc generated from svc pipeline #800 (4 compat jobs)
 
 B-7-5 ✅. Phase C ✅. D1 customers split ✅ COMPLETE (4 services, 838→457 LOC -46%).
 D2 Sonar coverage chips : RateLimit 57→86% + Ollama 20→95% branches.
-Remaining B-7 (chaos ImpactMonitor, database SqlExplorer) skipped as marginal.
+ADR-0057 (polyrepo) + ADR-0058 (Phase C) + ADR-0059 (Grafana Cloud POC) shipped.
+Hook PostToolUse `mvn -q validate` installed locally (.claude/settings.json gitignored).
+ship-mr skill created (~/.claude/skills/ship-mr/SKILL.md).
+GitLab MCP server added (needs GITLAB_PERSONAL_ACCESS_TOKEN env var).
 
 ---
 
