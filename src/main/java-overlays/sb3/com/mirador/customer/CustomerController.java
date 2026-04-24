@@ -69,10 +69,17 @@ import java.util.concurrent.ExecutionException;
  * </ol>
  */
 @RestController
-@RequestMapping("/customers")
+@RequestMapping(CustomerController.PATH_CUSTOMERS)
 public class CustomerController {
 
     private static final Logger log = LoggerFactory.getLogger(CustomerController.class);
+
+    // Base path used in @RequestMapping, redirect headers, and observation span keys.
+    // Mirrored from main/CustomerController.java so CustomerEnrichmentController +
+    // CustomerDiagnosticsController can reference CustomerController.PATH_CUSTOMERS
+    // when the SB3 overlay is active. Without this, compat-sb3-* fails compilation
+    // with "cannot find symbol variable PATH_CUSTOMERS" — see svc 1.0.51 wave.
+    static final String PATH_CUSTOMERS = "/customers";
 
     private final CustomerService service;
     private final RecentCustomerBuffer recentCustomerBuffer;

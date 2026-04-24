@@ -1817,6 +1817,14 @@
                                         <copy todir="${project.build.directory}/merged-sources/test" overwrite="true">
                                             <fileset dir="src/test/java-overlays/pre-java25"/>
                                         </copy>
+                                        <!-- Java 17 test overlay : replaces J19+/J21+ APIs in test files
+                                             (currently AggregationServicePropertyTest uses
+                                              Executors.newVirtualThreadPerTaskExecutor + try-with-resources
+                                              on ExecutorService, both J19+/J21+). Symmetric to the main
+                                              java17 overlay just above. Only applied when -Djava17 set. -->
+                                        <copy todir="${project.build.directory}/merged-sources/test" overwrite="true" if:set="java17">
+                                            <fileset dir="src/test/java-overlays/java17"/>
+                                        </copy>
                                         <replaceregexp match="catch \((\w+) _\)"
                                                        replace="catch (\1 _ignored)"
                                                        flags="g" byline="true">

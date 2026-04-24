@@ -73,7 +73,13 @@ public class SecurityConfig {
 
     @Bean
     @SuppressWarnings("java:S4502") // CSRF disabled intentionally — stateless JWT API, no session cookie to hijack (see comment below + Spring Security docs)
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) {
+    // `throws Exception` declared because Spring Boot 3's HttpSecurity DSL methods
+    // (csrf, cors, authorizeHttpRequests, etc.) declare `throws Exception` while
+    // SB4 dropped them. Keeping the throws here is a no-op in SB4 (stricter
+    // signature, never actually thrown) but lets the SB3 compat profile compile
+    // without a per-method overlay. Same pattern would apply to any HttpSecurity-
+    // returning bean if more configs are added.
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         return http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 // CSRF protection is irrelevant for stateless REST APIs authenticated via Bearer tokens:

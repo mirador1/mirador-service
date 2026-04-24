@@ -211,7 +211,7 @@ class CustomerNewEndpointsITest extends AbstractIntegrationTest {
     @Test
     void update_modifiesCustomer() throws Exception {
         createCustomer("Original", "original@example.com");
-        Long id = customerRepository.findAll().getFirst().getId();
+        Long id = customerRepository.findAll().get(0).getId();
 
         mockMvc.perform(put("/customers/{id}", id)
                         .with(user("admin").roles("ADMIN"))
@@ -239,7 +239,7 @@ class CustomerNewEndpointsITest extends AbstractIntegrationTest {
     void update_allowedForUser() throws Exception {
         // ROLE_USER (read + write) can update customers — create first then update
         createCustomer("ToUpdate", "toupdate@example.com");
-        Long id = customerRepository.findAll().getFirst().getId();
+        Long id = customerRepository.findAll().get(0).getId();
 
         mockMvc.perform(put("/customers/{id}", id)
                         .with(user("user").roles("USER"))
@@ -267,7 +267,7 @@ class CustomerNewEndpointsITest extends AbstractIntegrationTest {
     void delete_forbiddenForUser() throws Exception {
         // ROLE_USER (read + write) cannot delete — only ROLE_ADMIN can
         createCustomer("Protected", "protected@example.com");
-        Long id = customerRepository.findAll().getFirst().getId();
+        Long id = customerRepository.findAll().get(0).getId();
 
         mockMvc.perform(delete("/customers/{id}", id)
                         .with(user("user").roles("USER")))
@@ -279,7 +279,7 @@ class CustomerNewEndpointsITest extends AbstractIntegrationTest {
     @Test
     void delete_removesCustomer() throws Exception {
         createCustomer("ToDelete", "delete@example.com");
-        Long id = customerRepository.findAll().getFirst().getId();
+        Long id = customerRepository.findAll().get(0).getId();
 
         mockMvc.perform(delete("/customers/{id}", id)
                         .with(user("admin").roles("ADMIN")))
@@ -349,7 +349,7 @@ class CustomerNewEndpointsITest extends AbstractIntegrationTest {
     @Test
     void patch_updatesOnlyProvidedFields() throws Exception {
         createCustomer("Original", "original@example.com");
-        Long id = customerRepository.findAll().getFirst().getId();
+        Long id = customerRepository.findAll().get(0).getId();
 
         // Patch only the name — email should remain unchanged
         mockMvc.perform(patch("/customers/{id}", id)
@@ -375,7 +375,7 @@ class CustomerNewEndpointsITest extends AbstractIntegrationTest {
     @Test
     void update_evictsCacheOnWrite() throws Exception {
         createCustomer("Cached", "cached@example.com");
-        Long id = customerRepository.findAll().getFirst().getId();
+        Long id = customerRepository.findAll().get(0).getId();
         // Read to populate the Caffeine cache
         mockMvc.perform(get("/customers/{id}", id).with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.name").value("Cached"));
