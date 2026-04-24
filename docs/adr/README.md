@@ -148,6 +148,7 @@ monotonic across supersessions.
 | 0056 | Accepted | [Widget extraction pattern for large Angular components](0056-widget-extraction-pattern.md) |
 | 0057 | Accepted | [Conserver le polyrepo (svc + UI séparés), pas de migration vers monorepo](0057-polyrepo-vs-monorepo.md) |
 | 0058 | Accepted | [Phase C : Checkstyle `failOnViolation=true`](0058-phase-c-checkstyle-flip.md) |
+| 0059 | Accepted | [Grafana Cloud AI Observability (POC opt-in)](0059-grafana-cloud-ai-observability-poc.md) |
 <!-- ADR-INDEX:END -->
 
 ## Hierarchical index (by theme)

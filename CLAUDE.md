@@ -1,5 +1,30 @@
 # Mirador Service — Claude Instructions
 
+## Git Safety
+
+- NEVER `git reset --hard` without explicit user confirmation. Prior sessions wiped demo edits this way. Run `git status` + check unpushed commits first.
+- Before pushing : verify current branch (`dev` not `main`) + `git fetch` + check `HEAD..origin/<branch>` ; pull rebase if behind. See "Git Workflow" section for the full 2-second preflight.
+
+## CI/CD Scope
+
+- **GitLab CI exclusively** — do NOT modify `.github/workflows/*` unless explicitly requested.
+- When fixing a failing pipeline, read the **actual failure log** (`glab ci trace <job>`) before exploring the whole CI config. Theoretical config review misses the real bug.
+- Never add comments to `.mvn/jvm.config` (Maven reads each line as a JVM flag, `#` breaks the build).
+- Docker builds on Kaniko : avoid Maven recompilation in multi-stage builds (OOM). Pre-build jar in a `build-jar` stage, `COPY` into thin Dockerfile.
+
+## Project Verification
+
+- State explicitly at the start of each response : (1) which repo (mirror-service here), (2) current branch, (3) remote state (ahead/behind). Prevents wrong-branch rework.
+- When resuming mid-session, `git fetch` + `glab mr list` + `glab ci list` before editing.
+
+## Verify commands before suggesting
+
+- Before suggesting any CLI flag, run `<cmd> --help | grep <flag>` to confirm it exists. If you can't verify, say **"I'm not sure this exists"** rather than guess. See ~/.claude/CLAUDE.md → "Verify commands before suggesting them" for the full rule (meta-questions about Claude Code itself get extra skepticism).
+
+## CI failures : surgical fixes, not `allow_failure` bypasses
+
+When a CI job fails, NEVER reach for `allow_failure: true` as the fix. Pick (a) fix the root cause, (b) tag-gate the test with JUnit `@Tag` + Maven profile so it only runs in the environment that makes sense, or (c) scope-out via `rules: when: never`. Always explain the chosen approach in the commit message. `allow_failure: true` is a SHORT-TERM bridge only, per ADR-0049 (dated-TODO required). See ~/.claude/CLAUDE.md → "Surgical fixes, not allow_failure bypasses" for the full rule.
+
 ## Persistent task backlog
 
 **`TASKS.md`** (at the repo root) is the source of truth for pending work across sessions.

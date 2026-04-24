@@ -115,6 +115,23 @@ spring:
         options:
           # Higher temperature = more creative/varied responses (0.0 = deterministic)
           temperature: 0.7
+    chat:
+      # Observations ON by default (Micrometer auto-wires this when Observation
+      # Registry is on the classpath). Emits spring.ai.chat.client.* spans with
+      # GenAI semantic conventions (gen_ai.system, gen_ai.request.model,
+      # gen_ai.request.temperature, gen_ai.response.usage.input_tokens,
+      # gen_ai.response.usage.output_tokens, …). Visible in Tempo + GitLab
+      # Observability + (opt-in) Grafana Cloud AI Observability.
+      client:
+        observations:
+          # Content logging (full prompt + completion text) OFF by default
+          # for privacy — the GenAI conventions without content are enough
+          # for the AI Observability dashboards to work. Enable by setting
+          # MIRADOR_AI_LOG_CONTENT=true env var (local / demo only — do NOT
+          # enable in prod unless data-governance has approved sending
+          # user prompts to the observability backend). Per ADR-0059 POC.
+          log-prompt: ${MIRADOR_AI_LOG_CONTENT:false}
+          log-completion: ${MIRADOR_AI_LOG_CONTENT:false}
 
   # ---------------------------------------------------------------------------
   # Virtual Threads (Project Loom)                                  [Java 21+]
