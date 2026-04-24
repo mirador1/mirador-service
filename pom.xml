@@ -1931,13 +1931,42 @@
             </properties>
             <dependencyManagement>
                 <dependencies>
-                    <!-- Override the parent BOM: all Spring Boot managed versions resolve to 3.4.5 -->
+                    <!-- Override the parent BOM: all Spring Boot managed versions resolve to 3.4.5.
+                         Note : Maven's BOM-import precedence makes this a partial fix only —
+                         the parent's `spring-boot-starter-parent:4.0.5` BOM is processed FIRST
+                         (deepest first), so transitive deps still resolve to 4.0.5. To force
+                         specific deps to SB3 versions, declare them explicitly with version below. -->
                     <dependency>
                         <groupId>org.springframework.boot</groupId>
                         <artifactId>spring-boot-dependencies</artifactId>
                         <version>${spring-boot-sb3.version}</version>
                         <type>pom</type>
                         <scope>import</scope>
+                    </dependency>
+                    <!-- Force SB3 version for spring-boot-test-autoconfigure : the AutoConfigureMockMvc
+                         shim at src/test/java-overlays/sb3/...AutoConfigureMockMvc.java references
+                         the SB3 package `org.springframework.boot.test.autoconfigure.web.servlet`
+                         which only exists in SB3 versions of spring-boot-test-autoconfigure.
+                         Without this pin, the dep resolves to 4.0.5 (parent BOM wins over profile
+                         BOM import) and the SB3 package is missing → test-compile fails.
+                         Added 2026-04-24 svc 1.0.52 wave for SB3 cells. -->
+                    <dependency>
+                        <groupId>org.springframework.boot</groupId>
+                        <artifactId>spring-boot-test-autoconfigure</artifactId>
+                        <version>${spring-boot-sb3.version}</version>
+                        <scope>test</scope>
+                    </dependency>
+                    <dependency>
+                        <groupId>org.springframework.boot</groupId>
+                        <artifactId>spring-boot-test</artifactId>
+                        <version>${spring-boot-sb3.version}</version>
+                        <scope>test</scope>
+                    </dependency>
+                    <dependency>
+                        <groupId>org.springframework.boot</groupId>
+                        <artifactId>spring-boot-starter-test</artifactId>
+                        <version>${spring-boot-sb3.version}</version>
+                        <scope>test</scope>
                     </dependency>
                 </dependencies>
             </dependencyManagement>
@@ -1996,11 +2025,28 @@
                                             <fileset dir="src/main/java-overlays/sb3"/>
                                         </copy>
 
-                                        <!-- Test sources (exclude SB4-only RestTestClient test) -->
+                                        <!-- Test sources (exclude SB4-only RestTestClient test).
+                                             Path was stale (com/example/customerservice/) from a
+                                             pre-rename of the project — actual location is
+                                             com/mirador/customer/. Fixed 2026-04-24 svc 1.0.52
+                                             wave : without the correct path the file copied to
+                                             merged-sources and broke SB3 test-compile because
+                                             RestTestClient is Spring Framework 7 (SB4-only). -->
                                         <copy todir="${project.build.directory}/merged-sources/test">
                                             <fileset dir="src/test/java">
-                                                <exclude name="com/example/customerservice/customer/CustomerRestClientITest.java"/>
+                                                <exclude name="com/mirador/customer/CustomerRestClientITest.java"/>
                                             </fileset>
+                                        </copy>
+                                        <!-- pre-java25 test overlay : replaces ScopedValue (J25 preview)
+                                             with InheritableThreadLocal in TraceServiceTest. SB3 mode
+                                             targets Java 21 so ScopedValue is preview-only — same swap
+                                             as compat profile. Without this the SB3 test-compile fails
+                                             at TraceServiceTest.java:25 with 'java.lang.ScopedValue is
+                                             a preview API and is disabled by default'. Fixed 2026-04-24
+                                             svc 1.0.52 wave (SB3 profile was missing this overlay step
+                                             that the compat profile already had). -->
+                                        <copy todir="${project.build.directory}/merged-sources/test" overwrite="true">
+                                            <fileset dir="src/test/java-overlays/pre-java25"/>
                                         </copy>
                                         <!-- SB3 test overlay (AutoConfigureMockMvc bridge) -->
                                         <copy todir="${project.build.directory}/merged-sources/test" overwrite="true">
