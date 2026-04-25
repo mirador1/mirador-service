@@ -1,17 +1,13 @@
 package com.mirador.customer;
 
-import com.mirador.integration.TodoItem;
 import com.mirador.customer.CreateCustomerRequest;
 import com.mirador.customer.CustomerDto;
 import com.mirador.customer.CustomerDtoV2;
-import com.mirador.customer.EnrichedCustomerDto;
-import com.mirador.messaging.CustomerEnrichReply;
-import com.mirador.messaging.CustomerEnrichRequest;
 import com.mirador.customer.AggregationService;
-import com.mirador.integration.BioService;
 import com.mirador.customer.CustomerService;
 import com.mirador.customer.RecentCustomerBuffer;
-import com.mirador.integration.TodoService;
+import com.mirador.observability.AuditEventDto;
+import com.mirador.observability.AuditService;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -19,18 +15,16 @@ import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
 import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.apache.kafka.clients.producer.ProducerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.kafka.requestreply.KafkaReplyTimeoutException;
-import org.springframework.kafka.requestreply.ReplyingKafkaTemplate;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -41,19 +35,11 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import org.springframework.data.domain.PageRequest;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
-import java.io.OutputStreamWriter;
-import java.io.PrintWriter;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
-import java.util.concurrent.ExecutionException;
 
 /**
  * REST controller exposing the customer management API.
@@ -84,38 +70,34 @@ public class CustomerController {
     private final CustomerService service;
     private final RecentCustomerBuffer recentCustomerBuffer;
     private final AggregationService aggregationService;
+    // ADR-0060 + svc 1.0.55 wave 6 alignment : SB3 overlay constructor now
+    // mirrors main's 6-param signature. Fields removed (kafka template, todo
+    // service, bio service, customerRequestTopic, enrichTimeoutSeconds,
+    // customerEnrichTimer) were moved to CustomerEnrichmentController in
+    // main 2026-04-22 — those endpoints (/{id}/enrich, /{id}/bio,
+    // /{id}/todos) and the slow-query / export endpoints (moved to
+    // CustomerDiagnosticsController) are now served by their respective
+    // controllers in SB3 mode too. AuditService field added to mirror
+    // main + power the /{id}/audit endpoint.
+    private final AuditService auditService;
     private final ObservationRegistry observationRegistry;
-    private final ReplyingKafkaTemplate<String, CustomerEnrichRequest, CustomerEnrichReply> replyingKafkaTemplate;
-    private final TodoService todoService;
-    private final BioService bioService;
-    private final String customerRequestTopic;
-    private final long enrichTimeoutSeconds;
 
     private final Counter customerCreatedCounter;
     private final Timer customerCreateTimer;
     private final Timer customerFindAllTimer;
     private final Timer customerAggregateTimer;
-    private final Timer customerEnrichTimer;
 
     public CustomerController(CustomerService service,
                               RecentCustomerBuffer recentCustomerBuffer,
                               AggregationService aggregationService,
+                              AuditService auditService,
                               ObservationRegistry observationRegistry,
-                              ReplyingKafkaTemplate<String, CustomerEnrichRequest, CustomerEnrichReply> replyingKafkaTemplate,
-                              TodoService todoService,
-                              BioService bioService,
-                              @Value("${app.kafka.topics.customer-request}") String customerRequestTopic,
-                              @Value("${app.kafka.enrich-timeout-seconds}") long enrichTimeoutSeconds,
                               MeterRegistry meterRegistry) {
         this.service = service;
         this.recentCustomerBuffer = recentCustomerBuffer;
         this.aggregationService = aggregationService;
+        this.auditService = auditService;
         this.observationRegistry = observationRegistry;
-        this.replyingKafkaTemplate = replyingKafkaTemplate;
-        this.todoService = todoService;
-        this.bioService = bioService;
-        this.customerRequestTopic = customerRequestTopic;
-        this.enrichTimeoutSeconds = enrichTimeoutSeconds;
         this.customerCreatedCounter = Counter.builder("customer.created.count")
                 .description("Number of customers created")
                 .register(meterRegistry);
@@ -131,10 +113,8 @@ public class CustomerController {
                 .description("Duration of aggregate endpoint")
                 .publishPercentileHistogram()
                 .register(meterRegistry);
-        this.customerEnrichTimer = Timer.builder("customer.enrich.duration")
-                .description("Duration of Kafka request-reply enrich endpoint")
-                .publishPercentileHistogram()
-                .register(meterRegistry);
+        // customerEnrichTimer removed — moved to CustomerEnrichmentController
+        // along with the /{id}/enrich endpoint (Phase B-7-7 follow-through).
     }
 
     // ─── API versioned list endpoint (SB3: manual header dispatch) ───────────
@@ -152,29 +132,53 @@ public class CustomerController {
      *   <li>{@code X-API-Version: 2.0} (or higher) → v2 shape ({@link CustomerDtoV2} with {@code createdAt})</li>
      * </ul>
      */
-    @SuppressWarnings("unchecked")
+    /**
+     * Spring endpoint dispatcher : reads the X-API-Version header (manual
+     * dispatch since SB3's Spring 6 doesn't have @GetMapping(version=))
+     * and delegates to the appropriate v1/v2 helper. The helpers below are
+     * test-callable directly so the unit-test signature matches main's
+     * (which uses native version dispatch via two separate @GetMapping
+     * methods named getAll + getAllV2).
+     */
     @GetMapping
-    public ResponseEntity<?> getAll(
+    public ResponseEntity<?> getAllDispatcher(
             @RequestHeader(value = "X-API-Version", defaultValue = "1.0") String apiVersion,
             @PageableDefault(size = 20, sort = "id") Pageable pageable,
             @RequestParam(required = false) String search) {
-        Pageable capped = capPageSize(pageable);
         if (apiVersion.startsWith("2") || apiVersion.compareTo("2") >= 0) {
-            Page<CustomerDtoV2> page = Observation.createNotStarted("customer.find-all-v2", observationRegistry)
-                    .lowCardinalityKeyValue("endpoint", "/customers")
-                    .lowCardinalityKeyValue("version", "2")
-                    .observe(() -> customerFindAllTimer.record(() ->
-                            search != null ? service.searchV2(search, capped) : service.findAllV2(capped)));
-            return withLinkHeaders(page);
-        } else {
-            Page<CustomerDto> page = Observation.createNotStarted("customer.find-all", observationRegistry)
-                    .lowCardinalityKeyValue("endpoint", "/customers")
-                    .observe(() -> customerFindAllTimer.record(() ->
-                            search != null ? service.search(search, capped) : service.findAll(capped)));
-            return withLinkHeaders(page, Map.of(
-                    "Deprecation", "true",
-                    "Sunset", "2027-01-01T00:00:00Z"));
+            return getAllV2(pageable, search);
         }
+        return getAll(pageable, search);
+    }
+
+    /**
+     * V1 list endpoint (no Spring annotation — invoked by getAllDispatcher OR
+     * from unit tests directly). Mirrors main's getAll signature so SB3
+     * mode passes the same CustomerControllerTest as default mode.
+     */
+    public ResponseEntity<Page<CustomerDto>> getAll(Pageable pageable, String search) {
+        Pageable capped = capPageSize(pageable);
+        Page<CustomerDto> page = Observation.createNotStarted("customer.find-all", observationRegistry)
+                .lowCardinalityKeyValue("endpoint", "/customers")
+                .observe(() -> customerFindAllTimer.record(() ->
+                        search != null ? service.search(search, capped) : service.findAll(capped)));
+        return withLinkHeaders(page, Map.of(
+                "Deprecation", "true",
+                "Sunset", "2027-01-01T00:00:00Z"));
+    }
+
+    /**
+     * V2 list endpoint (no Spring annotation — invoked by getAllDispatcher OR
+     * from unit tests directly). Mirrors main's getAllV2 signature.
+     */
+    public ResponseEntity<Page<CustomerDtoV2>> getAllV2(Pageable pageable, String search) {
+        Pageable capped = capPageSize(pageable);
+        Page<CustomerDtoV2> page = Observation.createNotStarted("customer.find-all-v2", observationRegistry)
+                .lowCardinalityKeyValue("endpoint", "/customers")
+                .lowCardinalityKeyValue("version", "2")
+                .observe(() -> customerFindAllTimer.record(() ->
+                        search != null ? service.searchV2(search, capped) : service.findAllV2(capped)));
+        return withLinkHeaders(page);
     }
 
     // ─── CRUD endpoints (identical to SB4 version) ─────────────────────────
@@ -203,6 +207,17 @@ public class CustomerController {
         return service.update(id, request);
     }
 
+    /**
+     * Partial update via PATCH. Added in svc 1.0.55 wave 6 to mirror main —
+     * the test (CustomerControllerTest) expects controller.patch(id, req) to
+     * exist with this exact signature.
+     */
+    @PreAuthorize("hasAnyRole('ADMIN', 'USER')")
+    @PatchMapping("/{id}")
+    public CustomerDto patch(@PathVariable Long id, @Valid @RequestBody PatchCustomerRequest request) {
+        return service.patch(id, request);
+    }
+
     @PreAuthorize("hasRole('ADMIN')")
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
@@ -229,51 +244,19 @@ public class CustomerController {
                 .observe(() -> customerAggregateTimer.record(aggregationService::aggregate));
     }
 
-    @GetMapping("/{id}/bio")
-    public java.util.Map<String, String> generateBio(@PathVariable Long id) {
-        CustomerDto customer = service.findById(id)
-                .orElseThrow(() -> new NoSuchElementException("Customer not found: " + id));
-        return java.util.Map.of("bio", bioService.generateBio(customer));
+    /**
+     * Audit trail endpoint — added in svc 1.0.55 wave 6 to mirror main's structure.
+     * Returns all audit events (CREATE/UPDATE/DELETE/PATCH) for a customer.
+     */
+    @GetMapping("/{id}/audit")
+    public List<AuditEventDto> getAudit(@PathVariable Long id) {
+        return auditService.findByCustomerId(id);
     }
 
-    @GetMapping("/{id}/todos")
-    public List<TodoItem> getTodos(@PathVariable Long id) {
-        service.findById(id)
-                .orElseThrow(() -> new NoSuchElementException("Customer not found: " + id));
-        return todoService.getTodos(id);
-    }
-
-    @GetMapping("/{id}/enrich")
-    public EnrichedCustomerDto enrich(@PathVariable Long id) {
-        return Observation.createNotStarted("customer.enrich", observationRegistry)
-                .lowCardinalityKeyValue("endpoint", "/customers/{id}/enrich")
-                .observe(() -> customerEnrichTimer.record(() -> {
-                    CustomerDto customer = service.findById(id)
-                            .orElseThrow(() -> new NoSuchElementException("Customer not found: " + id));
-
-                    var record = new ProducerRecord<>(customerRequestTopic,
-                            String.valueOf(id),
-                            new CustomerEnrichRequest(customer.id(), customer.name(), customer.email()));
-
-                    try {
-                        CustomerEnrichReply reply = replyingKafkaTemplate
-                                .sendAndReceive(record, java.time.Duration.ofSeconds(enrichTimeoutSeconds))
-                                .get()
-                                .value();
-                        log.info("kafka_enrich_reply id={} displayName={}", id, reply.displayName());
-                        return new EnrichedCustomerDto(reply.id(), reply.name(), reply.email(), reply.displayName());
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        throw new IllegalStateException("Interrupted waiting for enrich reply", e);
-                    } catch (ExecutionException e) {
-                        if (e.getCause() instanceof KafkaReplyTimeoutException) {
-                            throw new IllegalStateException("kafka-timeout",
-                                    new java.util.concurrent.TimeoutException("Kafka reply timed out for id=" + id));
-                        }
-                        throw new IllegalStateException("Enrich failed for id=" + id, e.getCause());
-                    }
-                }));
-    }
+    // /{id}/bio + /{id}/todos + /{id}/enrich endpoints removed from this
+    // SB3 overlay — moved to CustomerEnrichmentController in main 2026-04-22
+    // (Phase B-7-7). Spring auto-wires CustomerEnrichmentController in SB3
+    // mode too (it uses standard Spring MVC + kafka deps available in SB3).
 
     // ─── Cursor-based pagination ────────────────────────────────────────────
 
@@ -294,37 +277,11 @@ public class CustomerController {
                 .observe(() -> service.batchCreate(requests));
     }
 
-    // ─── Slow query simulation ──────────────────────────────────────────────
-
-    @GetMapping("/slow-query")
-    public java.util.Map<String, String> slowQuery(@RequestParam(defaultValue = "2") double seconds) {
-        double capped = Math.min(seconds, 10);
-        service.simulateSlowQuery(capped);
-        return java.util.Map.of("status", "completed", "duration", capped + "s");
-    }
-
-    // ─── CSV export ─────────────────────────────────────────────────────────
-
-    @GetMapping("/export")
-    public ResponseEntity<StreamingResponseBody> exportCsv() {
-        StreamingResponseBody body = outputStream -> {
-            var writer = new PrintWriter(new OutputStreamWriter(outputStream, StandardCharsets.UTF_8));
-            writer.println("id,name,email,created_at");
-            for (Customer c : service.findAllForExport()) {
-                writer.printf("%d,\"%s\",\"%s\",%s%n",
-                        c.getId(),
-                        c.getName().replace("\"", "\"\""),
-                        c.getEmail().replace("\"", "\"\""),
-                        c.getCreatedAt());
-            }
-            writer.flush();
-        };
-
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=customers.csv")
-                .contentType(MediaType.parseMediaType("text/csv"))
-                .body(body);
-    }
+    // /slow-query + /export endpoints removed from this SB3 overlay —
+    // moved to CustomerDiagnosticsController in main 2026-04-22 (Phase B-7-7).
+    // Spring auto-wires CustomerDiagnosticsController in SB3 mode too (it
+    // uses standard Spring MVC + SseEmitter / StreamingResponseBody available
+    // in SB3).
 
     // ─── Helpers ────────────────────────────────────────────────────────────
 
