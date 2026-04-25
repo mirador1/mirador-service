@@ -257,3 +257,21 @@ and surfaced in the K8s `customer-service-secrets` Secret at deploy time
 Dashboards developed locally under `infra/observability/grafana/dashboards-lgtm/`
 can be uploaded to Grafana Cloud — structure is compatible, only the
 data-source names need an adjustment.
+
+## GitLab Observability (zero-setup reviewer surface)
+
+Since 2026-04-23 the OTel Collector also dual-exports every signal to
+**GitLab Observability** — GitLab's managed OTLP ingest backed by a
+Clickhouse cluster, free during beta. This means a portfolio reviewer
+can open https://gitlab.com/groups/mirador1/-/observability/tracing and
+see live traces / metrics / logs WITHOUT cloning the repo or booting Docker.
+
+```
+mirador-service Spring Boot ──► OTel Collector
+                                  ├── otlphttp/{traces,metrics,logs}        ──► LGTM local (primary)
+                                  └── otlphttp/{traces,metrics,logs}-gitlab ──► https://130289716.otel.gitlab-o11y.com:14318
+```
+
+Operational details + verification commands + how to extend to UI/Python :
+[`docs/ops/gitlab-observability.md`](../ops/gitlab-observability.md).
+Design rationale + alternatives considered : [ADR-0054](../adr/0054-gitlab-observability-dual-export.md).
