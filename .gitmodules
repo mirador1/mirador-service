@@ -1,0 +1,3 @@
+[submodule "infra/shared"]
+	path = infra/shared
+	url = https://gitlab.com/mirador1/mirador-service-shared.git
