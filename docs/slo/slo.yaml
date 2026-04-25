@@ -1,0 +1,124 @@
+# Mirador Service SLO definitions — Sloth format (https://sloth.dev/specs/v1/).
+#
+# Each `slo` declares :
+#   - objective : target % (e.g. 99.5 = 99.5% of requests must succeed / be fast).
+#   - sli       : how to measure good vs bad events from Prometheus metrics.
+#   - alerting  : multi-window multi-burn-rate config (Google SRE Workbook).
+#
+# Generate Prometheus rules from this file :
+#   sloth generate -i docs/slo/slo.yaml -o ../mirador-service-shared/deploy/kubernetes/observability-prom/mirador-slo.yaml
+#
+# The generated rules :
+# - Recording rules at 6 windows (5m, 30m, 1h, 2h, 6h, 1d, 3d) for each SLO.
+# - 2 page alerts (fast burn 1h × 14.4× = 2% in 1h ; slow 6h × 6× = 5% in 6h).
+# - 2 ticket alerts (1d × 3× = 10% in 1d ; 3d × 1× = 10% in 3d).
+# - 1 metadata recording rule per SLO (objective + error_budget).
+#
+# Apply via Argo CD or kustomize alongside mirador-alerts.yaml.
+#
+# Reference :
+# - https://sre.google/workbook/alerting-on-slos/  (multi-burn-rate pattern)
+# - https://sloth.dev/specs/v1/  (file format)
+
+version: "prometheus/v1"
+# Use Sloth's prom-operator K8s transform plugin via CLI :
+#   sloth generate --k8s-transform-plugin-id="sloth.dev/k8stransform/prom-operator-prometheus-rule/v1" \
+#     -i docs/slo/slo.yaml -o ../shared/deploy/kubernetes/observability-prom/mirador-slo.yaml
+service: "mirador-service"
+labels:
+  team: "mirador"
+  tier: "demo"
+  app: "mirador-service"
+slos:
+  # ───── SLO 1 : Availability ────────────────────────────────────────────────
+  # 99% of all HTTP requests should NOT error (5xx).
+  # 30-day window → error budget = 1% × 30d × 24h × 60min = 432 minutes/month.
+  # If we burn the full budget : 7.2 hours of total downtime per month.
+  - name: "availability"
+    objective: 99
+    description: "99% of HTTP requests succeed (non-5xx) over 30d. Budget = 432 min/month."
+    sli:
+      events:
+        # error_query : the BAD events — count of 5xx (intentional 4xx-as-bad
+        # excluded ; client errors don't burn server budget).
+        error_query: |
+          sum(rate(http_server_requests_seconds_count{job="mirador-service",status=~"5.."}[{{.window}}]))
+        # total_query : ALL HTTP requests (success + error)
+        total_query: |
+          sum(rate(http_server_requests_seconds_count{job="mirador-service"}[{{.window}}]))
+    alerting:
+      name: MiradorServiceAvailabilitySLO
+      labels:
+        category: "availability"
+      annotations:
+        summary: "Availability SLO error budget burning"
+        runbook_url: "https://gitlab.com/mirador1/mirador-service-java/-/blob/main/docs/runbooks/slo-availability.md"
+      page_alert:
+        labels:
+          severity: critical
+          channel: pager
+      ticket_alert:
+        labels:
+          severity: warning
+          channel: ticket
+
+  # ───── SLO 2 : Latency p99 ─────────────────────────────────────────────────
+  # 99% of requests should complete in < 500ms (p99 latency).
+  # Budget : 1% × requests/30d can be slow.
+  - name: "latency-p99"
+    objective: 99
+    description: "99% of HTTP requests complete in < 500ms (p99) over 30d."
+    sli:
+      events:
+        # bad = requests SLOWER than 0.5s
+        error_query: |
+          (
+            sum(rate(http_server_requests_seconds_count{job="mirador-service"}[{{.window}}]))
+            -
+            sum(rate(http_server_requests_seconds_bucket{job="mirador-service",le="0.5"}[{{.window}}]))
+          )
+        total_query: |
+          sum(rate(http_server_requests_seconds_count{job="mirador-service"}[{{.window}}]))
+    alerting:
+      name: MiradorServiceLatencyP99SLO
+      labels:
+        category: "latency"
+      annotations:
+        summary: "Latency SLO error budget burning (p99 > 500ms)"
+        runbook_url: "https://gitlab.com/mirador1/mirador-service-java/-/blob/main/docs/runbooks/slo-latency.md"
+      page_alert:
+        labels:
+          severity: critical
+          channel: pager
+      ticket_alert:
+        labels:
+          severity: warning
+          channel: ticket
+
+  # ───── SLO 3 : Customer enrichment success ────────────────────────────────
+  # The Kafka request-reply enrichment endpoint (/customers/{id}/enrich) MUST
+  # not 504 (timeout). Demo-critical flow.
+  - name: "enrichment-success"
+    objective: 99.5
+    description: "99.5% of /customers/{id}/enrich calls succeed (no 504 timeout) over 30d."
+    sli:
+      events:
+        error_query: |
+          sum(rate(http_server_requests_seconds_count{job="mirador-service",uri=~".*/enrich.*",status="504"}[{{.window}}]))
+        total_query: |
+          sum(rate(http_server_requests_seconds_count{job="mirador-service",uri=~".*/enrich.*"}[{{.window}}]))
+    alerting:
+      name: MiradorEnrichmentSuccessSLO
+      labels:
+        category: "business"
+      annotations:
+        summary: "Enrichment endpoint timing out — Kafka may be down"
+        runbook_url: "https://gitlab.com/mirador1/mirador-service-java/-/blob/main/docs/runbooks/slo-enrichment.md"
+      page_alert:
+        labels:
+          severity: critical
+          channel: pager
+      ticket_alert:
+        labels:
+          severity: warning
+          channel: ticket
