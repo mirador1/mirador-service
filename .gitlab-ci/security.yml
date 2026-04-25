@@ -411,11 +411,14 @@ cosign:verify:
   script:
     - cosign login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD"
     # The identity-regexp pins the cert to GitLab CI of THIS project only.
-    # `https://gitlab.com/mirador1/mirador-service//.gitlab-ci.yml@refs/heads/main`
-    # is what GitLab's OIDC produces for main-branch jobs.
+    # `https://gitlab.com/mirador1/mirador-service-java//.gitlab-ci.yml@refs/heads/main`
+    # is what GitLab's OIDC produces for main-branch jobs (the `//` double-slash
+    # is GitLab's actual subject format ; the project was renamed
+    # `mirador-service` → `mirador-service-java` 2026-04-25 ; this regex
+    # was updated to match the new identity).
     - |
       cosign verify \
-        --certificate-identity-regexp "^https://gitlab\.com/mirador1/mirador-service//\.gitlab-ci\.yml@refs/" \
+        --certificate-identity-regexp "^https://gitlab\.com/mirador1/mirador-service-java//\.gitlab-ci\.yml@refs/" \
         --certificate-oidc-issuer "https://gitlab.com" \
         "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA"
 
