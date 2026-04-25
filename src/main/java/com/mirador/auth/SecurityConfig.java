@@ -161,9 +161,21 @@ public class SecurityConfig {
         // GET /customers fails silently (status 0 in fetch), which is exactly
         // the class of bug ADR-0033's Playwright E2E was built to catch — and
         // did catch it.
+        //
+        // W3C Trace Context headers (traceparent / tracestate / baggage) added
+        // 2026-04-25 — the Angular UI ships OpenTelemetry Web SDK (ADR-0009)
+        // which auto-instruments fetch / XHR with these headers for distributed
+        // tracing. Without them in the allowlist, every cross-origin XHR from
+        // the UI fails the CORS preflight with "Request header field
+        // traceparent is not allowed by Access-Control-Allow-Headers".
+        // Pipeline #2479162314 e2e:kind evidence : login XHR to /auth/login
+        // blocked → "Backend unreachable" error in UI → @golden tests timeout
+        // waiting for post-login Customers link. Same root-cause class as the
+        // X-API-Version gap above — the e2e:kind suite is doing its job.
         config.setAllowedHeaders(List.of(
                 "Content-Type", "Authorization", "X-API-Key", "X-API-Version",
-                "X-Request-Id", "Idempotency-Key", "Accept", "Cache-Control"));
+                "X-Request-Id", "Idempotency-Key", "Accept", "Cache-Control",
+                "traceparent", "tracestate", "baggage"));
         config.setAllowCredentials(true);
         // Expose security headers so the Angular Security Demo can read them via HttpClient observe:'response'
         config.setExposedHeaders(List.of(

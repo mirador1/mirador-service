@@ -122,6 +122,23 @@ class SecurityConfigTest {
     }
 
     @Test
+    void corsConfigurationSource_includesW3CTraceContextHeaders() {
+        // Pinned: W3C Trace Context (traceparent / tracestate / baggage) —
+        // the Angular UI ships OpenTelemetry Web SDK (ADR-0009) which
+        // auto-instruments fetch / XHR with these headers for distributed
+        // tracing. Pipeline #2479162314 e2e:kind evidence : without
+        // `traceparent` in the allowlist, every cross-origin XHR from the
+        // UI fails the CORS preflight with "Request header field
+        // traceparent is not allowed by Access-Control-Allow-Headers" →
+        // login XHR blocked → "Backend unreachable" error → @golden tests
+        // timeout. Same root-cause class as the X-API-Version gap above.
+        var corsConfig = corsForRequest(newConfig(List.of("*")), "/customers");
+
+        assertThat(corsConfig.getAllowedHeaders())
+                .contains("traceparent", "tracestate", "baggage");
+    }
+
+    @Test
     void corsConfigurationSource_doesNotUseWildcardForAllowedHeaders() {
         // Pinned: explicit allowlist (defense-in-depth) — wildcard "*"
         // is a security anti-pattern that would also bypass any future
