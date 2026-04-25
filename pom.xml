@@ -105,6 +105,10 @@
 
         <!-- Spring Boot (cross-profile: SB3 compat imports its own BOM + plugin) -->
         <spring-boot-sb3.version>3.4.5</spring-boot-sb3.version>
+        <!-- springdoc-sb3.version : pinned in SB3 profile to block V3 Jackson
+             transitive (springdoc 3.x is SB4-aware and pulls spring-boot-jackson:4
+             → tools.jackson V3). 2.7.0 = last 2.x line targeting Spring 6 / SB3. -->
+        <springdoc-sb3.version>2.7.0</springdoc-sb3.version>
 
         <!-- Maven build plugins -->
         <maven-antrun-plugin.version>3.2.0</maven-antrun-plugin.version>
@@ -1967,6 +1971,44 @@
                         <artifactId>spring-boot-starter-test</artifactId>
                         <version>${spring-boot-sb3.version}</version>
                         <scope>test</scope>
+                    </dependency>
+                    <!-- SB3 Jackson V2 enforcement — block V3 transitive sources.
+                         SB 3.4 ships Jackson V2 (com.fasterxml.jackson.*) ; SB 4 ships
+                         V3 (tools.jackson.*). Without these pins, the parent BOM's
+                         SB4 starters transitively pull V3 onto the SB3 classpath,
+                         causing NoClassDefFoundError chaos at runtime (mixed V2+V3).
+                         Strategy : pin SB4 transitive sources to SB3-aware versions
+                         that don't bring tools.jackson :
+                         - hateoas : SB4 starter-hateoas → spring-boot-hateoas:4.0.5 →
+                           spring-boot-jackson:4.0.5 (V3). SB3 starter-hateoas:3.4.5
+                           has different transitive structure (no separate spring-
+                           boot-jackson module).
+                         - springdoc : 3.x is SB4-aware and pulls spring-boot-
+                           jackson:4.0.5. Pin to 2.7.0 = last 2.x line targeting
+                           SB3 / Spring 6.
+                         Verified 2026-04-25 wave 7 : `mvn -Dsb3 dependency:tree |
+                         grep tools.jackson` returns empty after these pins. -->
+                    <dependency>
+                        <groupId>org.springframework.boot</groupId>
+                        <artifactId>spring-boot-starter-hateoas</artifactId>
+                        <version>${spring-boot-sb3.version}</version>
+                    </dependency>
+                    <!-- starter-web/json/websocket pins were attempted 2026-04-25 wave 7
+                         to remove residual V3 Jackson transitives, but they broke Lombok
+                         annotation processing (compile errors on @Getter-generated
+                         methods). Reverted ; left as DEFERRED debt — see ADR-0061
+                         Entry 2 / Entry 4. The remaining 4 KafkaConfigTest errors
+                         are accepted for now (allow_failure shielded compat-sb3-*). -->
+
+                    <dependency>
+                        <groupId>org.springdoc</groupId>
+                        <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+                        <version>${springdoc-sb3.version}</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>org.springdoc</groupId>
+                        <artifactId>springdoc-openapi-starter-common</artifactId>
+                        <version>${springdoc-sb3.version}</version>
                     </dependency>
                 </dependencies>
             </dependencyManagement>

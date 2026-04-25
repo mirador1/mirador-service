@@ -114,24 +114,41 @@ multi-hour effort. Re-open ONLY if any of these crosses 1000 LOC.
   https://sonarcloud.io for both projects ; mark hotspots as "safe"
   with justification.
 
-## 🔴 Compat matrix structural debt (deferred — needs dedicated wave)
+## 🔴 Compat matrix structural debt — UPDATED 2026-04-25 06:10
 
-After 1.0.51 + 1.0.52 surgical waves, 3 SB3 structural issues remain :
+After 6 waves of compat fixes, status is :
+- ✅ SB4+J21 (wave 2 IT tag-gate)
+- ✅ SB4+J17 (wave 5 checkstyle 10.21.0 pin)
+- ✅ SB4+J25 (canonical)
+- 🔴 **SB3+J17 + SB3+J21** — wave 6 SB3 overlay alignment passed
+  test-compile but runtime tests fail with **Jackson v2/v3 conflict** :
 
-1. **`AutoConfigureMockMvc.java` shim** — references SB3 package
-   `org.springframework.boot.test.autoconfigure.web.servlet` which
-   isn't on test classpath in the SB3 profile. Either spring-boot-
-   test-autoconfigure (SB3 version) needs explicit dep wiring in
-   the SB3 profile, OR the shim needs a different bridge mechanism.
-2. **`CustomerRestClientITest.java`** — uses `RestTestClient` (SB4-
-   only API). Needs `<excludes>` rule in SB3 profile maven-failsafe
-   or surefire plugin.
-3. **SB4+J17 cell** — depending on remaining J21+ APIs in main src
-   that haven't been overlayed. The current J17 overlay covers
-   AggregationService + AggregationServicePropertyTest. Re-trigger
-   compat-sb4-java17 after !192 merge to surface anything else.
+  ```
+  java.lang.NoClassDefFoundError: com/fasterxml/jackson/annotation/JsonSerializeAs
+  at tools.jackson.databind.introspect.JacksonAnnotationIntrospector
+  ```
 
-Estimated dedicated wave : 1-2 hours per item.
+  Test code uses `tools.jackson.*` imports (Jackson V3 — new package
+  introduced in Jackson 3.x and used in SB4). At runtime in SB3 mode,
+  the V3 databind can't find V2 annotations in their old `com.fasterxml.
+  jackson.annotation` package. Failures :
+  - `RecentCustomerBufferTest` : 6/6 errors
+  - `KafkaConfigTest` : 4/6 errors
+
+  **Root choice (multi-day, owner decision)** :
+  - (A) Pin Jackson V2 in SB3 profile + REWRITE test files to use
+    V2 `com.fasterxml.jackson.*` imports (would also need overlay
+    for any prod code that uses V3-specific features)
+  - (B) Pin Jackson V3 in SB3 profile (requires SB3 to support
+    Jackson V3 — may not be possible on SB 3.4.x, needs research)
+  - (C) Make production code Jackson-version-agnostic via interface
+    boundaries (architectural refactor)
+  - (D) Drop SB3 prod-grade requirement (revert ADR-0060) — accept
+    SB3 as informational only
+
+  Per ADR-0060 (SB3 = prod-grade), options A/B/C are valid. Option
+  A is most surgical but invasive (every test using ObjectMapper).
+  Estimated effort : multi-day work.
 
 ## 🟡 UI CI debt — 2026-04-24 evening + 04:49 night work
 
