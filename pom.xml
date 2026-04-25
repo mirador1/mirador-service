@@ -109,6 +109,11 @@
              transitive (springdoc 3.x is SB4-aware and pulls spring-boot-jackson:4
              → tools.jackson V3). 2.7.0 = last 2.x line targeting Spring 6 / SB3. -->
         <springdoc-sb3.version>2.7.0</springdoc-sb3.version>
+        <!-- spring-kafka-sb3.version : pinned in SB3 profile to avoid Spring Kafka 4.x
+             which hard-references Jackson V3 inside JsonKafkaHeaderMapper (crashes
+             on SB3's V2-only classpath). 3.3.4 = last 3.x line on the SB 3.4.x track.
+             ADR-0061 Entry 4. -->
+        <spring-kafka-sb3.version>3.3.4</spring-kafka-sb3.version>
 
         <!-- Maven build plugins -->
         <maven-antrun-plugin.version>3.2.0</maven-antrun-plugin.version>
@@ -1997,8 +2002,33 @@
                          to remove residual V3 Jackson transitives, but they broke Lombok
                          annotation processing (compile errors on @Getter-generated
                          methods). Reverted ; left as DEFERRED debt — see ADR-0061
-                         Entry 2 / Entry 4. The remaining 4 KafkaConfigTest errors
-                         are accepted for now (allow_failure shielded compat-sb3-*). -->
+                         Entry 2. -->
+
+                    <!-- Pin Spring Kafka to 3.3.4 (last 3.x release on the SB 3.4.x line).
+                         SK 4.0+ ships a JsonKafkaHeaderMapper that hard-references Jackson V3
+                         (`tools.jackson.databind.json.JsonMapper`) inside its constructor — so
+                         even building a basic KafkaTemplate triggers V3 init. SB3 ships only
+                         Jackson V2, hence NoClassDefFoundError on `JsonSerializeAs` / `JsonMapper$Builder`.
+                         SK 3.3.4 has none of those V3 references — the serializers + header mapper
+                         all use V2 directly. The user-facing classes JsonSerializer / JsonDeserializer
+                         (no Jackson prefix) exist in both 3.3.4 and 4.0.4 ; the JacksonJson* prefixed
+                         variants are 4.0+ only and require the V3 classpath.
+                         The KafkaConfig.java SB3 overlay swaps JacksonJsonSerializer →
+                         JsonSerializer (and Deserializer counterpart) so user code lines up with
+                         what SK 3.3.4 exposes.
+                         Added 2026-04-25 wave 8 — fixes the 4 KafkaConfigTest errors that had been
+                         deferred at the end of wave 7. ADR-0061 Entry 4 → ✅ FIXED. -->
+                    <dependency>
+                        <groupId>org.springframework.kafka</groupId>
+                        <artifactId>spring-kafka</artifactId>
+                        <version>${spring-kafka-sb3.version}</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>org.springframework.kafka</groupId>
+                        <artifactId>spring-kafka-test</artifactId>
+                        <version>${spring-kafka-sb3.version}</version>
+                        <scope>test</scope>
+                    </dependency>
 
                     <dependency>
                         <groupId>org.springdoc</groupId>

@@ -68,10 +68,11 @@ the same Spring/Java/library API divergence from scratch.
 
 | Field | Value |
 |---|---|
-| **Symptom** | `NoClassDefFoundError: tools.jackson.databind.json.JsonMapper$Builder` in KafkaConfigTest |
-| **Root cause** | Spring Kafka 3.4 introduced new `JacksonJsonSerializer` / `JacksonJsonDeserializer` classes that internally use Jackson V3. The old `JsonSerializer` / `JsonDeserializer` (no Jackson prefix) still use V2. Main code uses V3-aware classes (`JacksonJsonSerializer`). |
-| **Mechanism** | `OVERLAY` for KafkaConfig.java swapping class names — but this only fixes the user-facing class. Spring Kafka's internal Jackson init still pulls V3 transitively. **Real fix is via Entry 2 (BOM pins)**. |
-| **Status** | 🔴 PENDING — overlay attempt reverted because it's not the actual root cause + breaks 1 test assertion (test expects `JacksonJsonSerializer.class`). Resolution depends on Entry 2 being fully resolved. |
+| **Symptom** | `NoClassDefFoundError: tools.jackson.databind.json.JsonMapper$Builder` and `NoClassDefFoundError: com/fasterxml/jackson/annotation/JsonSerializeAs` raised from `KafkaTemplate` constructor in KafkaConfigTest. |
+| **Root cause** | Spring Kafka 4.0 ships V3-aware classes `JacksonJsonSerializer` / `JacksonJsonDeserializer` AND its internal `JsonKafkaHeaderMapper` hard-references Jackson V3 (`tools.jackson.databind.json.JsonMapper`) inside its constructor. Even building a basic `new KafkaTemplate(pf)` triggers V3 init via `MessagingMessageConverter` → `JsonKafkaHeaderMapper`. SB3 ships only Jackson V2, so the V3 init crashes at class-load time. The legacy `JsonSerializer` / `JsonDeserializer` (no `Jackson` prefix) exist on both Spring Kafka 3.x and 4.x and are V2-based. |
+| **Mechanism** | `BOM PIN` Spring Kafka 3.3.4 (last 3.x release on the SB 3.4.x line) in the SB3 profile + `OVERLAY` swap of `JacksonJsonSerializer` → `JsonSerializer` (and Deserializer counterpart) in both main and test files. SK 3.3.4 has no V3 references in `JsonKafkaHeaderMapper`, so the V3 chain is gone entirely. |
+| **Status** | ✅ FIXED — svc 1.0.57 wave 8 |
+| **Files** | `src/main/java-overlays/sb3/com/mirador/messaging/KafkaConfig.java`, `src/test/java-overlays/sb3/com/mirador/messaging/KafkaConfigTest.java`, pom.xml SB3 profile pins for `spring-kafka` + `spring-kafka-test` to 3.3.4. |
 
 ## Entry 5 : Spring Boot 4 `@GetMapping(version=)` rolled across `getAll` / `getAllV2`
 
@@ -172,9 +173,9 @@ the same Spring/Java/library API divergence from scratch.
 
 | Mechanism | Count | Cost |
 |---|---|---|
-| `OVERLAY` files (main) | 5 | Maintenance burden — refactors of main require corresponding overlay updates |
-| `OVERLAY` files (test) | 2 | Same |
-| `BOM PIN` (dependencyManagement) | 5+ | Per-pin verification needed (does the artifact exist in SB3 version?) |
+| `OVERLAY` files (main) | 6 | Maintenance burden — refactors of main require corresponding overlay updates |
+| `OVERLAY` files (test) | 3 | Same |
+| `BOM PIN` (dependencyManagement) | 7+ | Per-pin verification needed (does the artifact exist in SB3 version?) |
 | `EXCLUDE` (antrun) | 1 (RestTestClient) | Loses test coverage in SB3 mode |
 | `THROWS Exception` in main | 1 | Negligible — stricter signature |
 | antrun overlay copy steps | 3 (sb3 +overlays) | Negligible |
