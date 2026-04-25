@@ -125,9 +125,13 @@ default:
   interruptible: true   # Most jobs can be cancelled when a new commit is pushed.
   # Exception: docker-build, terraform-apply, deploy:* override this to false
   # so expensive or side-effect-producing jobs survive a new push mid-run.
-  # No global runner tag — jobs run on any available runner (local Mac runner or SaaS).
-  # docker-build uses Kaniko (no DinD, no privileged mode) — runs on any runner.
-  # trivy scans the registry image directly (no DinD needed either).
+  # All jobs route to macbook-local (= the group-level runner serving
+  # mirador1 — java, ui, python, shared). Updated 2026-04-25 after main
+  # pipelines started failing with `ci_quota_exceeded` on SaaS shared
+  # runners. Per global CLAUDE.md "Use local runners, never rely on
+  # GitLab SaaS quota". Same fix applied to UI on the same day.
+  tags:
+    - macbook-local
 
 variables:
   # Keep the local Maven repo inside the project dir so it is cached across jobs.
