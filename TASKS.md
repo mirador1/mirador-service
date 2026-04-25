@@ -47,15 +47,37 @@ alerting + Grafana SLO dashboard + ADR-0058 + sla.md. Below = next iterations.
   contributors, capacity changes, deploy correlation), who attends,
   what's the output (tighten/relax SLO, error budget policy update).
 
+## 🎨 README polish (post 2026-04-25 review)
+
+Captured from portfolio review session feedback :
+
+- 🟢 **README.fr.md sync** : Java README.md got a major rewrite 2026-04-25
+  (badges trim 50+ → 8, TL;DR for hiring managers, "What this proves for
+  a senior backend architect" matrix, URL fixes, "Customer onboarding &
+  enrichment service" reframing). The French version still reflects the
+  old structure — sync needed. Lefthook readme-i18n-sync hook flags it ;
+  was bypassed for the initial push.
+
+- 🟢 **GitHub mirror push verification** : after the README rewrite + URL
+  fixes (`benoit.besson/mirador-service` → `mirador1/mirador-service-java`),
+  verify the GitHub mirror at github.com/mirador1/mirador-service mirrors
+  correctly (badge URLs, Wayback caching, anchor links).
+
+- 🟢 **Mini-domain rename consideration** : the README narrative now
+  describes "Customer onboarding & enrichment service" but the CODE still
+  uses `Customer*` classes/endpoints. Genuine rename to `Onboarding*` or
+  `Case*` is a 50+ file refactor — defer until there's a real recruiter
+  signal that the term still feels generic. Narrative reframing in the
+  README probably enough.
+
+- 🟢 **Banner.svg refresh** : the `docs/assets/banner.svg` was authored
+  before the multi-repo split. Update to mention the polyrepo structure
+  + the SLO/SLA addition + the conservative LTS target. Same dimensions,
+  same color scheme.
+
+- 🟢 **Add screenshots to "Screenshots" section** of new SLO dashboard
+  + the architect matrix rendered. Use the existing GIF demo recording
+  workflow (record-demo.sh in shared) once the SLO dashboard is connected
+  to a live LGTM stack.
+
 ## 🔧 Other
-
-- 🟢 **README.fr.md sync** : Java README.md got a major rewrite
-  2026-04-25 (badges trim + TL;DR + senior architect matrix + URL fixes).
-  The French version still reflects the old structure — sync needed
-  (lefthook readme-i18n-sync hook flagged it but bypassed for the
-  initial push).
-
-- 🟢 **GitHub mirror push verification** : after the README rewrite
-  + URL fixes, verify the GitHub mirror at github.com/mirador1/mirador-
-  service mirrors correctly (badge URLs, Wayback caching, anchor
-  links).
