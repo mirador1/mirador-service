@@ -133,39 +133,39 @@ After 1.0.51 + 1.0.52 surgical waves, 3 SB3 structural issues remain :
 
 Estimated dedicated wave : 1-2 hours per item.
 
-## 🟡 UI CI debt — partial progress 2026-04-24 evening
+## 🟡 UI CI debt — 2026-04-24 evening + 04:49 night work
 
-Started day with 4 `allow_failure=true` jobs failing on UI main. Wave
-of fixes shipped :
+Started day with 4 `allow_failure=true` jobs failing on UI main.
+After 7 waves of fixes :
 
-- **grype:scan** : ✅ FIXED via [!120](https://gitlab.com/mirador1/mirador-ui/-/merge_requests/120) (svc 1.0.50 wave) — `/grype` absolute path, shield removed. Confirmed green on UI main pipeline #2478287707.
-- **e2e:kind** : ✅ FIXED via [!121](https://gitlab.com/mirador1/mirador-ui/-/merge_requests/121) (svc 1.0.51-aligned wave) — `docker compose up --wait --wait-timeout 120` waits for postgres healthy before Spring Boot Flyway init. Pending validation on next UI main pipeline.
-- **dockle** : ✅ FIXED via [!121](https://gitlab.com/mirador1/mirador-ui/-/merge_requests/121) — adopted svc tarball pattern (`docker:28` image + `docker pull --platform linux/amd64` + `docker save` + `dockle --input`). Battle-tested on svc 7/7. Pending validation on next UI main pipeline.
+- **grype:scan** : ✅ CONFIRMED FIXED via [!120](https://gitlab.com/mirador1/mirador-ui/-/merge_requests/120) — `/grype` absolute path, shield removed. Green on multiple main pipelines.
+- **dockle** : ✅ CONFIRMED FIXED via [!121](https://gitlab.com/mirador1/mirador-ui/-/merge_requests/121) — svc tarball pattern (`docker:28` + `docker pull --platform` + `docker save` + `dockle --input`). Green on multiple main pipelines.
+- **e2e:kind** : 🟡 IN-FLIGHT FIX via [!125](https://gitlab.com/mirador1/mirador-ui/-/merge_requests/125) (wave 7) — root cause finally identified after 4 pivots :
+  1. `--wait` regression (postgres init crash via init-sonar.sql bind mount becoming a directory) — fixed in !122
+  2. pg_isready loop pivot — fixed in !122
+  3. init-sonar.sql strip from compose — fixed in !123
+  4. `getent hosts db` diagnostic — surfaced real root cause in !124
+  5. Docker network connect was failing silently because `$(hostname)` returns the GitLab `--hostname` (e.g. `runner-yt-cpyt8r-...`) NOT the docker container NAME → fixed in !125 via `/proc/self/cgroup` ID extraction.
+- **sonarcloud** : 🟡 IN-FLIGHT FIX via [!125](https://gitlab.com/mirador1/mirador-ui/-/merge_requests/125) (wave 7) — 3-step root cause :
+  1. Token rotated by user (auth works) ✅
+  2. heap 4096 → 8192 (lower flake rate) ✅
+  3. `workerCount=2` (reduces concurrent subprocess heap) — wave 6
+  4. NEW : tree-sitter (Sonar's JS parser) couldn't write to
+     `/home/scanner-cli/.tree-sitter/lib` (read-only path in
+     scanner-cli image). Pipeline #2478601087 evidence : the
+     WebSocket-close was a CONSEQUENCE of tree-sitter init failing.
+     Fix in !125 : add `HOME: ${CI_PROJECT_DIR}/.sonar` to job
+     variables → tree-sitter writes to writable CI dir.
 
-**🔴 Still pending — sonarcloud WebSocket flake** :
+If !125 lands the 4 jobs all green, that closes the UI CI debt
+session in full (4/4 fixes confirmed, all `allow_failure: true`
+shields removable).
 
-  Token rotated 2026-04-24 evening (user updated GitLab CI/CD vars
-  on both repos). Auth now works ✅. But the FAILURE MODE is
-  different from "Project not found" — it's `WebSocket connection
-  closed abnormally` during JS analysis (Sonar's JS plugin opens a
-  child Node process WebSocket — sometimes crashes mid-analysis).
-
-  Verified : pipeline #2478287707 sonarcloud failed at 20:20 with
-  `IllegalStateException: WebSocket connection closed abnormally`.
-  Already at `sonar.javascript.node.maxspace=4096` and
-  `node.timeout=600`.
-
-  Possible fixes (deferred — needs runtime experimentation):
-    - Bump `node.maxspace` to 8192 (if runner has RAM)
-    - Add `retry: { max: 1, when: runner_system_failure }` (catches
-      some flakes, but CLAUDE.md restricts retry to runner failures
-      only — WebSocket close is `script_failure`, won't retry)
-    - Upgrade `sonarsource/sonar-scanner-cli:11` to a newer image
-      if Sonar fixed the WebSocket implementation upstream
-    - Reduce JS analysis parallelism via `sonar.javascript.workerCount`
-
-  Effort : ~1-2h trial-and-error per attempt. Defer to dedicated
-  evening session.
+If !125 still fails, next escalation candidates :
+- e2e:kind : try `network_mode: external` strategy with pre-created
+  network shared between job container and compose stack
+- sonarcloud : upgrade sonar-scanner-cli image if Sonar fixed the
+  tree-sitter perms upstream
 
 ---
 
