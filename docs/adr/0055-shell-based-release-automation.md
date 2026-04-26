@@ -35,7 +35,7 @@ Three candidates were evaluated :
 |---|---|---|---|---|
 | `semantic-release` + `@semantic-release/gitlab` | 1-2 h | `node_modules` on a Java repo | ~2 min/tag | ✅ full |
 | `standard-version` | 30 min | `node_modules` on a Java repo | 0 (local) | ⚠️ partial |
-| Hand-rolled bash (`bin/ship/changelog.sh`) | 1 h | None | 0 | ✅ full |
+| Hand-rolled bash (`infra/shared/bin/ship/changelog.sh`) | 1 h | None | 0 | ✅ full |
 
 The second driver is **release cadence**. Mirador is a solo-maintainer
 portfolio project with ~3-6 `stable-v*` tags per dev day. At that
@@ -52,21 +52,24 @@ audit surface that Renovate will eventually ask us to bump.
 
 ## Decision
 
-Ship **two local shell scripts** under
-[`bin/ship/`](../../bin/ship/) as the release automation :
+Ship **two shell scripts** as the release automation. Both **live in the
+shared submodule** since 2026-04-26 (factored per [ADR-0001](0001-shared-repo-via-submodule.md)
+to avoid duplicating identical scripts across the 4 sibling repos) and
+are called from any consumer via `infra/shared/bin/ship/...` :
 
-- **[`bin/ship/changelog.sh`](../../bin/ship/changelog.sh)** (~160 LOC
-  bash) — reads `git log <last-stable-v*>..HEAD` output, classifies
+- **[`infra/shared/bin/ship/changelog.sh`](../../infra/shared/bin/ship/changelog.sh)** (~170 LOC
+  bash) — reads `git log <last-tag-prefix*>..HEAD` output, classifies
   each subject by Conventional-Commit type
   (`feat!` / `feat` / `fix` / `perf` / `refactor` / `docs` / `test` /
   `chore` / `ci` / `build` / `style`), groups into emoji sections
   (💥 Breaking, ✨ Features, 🐛 Bug fixes, ⚡ Performance, ♻️ Refactoring,
   📚 Documentation, 🧪 Tests, 🔧 Chore, 👷 CI, 📦 Build, 💄 Style),
   prepends the new entry to `CHANGELOG.md`. Flags : `--since <ref>`,
-  `--dry-run`, `--include-chore`.
+  `--dry-run`, `--include-chore`, `--tag-prefix <pfx>` (default
+  `stable-v` for Java + UI ; Python passes `stable-py-v`).
 
-- **[`bin/ship/gitlab-release.sh`](../../bin/ship/gitlab-release.sh)**
-  (~80 LOC bash) — takes a `stable-v*` tag, runs `glab release
+- **[`infra/shared/bin/ship/gitlab-release.sh`](../../infra/shared/bin/ship/gitlab-release.sh)**
+  (~80 LOC bash) — takes a `<prefix>X.Y.Z` tag, runs `glab release
   create` with the annotated tag message (or custom `--notes`) to
   create a GitLab Release object at `/-/releases`.
 
@@ -75,19 +78,24 @@ The workflow (documented in
 is 5 steps :
 
 ```bash
-bin/ship/changelog.sh                                # 1. regen entry
+infra/shared/bin/ship/changelog.sh                            # 1. regen entry (Java/UI default)
+# Python: infra/shared/bin/ship/changelog.sh --tag-prefix stable-py-v
 git add CHANGELOG.md && git commit -m "chore(changelog): bump for vX.Y.Z"
-git tag -a stable-vX.Y.Z -m "..."                    # 2. tag
-git push origin stable-vX.Y.Z                        # 3. push
-bin/ship/gitlab-release.sh stable-vX.Y.Z             # 4. promote
-                                                     # 5. announce (optional)
+git tag -a stable-vX.Y.Z -m "..."                             # 2. tag
+git push origin stable-vX.Y.Z                                 # 3. push
+infra/shared/bin/ship/gitlab-release.sh stable-vX.Y.Z         # 4. promote
+                                                              # 5. announce (optional)
 ```
 
-Both repos (svc + UI) ship identical copies of the scripts
-(confirmed in `gitlab-release.sh`'s inline doc). Symmetric cleanup
-deleted release-please from both repos 2026-04-23 in svc
-[MR !169](https://gitlab.com/mirador1/mirador-service/-/merge_requests/169)
-+ UI [MR !102](https://gitlab.com/mirador1/mirador-ui/-/merge_requests/102).
+All 4 repos (svc + UI + python + shared itself) call the SAME pair of
+scripts via the submodule — single source of truth, zero per-repo
+copy-paste. Symmetric cleanup deleted release-please from svc + UI
+2026-04-23 ; the per-repo duplicates of changelog.sh + gitlab-release.sh
+were folded into shared 2026-04-26 ([svc MR !169](https://gitlab.com/mirador1/mirador-service/-/merge_requests/169) +
+[UI MR !102](https://gitlab.com/mirador1/mirador-ui/-/merge_requests/102)
+for release-please removal ;
+[shared commit ed0c425](https://gitlab.com/mirador1/mirador-service-shared/-/commit/ed0c425)
+for the factorisation).
 
 ## Consequences
 
@@ -206,8 +214,10 @@ Until one of those triggers, the shell scripts are canon.
 
 ## References
 
-- [`bin/ship/changelog.sh`](../../bin/ship/changelog.sh) — the generator
-- [`bin/ship/gitlab-release.sh`](../../bin/ship/gitlab-release.sh) — the promoter
+- [`infra/shared/bin/ship/changelog.sh`](../../infra/shared/bin/ship/changelog.sh) — the generator (factored 2026-04-26)
+- [`infra/shared/bin/ship/gitlab-release.sh`](../../infra/shared/bin/ship/gitlab-release.sh) — the promoter (factored 2026-04-26)
+- [`infra/shared/bin/ship/pre-sync.sh`](../../infra/shared/bin/ship/pre-sync.sh) — git-safety pre-flight (also factored)
+- [ADR-0001](0001-shared-repo-via-submodule.md) — submodule pattern that hosts these scripts
 - [`docs/how-to/changelog-workflow.md`](../how-to/changelog-workflow.md) — 5-step workflow
 - [svc MR !169](https://gitlab.com/mirador1/mirador-service/-/merge_requests/169) — svc release-please removal
 - [UI MR !102](https://gitlab.com/mirador1/mirador-ui/-/merge_requests/102) — UI release-please removal
