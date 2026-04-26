@@ -1,0 +1,55 @@
+# =============================================================================
+# .grype.yaml — vulnerability scanner config
+#
+# grype reads this file automatically when invoked from the repo root
+# (CI: bin/dev/security or grype:scan job in .gitlab-ci/security.yml).
+#
+# RULE (per ~/.claude/CLAUDE.md and ADR-0049) : every entry below MUST carry
+# a dated exit ticket. Suppressions are SHORT-TERM bridges, never permanent
+# shields. If the date passes and Spring AI hasn't shipped a release that
+# bundles the patched mcp-core, OPEN A NEW MR ; never silently extend.
+# =============================================================================
+ignore:
+  # ---------------------------------------------------------------------------
+  # mcp-core 0.17.0 — TWO transitive CVEs from spring-ai-starter-mcp-server-webmvc:1.1.4
+  #
+  # Why we don't bump :
+  #   - Direct override `mcp-core` to 1.x line breaks ABI : the sibling
+  #     `mcp-annotations:0.8.0` (Spring AI's own lib) calls
+  #     `McpJsonMapper.createDefault()` which lives in `mcp-json:0.17.0`,
+  #     not in `mcp-core:1.1.2`. Verified empirically on MR !226 pipeline
+  #     #2480962474 — Spring Boot fails to start with NoSuchMethodError.
+  #   - Bumping Spring AI itself to 2.0.0-M4 (which natively ships mcp 1.1.0)
+  #     would force a breaking-API migration of `com.mirador.mcp.McpConfig`
+  #     (`MethodToolCallbackProvider.builder().toolObjects(...)` may be
+  #     renamed) for a value-add that is purely "patch a transitive CVE".
+  #
+  # Real fix : wait for Spring AI 1.1.5+ (which the upstream Spring AI team
+  # is expected to ship with mcp-core ≥ 1.0.1, since they're actively
+  # tracking the GHSAs).
+  #
+  # EXIT TICKET — re-evaluate by 2026-05-26 (one month) :
+  #   - Check https://github.com/spring-projects/spring-ai/releases
+  #   - If 1.1.5+ exists with mcp-core ≥ 1.0.1, bump spring-ai.version,
+  #     drop both entries below + this whole block.
+  #   - Else open a new MR pushing the deadline 2 more weeks + add a
+  #     comment with the new latest version observed.
+  # ---------------------------------------------------------------------------
+
+  # GHSA-8jxr-pr72-r468 (HIGH) — mcp-core < 1.0.0
+  # Risk assessment : the SDK reads JSON-RPC over HTTP/SSE behind the same
+  # JWT-protected filter chain as the REST API ; an attacker would need a
+  # valid token to reach the MCP endpoint. EPSS = 0.0% (4th percentile).
+  - vulnerability: GHSA-8jxr-pr72-r468
+    package:
+      name: mcp-core
+      type: java-archive
+
+  # GHSA-hv2w-8mjj-jw22 (MEDIUM) — mcp-core < 1.0.1 ; reintroduced in 1.1.0,
+  # re-fixed in 1.1.1. EPSS = 0.0% (10th percentile). Same auth-gated risk
+  # surface as above ; doesn't fail `--fail-on high` but listed for clean
+  # reports.
+  - vulnerability: GHSA-hv2w-8mjj-jw22
+    package:
+      name: mcp-core
+      type: java-archive
