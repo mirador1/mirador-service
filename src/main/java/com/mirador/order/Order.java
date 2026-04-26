@@ -17,6 +17,7 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.Collection;
 
 /**
  * JPA entity representing an order, mapped to the {@code orders} table.
@@ -94,5 +95,26 @@ public class Order {
     @PreUpdate
     void onUpdate() {
         this.updatedAt = Instant.now();
+    }
+
+    /**
+     * Pure utility — computes the order total from its lines.
+     *
+     * <p>Defined as the invariant {@code Σ(line.quantity × line.unitPriceAtOrder)}
+     * captured in shared ADR-0059. Caller is responsible for assigning the
+     * result via {@link #setTotalAmount(BigDecimal)} and persisting in the
+     * same transaction as the line modification.
+     *
+     * @param lines the order lines (may be empty ; null is treated as empty)
+     * @return total as {@link BigDecimal}, never null ; {@link BigDecimal#ZERO} for empty input
+     */
+    public static BigDecimal computeTotal(Collection<OrderLine> lines) {
+        if (lines == null || lines.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        return lines.stream()
+                .map(line -> line.getUnitPriceAtOrder()
+                        .multiply(BigDecimal.valueOf(line.getQuantity())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 }
