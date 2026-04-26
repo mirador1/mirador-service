@@ -73,6 +73,9 @@ workflow:
         - "README.fr.md"
         - "CLAUDE.md"
         - "TASKS.md"
+        - ".gitmodules"     # Added 2026-04-26 so submodule SHA bumps trigger the pipeline (otherwise bump-only MRs sit blocked on ci_must_pass with no pipeline ever firing)
+        - "infra/common/**/*"
+        - "infra/shared/**/*"
     # Main branch pushes — same allowlist, compared against HEAD~1 (last commit).
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE != "schedule"
       changes:
