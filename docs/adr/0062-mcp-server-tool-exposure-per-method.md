@@ -299,6 +299,39 @@ in-process** :
 This split keeps the deploy unit (Spring Boot jar) decoupled from the
 deploy environment (which observability stack, which CI vendor).
 
+### Decision rule : "produces vs accesses"
+
+The single criterion for "in app MCP" vs "external infra MCP" :
+
+> Does the application **produce** these data already, as part of its
+> normal runtime ? **Yes** → expose via app MCP (free, no infra coupling).
+> **No, the application merely *accesses* an external service** → keep
+> outside, use a community / DIY external MCP server with its own scoped auth.
+
+| Concern | Status | Why |
+|---|---|---|
+| Logback ring buffer | ✅ in app MCP | App produces its own log lines |
+| Micrometer registry | ✅ in app MCP | App produces its own metrics |
+| Actuator (health/info/env) | ✅ in app MCP | App self-introspection |
+| OpenAPI spec | ✅ in app MCP | App describes its own surface |
+| Domain (Order/Product/Customer/Chaos) | ✅ in app MCP | App owns the domain logic |
+| **Raw SQL query** on the DB | ❌ excluded | App accesses the DB ; the DB is the owner. Raw SQL bypasses the app's `@PreAuthorize` checks, leaks the schema, exposes auth tables (`app_user`, `refresh_token`) and admin tables (`flyway_schema_history`, `shedlock`). Granularity wrong : DBA-level, not application-view. |
+| Mimir / Prometheus query | ❌ excluded | App reports metrics TO Mimir but doesn't own it. External community MCP. |
+| Grafana panel render | ❌ excluded | Grafana is a separate service Mirador happens to feed. External MCP. |
+| Loki tail | ❌ excluded | App ships logs TO Loki ; Loki is the aggregator. External MCP. |
+| K8s pod inspection | ❌ excluded | Platform concern, not application |
+| Kafka topic listing | ❌ excluded | Messaging infra, cross-applicative |
+| GitLab MR / GitHub PR | ❌ excluded | Project-management / VCS layer |
+
+**Why the rule matters** : when an app MCP starts exposing things it
+merely *accesses*, you :
+1. Bloat the deploy unit with N infra clients.
+2. Couple the deploy to the deploy environment (no Mimir reachable → app boots in a degraded mode that nobody documented).
+3. Break auth scoping (one JWT can do app stuff AND DB queries — too much surface for one token).
+4. Re-implement what community MCP servers already do well.
+
+Stick to "produces" → small, focused, deploy-portable app MCP.
+
 These backend-local observability tools are gated by **role** (read-only
 role can call all of them except `get_health_detail` and
 `trigger_chaos_experiment`, which are admin-only). Role check uses
