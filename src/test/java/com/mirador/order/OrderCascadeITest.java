@@ -1,6 +1,8 @@
 package com.mirador.order;
 
 import com.mirador.AbstractIntegrationTest;
+import com.mirador.customer.Customer;
+import com.mirador.customer.CustomerRepository;
 import com.mirador.product.Product;
 import com.mirador.product.ProductRepository;
 import jakarta.persistence.PersistenceException;
@@ -49,18 +51,29 @@ class OrderCascadeITest extends AbstractIntegrationTest {
     @Autowired
     private ProductRepository productRepo;
 
+    @Autowired
+    private CustomerRepository customerRepo;
+
+    private Long customerId;
     private Long productId;
     private Long orderId;
     private Long lineId;
 
     @BeforeEach
     void seed() {
-        // Clean any previous state from prior tests. Each call runs in its
-        // own short transaction (Spring Data JPA auto-transactional). No
-        // explicit em.flush() needed.
+        // Clean previous order/line/product. Don't deleteAll customers —
+        // R__seed_demo_customers may be a repeatable seed other tests rely on.
         lineRepo.deleteAll();
         orderRepo.deleteAll();
         productRepo.deleteAll();
+
+        // Create our own Customer for the FK — testcontainer Postgres
+        // doesn't guarantee customer.id=1 exists (depends on R__seed timing
+        // and test class ordering). Self-contained seed = robust to CI variance.
+        Customer c = new Customer();
+        c.setName("Cascade Tester " + System.nanoTime());
+        c.setEmail("cascade-" + System.nanoTime() + "@example.com");
+        customerId = customerRepo.save(c).getId();
 
         Product p = new Product();
         p.setName("Cascade-test-widget-" + System.nanoTime());
@@ -69,7 +82,7 @@ class OrderCascadeITest extends AbstractIntegrationTest {
         productId = productRepo.save(p).getId();
 
         Order o = new Order();
-        o.setCustomerId(1L); // Demo customer ID 1 from R__seed_demo_customers
+        o.setCustomerId(customerId);
         o.setStatus(OrderStatus.PENDING);
         o.setTotalAmount(new BigDecimal("9.99"));
         orderId = orderRepo.save(o).getId();
