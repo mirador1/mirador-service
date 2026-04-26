@@ -3,14 +3,14 @@
 **Why this is needed**: `required_signatures` was enabled on the GitHub
 mirror's `main` branch then disabled during the Auth0 work session
 (unsigned helper commits couldn't push). Now that local SSH-signing
-setup is documented (`bin/dev/setup-signed-commits.sh`), re-enable so
+setup is documented (`infra/common/bin/dev/setup-signed-commits.sh`), re-enable so
 every future merge into main is verifiably signed by the author.
 
 This is **task S2** in TASKS.md.
 
 ## Pre-requisite: local signing must work first
 
-Run `bin/dev/setup-signed-commits.sh` (or `bin/dev/setup-signed-commits.sh
+Run `infra/common/bin/dev/setup-signed-commits.sh` (or `infra/common/bin/dev/setup-signed-commits.sh
 --dry-run` to preview), confirm with a test signed commit:
 
 ```bash
@@ -82,7 +82,7 @@ AND the branch protection rule is temporarily disabled.
 
 ## Cross-references
 
-- `bin/dev/setup-signed-commits.sh` — local SSH-sign setup (run first)
+- `infra/common/bin/dev/setup-signed-commits.sh` — local SSH-sign setup (run first)
 - TASKS.md → "S2 — signed-commits hardening"
 - GitHub docs:
   <https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/managing-protected-branches/about-protected-branches#require-signed-commits>
