@@ -123,4 +123,77 @@ class OrderInvariantsPropertyTest {
     Arbitrary<List<OrderLine>> orderLines() {
         return orderLine().list().ofMinSize(0).ofMaxSize(20);
     }
+
+    // ── Invariants 4 & 5 : status transitions ──────────────────────────
+
+    /**
+     * Invariant 4 (ADR-0059) : Order.status valid graph
+     * <pre>PENDING → CONFIRMED → SHIPPED ; * → CANCELLED ; CANCELLED terminal</pre>
+     *
+     * <p>Property : the Cartesian product of (from, to) statuses contains
+     * EXACTLY the documented edges (plus self-transitions). Any deviation
+     * (e.g. someone adds a SHIPPED→PENDING shortcut) fails this test.
+     */
+    @Property
+    void orderStatus_transitionGraph_matchesDoc(
+            @ForAll OrderStatus from,
+            @ForAll OrderStatus to) {
+        boolean expected = isValidOrderTransition(from, to);
+        assertThat(from.canTransitionTo(to))
+                .as("OrderStatus %s → %s expected=%b", from, to, expected)
+                .isEqualTo(expected);
+    }
+
+    private static boolean isValidOrderTransition(OrderStatus from, OrderStatus to) {
+        if (from == to) return true;
+        return switch (from) {
+            case PENDING -> to == OrderStatus.CONFIRMED || to == OrderStatus.CANCELLED;
+            case CONFIRMED -> to == OrderStatus.SHIPPED || to == OrderStatus.CANCELLED;
+            case SHIPPED, CANCELLED -> false;
+        };
+    }
+
+    /**
+     * Null target is never a valid transition — captures the contract that
+     * callers can't accidentally clear status by passing null.
+     */
+    @Property(tries = 1)
+    void orderStatus_transitionToNull_isFalse() {
+        for (OrderStatus s : OrderStatus.values()) {
+            assertThat(s.canTransitionTo(null)).isFalse();
+        }
+    }
+
+    /**
+     * Invariant 5 (ADR-0059) : OrderLineStatus valid graph
+     * <pre>PENDING → SHIPPED → REFUNDED ; REFUNDED terminal ; no skip</pre>
+     */
+    @Property
+    void orderLineStatus_transitionGraph_matchesDoc(
+            @ForAll OrderLineStatus from,
+            @ForAll OrderLineStatus to) {
+        boolean expected = isValidOrderLineTransition(from, to);
+        assertThat(from.canTransitionTo(to))
+                .as("OrderLineStatus %s → %s expected=%b", from, to, expected)
+                .isEqualTo(expected);
+    }
+
+    private static boolean isValidOrderLineTransition(OrderLineStatus from, OrderLineStatus to) {
+        if (from == to) return true;
+        return switch (from) {
+            case PENDING -> to == OrderLineStatus.SHIPPED;
+            case SHIPPED -> to == OrderLineStatus.REFUNDED;
+            case REFUNDED -> false;
+        };
+    }
+
+    /**
+     * Skip-state check : PENDING cannot directly become REFUNDED — must
+     * pass through SHIPPED. Captures the audit requirement that you can
+     * only refund what was shipped.
+     */
+    @Property(tries = 1)
+    void orderLineStatus_pendingCannotSkipToRefunded() {
+        assertThat(OrderLineStatus.PENDING.canTransitionTo(OrderLineStatus.REFUNDED)).isFalse();
+    }
 }

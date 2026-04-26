@@ -19,5 +19,39 @@ public enum OrderStatus {
     PENDING,
     CONFIRMED,
     SHIPPED,
-    CANCELLED
+    CANCELLED;
+
+    /**
+     * Pure state-machine check : is the transition {@code this → next} allowed ?
+     *
+     * <p>Per shared ADR-0059, the valid graph is :
+     * <pre>
+     *   PENDING → CONFIRMED → SHIPPED
+     *      ↘            ↘
+     *       CANCELLED   CANCELLED
+     * </pre>
+     *
+     * <p>Self-transitions ({@code PENDING → PENDING}) are allowed (idempotent
+     * "re-affirm" semantics). Backwards moves are forbidden — once SHIPPED,
+     * you don't go back to PENDING.
+     *
+     * <p>{@code CANCELLED} is terminal : nothing transitions out of it.
+     *
+     * @param next the target status
+     * @return true iff the transition is part of the documented graph
+     */
+    public boolean canTransitionTo(OrderStatus next) {
+        if (next == null) {
+            return false;
+        }
+        if (this == next) {
+            return true;
+        }
+        return switch (this) {
+            case PENDING -> next == CONFIRMED || next == CANCELLED;
+            case CONFIRMED -> next == SHIPPED || next == CANCELLED;
+            case SHIPPED -> false;
+            case CANCELLED -> false;
+        };
+    }
 }
