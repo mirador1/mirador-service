@@ -2,13 +2,46 @@
 
 <sub>[English](README.md) · **Français**</sub>
 
-<!-- Badges : les badges GitLab (canonical) + GitHub (mirror) restent en anglais
-     par définition. Ils pointent les mêmes endpoints que la version EN. -->
-[![pipeline](https://gitlab.com/mirador1/mirador-service/badges/main/pipeline.svg)](https://gitlab.com/mirador1/mirador-service/-/pipelines)
-[![coverage](https://gitlab.com/mirador1/mirador-service/badges/main/coverage.svg)](https://gitlab.com/mirador1/mirador-service/-/pipelines)
-[![latest release](https://gitlab.com/mirador1/mirador-service/-/badges/release.svg)](https://gitlab.com/mirador1/mirador-service/-/releases)
-[![CodeQL](https://github.com/mirador1/mirador-service/actions/workflows/codeql.yml/badge.svg)](https://github.com/mirador1/mirador-service/actions/workflows/codeql.yml)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/mirador1/mirador-service/badge)](https://scorecard.dev/viewer/?uri=github.com/mirador1/mirador-service)
+<!-- Bandeau de badges : 8 essentiels en haut. Couverture techno exhaustive
+     plus bas dans la section "Couverture technologique". -->
+[![pipeline](https://gitlab.com/mirador1/mirador-service-java/badges/main/pipeline.svg)](https://gitlab.com/mirador1/mirador-service-java/-/pipelines)
+[![coverage](https://gitlab.com/mirador1/mirador-service-java/badges/main/coverage.svg)](https://gitlab.com/mirador1/mirador-service-java/-/pipelines)
+[![SonarCloud](https://img.shields.io/badge/SonarCloud-quality_gate-F3702A?logo=sonarcloud&logoColor=white)](https://sonarcloud.io/project/overview?id=mirador1_mirador-service)
+![Java 21 LTS · 25](https://img.shields.io/badge/Java-21_LTS_+_25_compat-ED8B00?logo=openjdk&logoColor=white)
+![Spring Boot 3.x · 4](https://img.shields.io/badge/Spring_Boot-3.x_LTS_+_4_compat-6DB33F?logo=springio&logoColor=white)
+![GitOps Argo CD](https://img.shields.io/badge/Argo_CD-GitOps_+_canary-EF7B4D?logo=argo&logoColor=white)
+![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-traces_+_logs_+_metrics-7F52FF?logo=opentelemetry&logoColor=white)
+![SLO 99.5%](https://img.shields.io/badge/SLO-99.5%25_+_burn_rate-2D7FF9)
+
+## Ce que ce projet démontre
+
+Mirador est un démonstrateur de backend Java de niveau production centré sur des préoccupations
+industrielles :
+- diagnostiquer les incidents via logs, métriques et traces ;
+- sécuriser les API avec JWT/OIDC, rate limiting et audit logs ;
+- valider les décisions d'architecture via des ADR ;
+- faire tourner des quality gates dans GitLab CI ;
+- montrer comment un backend peut évoluer entre versions Java/Spring sans réécrire le système.
+
+La branche par défaut utilise les versions récentes pour explorer la stack future.
+**Une cible production conservatrice serait Java 21 LTS + Spring Boot 3.x** — la matrice de
+compatibilité en CI prouve que les deux stacks compilent + testent vert depuis le même code,
+donc un déploiement réel pourrait geler sur le couple LTS sans aucun changement de code.
+
+## TL;DR pour les recruteurs (lecture 60 sec)
+
+- **Pattern backend industriel** : pipeline d'onboarding client avec enrichissement style KYC,
+  événements d'audit Kafka, traçabilité réglementaire, et endpoints de diagnostic d'incident —
+  pas une démo CRUD.
+- **Observability-first** : chaque couche (HTTP, JVM, DB pool, Kafka, Redis) émet traces OTel +
+  métriques + logs structurés. **3 SLOs définis-as-code** (Sloth) avec alerting multi-window
+  multi-burn-rate (Google SRE Workbook) et un dashboard Grafana SLO.
+- **Supply chain sécurité** : JWT + rotation refresh-token, OWASP Dep-Check + Trivy + Grype +
+  Syft + cosign + SBOM, policies cluster Kyverno, External Secrets Operator sur GSM.
+- **Quality gates** : SonarCloud + PIT mutation + JaCoCo coverage + Testcontainers ITs +
+  Spotless/Checkstyle/SpotBugs/PMD tous bloquants en CI. ArchUnit force le layering hexagonal.
+- **Opérations résilientes** : Argo CD GitOps + Argo Rollouts canary, Resilience4j circuit-
+  breaker + retry, endpoints chaos, alertes liées à des runbooks. Cycle de vie cluster via Terraform.
 
 # Mirador — le mirador d'un système qui tourne
 
