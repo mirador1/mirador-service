@@ -99,18 +99,18 @@ monotonic across supersessions.
 | 0007 | Accepted | [Workload Identity Federation for GCP auth in CI](0007-workload-identity-federation.md) |
 | 0008 | Superseded | [Feature-sliced package layout in `com.mirador.*`](0008-feature-sliced-packages.md) → [ADR-0044](0044-hexagonal-considered-feature-slicing-retained.md) |
 | 0009 | Accepted | [Container runtime base image — `eclipse-temurin:25-jre`](0009-container-runtime-base-image.md) |
-| 0010 | Accepted | [OpenTelemetry OTLP push to a Collector (not Prometheus scrape)](0010-otlp-push-to-collector.md) |
+| 0010 | Moved | [moved to `mirador-service-shared`](0010-otlp-push-to-collector.md) |
 | 0011 | Accepted | [Minimal `@Transactional` surface, no `@Transactional(readOnly = true)`](0011-transactional-read-strategy.md) |
 | 0012 | Accepted | [Stay on LGTM with Loki bloom filters — defer OpenSearch](0012-stay-on-lgtm-with-bloom-filters.md) |
 | 0013 | Accepted | [In-cluster Postgres on GKE (revisits ADR-0003)](0013-in-cluster-postgres-on-gke-for-the-demo.md) |
 | 0014 | Accepted | [Single-replica deployments for the demo cluster](0014-single-replica-for-demo.md) |
 | 0015 | Accepted | [Argo CD for GitOps deployment on GKE](0015-argocd-for-gitops-deployment.md) |
-| 0016 | Accepted | [External Secrets Operator + Google Secret Manager](0016-external-secrets-operator.md) |
+| 0016 | Moved | [moved to `mirador-service-shared`](0016-external-secrets-operator.md) |
 | 0017 | Accepted | [Java 25 + Spring Boot 4 (bleeding-edge stack)](0017-jvm-25-spring-boot-4-strategy.md) |
 | 0018 | Accepted | [JWT strategy — HMAC access tokens + single-use refresh rotation + Redis blacklist](0018-jwt-strategy-hmac-refresh-rotation.md) |
 | 0019 | Accepted | [Resilience4J (CB + Retry) + Bucket4J rate-limit + idempotency filter](0019-resilience4j-circuitbreaker-retry-bucket4j.md) |
 | 0020 | Accepted | [API versioning via `X-API-Version` header (Spring Framework 7)](0020-api-versioning-via-header.md) |
-| 0021 | Accepted | [Cost-deferred industrial patterns](0021-cost-deferred-industrial-patterns.md) |
+| 0021 | Moved | [moved to `mirador-service-shared`](0021-cost-deferred-industrial-patterns.md) |
 | 0022 | Accepted | [Ephemeral demo cluster (bring up on demand)](0022-ephemeral-demo-cluster.md) |
 | 0023 | Accepted | [Stay on GKE Autopilot (over GKE Standard)](0023-stay-on-autopilot.md) |
 | 0024 | Accepted | [BFF pattern for observability + Unleash without the SDK](0024-bff-observability-proxy-and-unleash-without-sdk.md) |
@@ -125,10 +125,10 @@ monotonic across supersessions.
 | 0033 | Accepted | [Playwright E2E in kind-in-CI](0033-playwright-e2e-in-kind-in-ci.md) |
 | 0034 | Accepted | [CI memory budget + Testcontainers-heavy integration tests](0034-ci-memory-budget-testcontainers.md) |
 | 0035 | Accepted | [Defer Pact + Biome adoption (proposals #5 + #17)](0035-defer-pact-and-biome.md) |
-| 0036 | Accepted | [Multi-cloud Terraform posture](0036-multi-cloud-terraform-posture.md) |
+| 0036 | Moved | [moved to `mirador-service-shared`](0036-multi-cloud-terraform-posture.md) |
 | 0037 | Superseded | [Spectral `oas3-valid-*-example` rules disabled (temporary)](0037-spectral-oas3-valid-example-rules-disabled.md) |
 | 0038 | Accepted | [Cluster metrics via OTel Collector receivers in lgtm, not kube-prometheus-stack](0038-kubeletstats-receiver-in-lgtm-not-kube-prometheus-stack.md) |
-| 0039 | Accepted | [Two observability deployment modes (OTel-native vs Prometheus-community)](0039-two-observability-deployment-modes.md) |
+| 0039 | Moved | [moved to `mirador-service-shared`](0039-two-observability-deployment-modes.md) |
 | 0040 | Accepted | [Accept `insecureSkipVerify: true` on GKE kubelet ServiceMonitor](0040-accept-insecureskipverify-on-gke-kubelet-scrape.md) |
 | 0041 | Accepted | [CI hygiene: honest green discipline](0041-ci-hygiene-honest-green-discipline.md) |
 | 0042 | Accepted | [Quality reports routing: SonarCloud vs Maven Site](0042-quality-reports-routing-sonarcloud-vs-maven-site.md) |
@@ -143,12 +143,14 @@ monotonic across supersessions.
 | 0051 | Accepted | [JPA entity = domain model (accept the coupling)](0051-jpa-entity-as-domain-model.md) |
 | 0052 | Accepted | [Backend stays ignorant of build/quality tools (tightens ADR-0026)](0052-backend-not-coupled-to-build-tools.md) |
 | 0053 | Accepted | [OVH Cloud as 2nd canonical Kubernetes target](0053-ovh-canonical-target.md) |
-| 0054 | Active | [Dual-export OTLP telemetry to GitLab Observability](0054-gitlab-observability-dual-export.md) |
-| 0055 | Accepted | [Shell-based release automation (no semantic-release)](0055-shell-based-release-automation.md) |
+| 0054 | Moved | [moved to `mirador-service-shared`](0054-gitlab-observability-dual-export.md) |
+| 0055 | Moved | [moved to `mirador-common`](0055-shell-based-release-automation.md) |
 | 0056 | Accepted | [Widget extraction pattern for large Angular components](0056-widget-extraction-pattern.md) |
-| 0057 | Accepted | [Conserver le polyrepo (svc + UI séparés), pas de migration vers monorepo](0057-polyrepo-vs-monorepo.md) |
+| 0057 | Moved | [moved to `mirador-common`](0057-polyrepo-vs-monorepo.md) |
 | 0058 | Accepted | [Phase C : Checkstyle `failOnViolation=true`](0058-phase-c-checkstyle-flip.md) |
 | 0059 | Accepted | [Grafana Cloud AI Observability (POC opt-in)](0059-grafana-cloud-ai-observability-poc.md) |
+| 0060 | Accepted | [SB3 compat target = prod-grade, not informational](0060-sb3-compat-prod-grade.md) |
+| 0061 | Living | [SB3 / SB4 incompatibility catalog](0061-sb3-sb4-incompatibility-catalog.md) |
 <!-- ADR-INDEX:END -->
 
 ## Hierarchical index (by theme)
