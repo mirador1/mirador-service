@@ -192,6 +192,81 @@ Content-Type: application/json
 HTTP 401
 
 # ───────────────────────────────────────────────────────────────────────
+# 9bis. E-commerce surface (ADR-0059) — Product + Order + OrderLine.
+# ───────────────────────────────────────────────────────────────────────
+# Create a product, create an order, add 2 lines, verify total recomputed,
+# delete a line, delete the order. Exercises the FK CASCADE / RESTRICT rules.
+
+# Create Product P1 — Widget @ 10.00 € stock 100
+POST {{base}}/products
+Authorization: Bearer {{rotated_access_token}}
+Content-Type: application/json
+{
+  "name": "smoke-widget-{{run_id}}",
+  "description": "Smoke-test product",
+  "unitPrice": 10.00,
+  "stockQuantity": 100
+}
+HTTP 201
+[Captures]
+product_id: jsonpath "$.id"
+
+# Create empty Order for the customer we already created
+POST {{base}}/orders
+Authorization: Bearer {{rotated_access_token}}
+Content-Type: application/json
+{ "customerId": {{customer_id}} }
+HTTP 201
+[Captures]
+order_id: jsonpath "$.id"
+
+# Add 2 lines of qty 2 → backend snapshots unitPrice = 10.00, total = 40.00
+POST {{base}}/orders/{{order_id}}/lines
+Authorization: Bearer {{rotated_access_token}}
+Content-Type: application/json
+{ "productId": {{product_id}}, "quantity": 2 }
+HTTP 201
+[Captures]
+line1_id: jsonpath "$.id"
+
+POST {{base}}/orders/{{order_id}}/lines
+Authorization: Bearer {{rotated_access_token}}
+Content-Type: application/json
+{ "productId": {{product_id}}, "quantity": 2 }
+HTTP 201
+
+# Verify total = 40.00 (2 × 2 × 10.00)
+GET {{base}}/orders/{{order_id}}
+Authorization: Bearer {{rotated_access_token}}
+HTTP 200
+[Asserts]
+jsonpath "$.totalAmount" == 40.00
+
+# Cancel one line — total recomputes to 20.00
+DELETE {{base}}/orders/{{order_id}}/lines/{{line1_id}}
+Authorization: Bearer {{rotated_access_token}}
+HTTP 204
+
+GET {{base}}/orders/{{order_id}}
+Authorization: Bearer {{rotated_access_token}}
+HTTP 200
+[Asserts]
+jsonpath "$.totalAmount" == 20.00
+
+# DELETE order cascades remaining line ; product NOT touched
+DELETE {{base}}/orders/{{order_id}}
+Authorization: Bearer {{rotated_access_token}}
+HTTP 204
+
+GET {{base}}/products/{{product_id}}
+Authorization: Bearer {{rotated_access_token}}
+HTTP 200
+
+# Cleanup product
+DELETE {{base}}/products/{{product_id}}
+Authorization: Bearer {{rotated_access_token}}
+HTTP 204
+
 # 10. Cleanup — delete the customer we created and logout.
 # ───────────────────────────────────────────────────────────────────────
 # Use the rotated access token to prove it works.
