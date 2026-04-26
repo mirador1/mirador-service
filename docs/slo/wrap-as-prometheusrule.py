@@ -18,9 +18,9 @@ from pathlib import Path
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SHARED_DIR = REPO_ROOT.parent / "mirador-service-shared"
+SHARED_DIR = REPO_ROOT
 INPUT = Path("/tmp/mirador-slo-rules.yaml")
-OUTPUT = SHARED_DIR / "deploy/kubernetes/observability-prom/mirador-slo.yaml"
+OUTPUT = REPO_ROOT / "deploy/kubernetes/observability-prom/mirador-slo.yaml"
 
 HEADER = """# =============================================================================
 # deploy/kubernetes/observability-prom/mirador-slo.yaml
