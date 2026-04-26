@@ -4,6 +4,8 @@ import com.mirador.mcp.dto.EnvSnapshot;
 import com.mirador.mcp.dto.HealthSnapshot;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.actuate.info.InfoEndpoint;
 import org.springframework.boot.health.actuate.endpoint.CompositeHealthDescriptor;
 import org.springframework.boot.health.actuate.endpoint.HealthDescriptor;
@@ -66,16 +68,36 @@ public class ActuatorService {
     private final EnvironmentSnapshotProvider envProvider;
 
     /**
-     * @param healthEndpoint composite health bean — auto-wired by Spring
-     *                       Boot Actuator (SB4 module {@code spring-boot-health})
-     * @param infoEndpoint   info contributors bean
-     * @param envProvider    indirection over {@link org.springframework.core.env.Environment} —
-     *                       lets unit tests inject a fake without booting
-     *                       the full context
+     * Production constructor — Spring auto-wires everything.
+     *
+     * <p>Both Actuator beans are wrapped in {@link ObjectProvider} so the
+     * service still loads when the endpoint is disabled
+     * ({@code management.endpoint.<x>.access=none}) or excluded from
+     * {@code management.endpoints.web.exposure.include}. Calls to a tool
+     * that needs an absent endpoint return an explicit "endpoint
+     * unavailable" message rather than crash the whole MCP server.
+     *
+     * @param healthEndpointProvider composite health bean — optional
+     * @param infoEndpointProvider   info contributors bean — optional
+     * @param envProvider            indirection over the Spring {@link
+     *                               org.springframework.core.env.Environment}
      */
-    public ActuatorService(HealthEndpoint healthEndpoint,
-                           InfoEndpoint infoEndpoint,
+    @Autowired
+    public ActuatorService(ObjectProvider<HealthEndpoint> healthEndpointProvider,
+                           ObjectProvider<InfoEndpoint> infoEndpointProvider,
                            EnvironmentSnapshotProvider envProvider) {
+        this.healthEndpoint = healthEndpointProvider.getIfAvailable();
+        this.infoEndpoint = infoEndpointProvider.getIfAvailable();
+        this.envProvider = envProvider;
+    }
+
+    /**
+     * Test-only constructor that takes already-resolved dependencies. Lets
+     * unit tests pass mocks without going through {@link ObjectProvider}.
+     */
+    ActuatorService(HealthEndpoint healthEndpoint,
+                    InfoEndpoint infoEndpoint,
+                    EnvironmentSnapshotProvider envProvider) {
         this.healthEndpoint = healthEndpoint;
         this.infoEndpoint = infoEndpoint;
         this.envProvider = envProvider;
@@ -93,6 +115,9 @@ public class ActuatorService {
                     + "redis…) without sensitive details. Backed by the Spring Boot "
                     + "HealthEndpoint bean — NO HTTP self-call. Safe for any role.")
     public HealthSnapshot getHealth() {
+        if (healthEndpoint == null) {
+            return new HealthSnapshot("UNKNOWN", java.util.Map.of());
+        }
         HealthDescriptor descriptor = healthEndpoint.health();
         return toSnapshot(descriptor, false);
     }
@@ -115,6 +140,9 @@ public class ActuatorService {
                     + "only — details can leak driver versions / broker URLs.")
     @PreAuthorize("hasRole('ADMIN')")
     public HealthSnapshot getHealthDetail() {
+        if (healthEndpoint == null) {
+            return new HealthSnapshot("UNKNOWN", java.util.Map.of());
+        }
         HealthDescriptor descriptor = healthEndpoint.health();
         return toSnapshot(descriptor, true);
     }
@@ -165,6 +193,9 @@ public class ActuatorService {
                     + "version, contributors. Useful to confirm which build is running. "
                     + "Safe for any role.")
     public Map<String, Object> getInfo() {
+        if (infoEndpoint == null) {
+            return Map.of();
+        }
         Map<String, Object> info = infoEndpoint.info();
         return info == null ? Map.of() : Map.copyOf(info);
     }

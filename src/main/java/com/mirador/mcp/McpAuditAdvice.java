@@ -2,6 +2,8 @@ package com.mirador.mcp;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.mirador.observability.port.AuditEventPort;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
@@ -72,13 +74,21 @@ public class McpAuditAdvice {
 
     /**
      * @param auditEventPort the existing audit port (writes to {@code audit_event} table)
-     * @param objectMapper   shared Jackson mapper — Spring auto-wires the
-     *                       app's primary mapper, which already knows how
-     *                       to serialise the records / DTOs we use as args
      */
-    public McpAuditAdvice(AuditEventPort auditEventPort, ObjectMapper objectMapper) {
+    public McpAuditAdvice(AuditEventPort auditEventPort) {
         this.auditEventPort = auditEventPort;
-        this.objectMapper = objectMapper;
+        // Build a dedicated mapper so the aspect doesn't depend on the
+        // Spring-wired ObjectMapper bean — Spring Boot 4's primary mapper
+        // is the new tools.jackson type, NOT classic Jackson 2.x. Building
+        // a small classic-Jackson mapper here keeps the audit row format
+        // stable independent of how the rest of the app evolves its
+        // serialisation stack. The mapper is configured to write Instant
+        // / Duration / etc. as ISO-8601 strings (JSR-310 module + the
+        // WRITE_DATES_AS_TIMESTAMPS=false pair) so audit rows are human-
+        // readable.
+        this.objectMapper = new ObjectMapper()
+                .registerModule(new JavaTimeModule())
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     }
 
     /**

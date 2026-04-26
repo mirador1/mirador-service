@@ -12,16 +12,11 @@ import com.mirador.mcp.metrics.MetricsService;
 import com.mirador.mcp.openapi.OpenApiService;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
-import org.springframework.cache.CacheManager;
-import org.springframework.cache.caffeine.CaffeineCache;
-import org.springframework.cache.support.CompositeCacheManager;
-import org.springframework.cache.support.SimpleCacheManager;
+import org.springframework.cache.caffeine.CaffeineCacheManager;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Primary;
 
 import java.time.Duration;
-import java.util.List;
 
 /**
  * MCP server wiring : registers an explicit allowlist of services as the
@@ -69,61 +64,30 @@ public class McpConfig {
     }
 
     /**
-     * Dedicated Caffeine cache for {@link MetricsService#getMetrics} with
-     * a 5-second TTL. The global cache spec in {@code application.yml} is
+     * Customizer that registers the {@code mcp-metrics} cache in the
+     * Spring-Boot-auto-configured {@link CaffeineCacheManager} with a
+     * dedicated 5-second TTL.
+     *
+     * <p>The application's main cache spec in {@code application.yml} is
      * 5 minutes (right for {@code customer-by-id} entity reads but too
      * long for live metric samples) and applies uniformly via a single
-     * Caffeine spec.
+     * Caffeine spec. Adding a dedicated builder for our cache via
+     * {@link CaffeineCacheManager#registerCustomCache} preserves the
+     * single-manager topology (no composite, no @Primary override) while
+     * giving us per-cache control of the TTL.
      *
-     * <p>Wrapping the per-MCP cache in a dedicated {@link SimpleCacheManager}
-     * lets us combine it with the auto-configured {@code CaffeineCacheManager}
-     * via the {@link CompositeCacheManager} below — each cache name resolves
-     * to the cache manager that owns it.
-     *
-     * @return caffeine-backed cache, expireAfterWrite=5s, max 256 entries
+     * <p>Spring Boot 4 calls {@code afterPropertiesSet} on the bean
+     * before this method's bean returns, so the registration sticks.
      */
     @Bean
-    public CaffeineCache mcpMetricsCache() {
-        return new CaffeineCache(MetricsService.CACHE_NAME,
+    public org.springframework.boot.cache.autoconfigure.CacheManagerCustomizer<CaffeineCacheManager>
+        mcpMetricsCacheCustomizer() {
+        return cacheManager -> cacheManager.registerCustomCache(
+                MetricsService.CACHE_NAME,
                 Caffeine.newBuilder()
                         .expireAfterWrite(Duration.ofSeconds(5))
                         .maximumSize(256)
                         .build());
-    }
-
-    /**
-     * Container manager exposing only the {@link #mcpMetricsCache()} entry.
-     * Keeps the per-cache TTL knob co-located with the cache definition.
-     */
-    @Bean
-    public SimpleCacheManager mcpCacheManager(CaffeineCache mcpMetricsCache) {
-        SimpleCacheManager manager = new SimpleCacheManager();
-        manager.setCaches(List.of(mcpMetricsCache));
-        return manager;
-    }
-
-    /**
-     * Composite cache manager : the auto-configured Caffeine manager
-     * (handles {@code customer-by-id}) PLUS the MCP-specific manager
-     * above (handles {@code mcp-metrics}). Marked {@code @Primary} so
-     * Spring's {@code @Cacheable} look-ups resolve through this composite.
-     *
-     * <p>The {@code missingCacheStrategy} stays at the default — return
-     * null when neither delegate knows the cache name — so a typo in a
-     * {@code @Cacheable("oops")} surfaces immediately rather than silently
-     * caching nothing.
-     *
-     * @param defaultCacheManager the Spring-Boot-auto-configured CaffeineCacheManager
-     * @param mcpCacheManager     our 5s-TTL manager scoped to {@code mcp-metrics}
-     */
-    @Bean
-    @Primary
-    public CacheManager compositeCacheManager(
-            org.springframework.cache.caffeine.CaffeineCacheManager defaultCacheManager,
-            SimpleCacheManager mcpCacheManager) {
-        CompositeCacheManager composite = new CompositeCacheManager(defaultCacheManager, mcpCacheManager);
-        composite.setFallbackToNoOpCache(false);
-        return composite;
     }
 
     /**
