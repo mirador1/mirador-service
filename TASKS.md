@@ -191,3 +191,4 @@ Doit être implementé **EN PARALLÈLE** dans
        FK dependencies) ?
 
 ## 🔧 Other
+
