@@ -43,8 +43,18 @@ section_adr_index() {
   echo "▸ ADR flat-index auto-regen drift…"
   for repo in "$SVC_DIR" "$UI_DIR"; do
     local name=$(basename "$repo")
-    local script="$repo/bin/dev/regen-adr-index.sh"
-    if [[ ! -x "$script" ]]; then continue; fi
+    # Prefer the SHARED regenerator (factored 2026-04-26 per ADR-0001 — one
+    # script per concern across the 4 repos). Fall back to a legacy local
+    # copy when a repo hasn't yet bumped its submodule SHA. When both are
+    # missing, skip silently (UI today, repos without docs/adr/, etc.).
+    local script
+    if [[ -x "$repo/infra/shared/bin/dev/regen-adr-index.sh" ]]; then
+      script="$repo/infra/shared/bin/dev/regen-adr-index.sh"
+    elif [[ -x "$repo/bin/dev/regen-adr-index.sh" ]]; then
+      script="$repo/bin/dev/regen-adr-index.sh"
+    else
+      continue
+    fi
     if ( cd "$repo" && "$script" --check >/dev/null 2>&1 ); then
       : # OK — table matches
     else
@@ -52,7 +62,7 @@ section_adr_index() {
       if [[ $rc -eq 2 ]]; then
         finding warn "$name: ADR-INDEX markers missing from docs/adr/README.md — add <!-- ADR-INDEX:START --> / <!-- ADR-INDEX:END -->"
       else
-        finding warn "$name: ADR flat index drifted from files — run 'bin/dev/regen-adr-index.sh --in-place' and commit"
+        finding warn "$name: ADR flat index drifted from files — run '$script --in-place' and commit"
       fi
     fi
   done
