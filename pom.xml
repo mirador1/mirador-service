@@ -558,6 +558,22 @@
         </dependency>
 
         <!--
+          Spring AI MCP server (WebMvc transport) — exposes @Tool-annotated
+          methods as Model Context Protocol tools at /sse + /mcp/message.
+          Per ADR-0062, the server registers an explicit allowlist of services
+          (Order/Product/Customer/Chaos/Logs/Metrics/Grafana/Actuator/OpenApi)
+          via MethodToolCallbackProvider — see com.mirador.mcp.McpConfig.
+          The starter pulls in mcp-spring-webmvc + spring-ai-mcp + the MCP SDK
+          0.17.0 ; transport is HTTP/SSE so the same Spring Security filter
+          chain applies to LLM callers as to REST callers.
+        -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-mcp-server-webmvc</artifactId>
+            <version>${spring-ai.version}</version>
+        </dependency>
+
+        <!--
           Tests — split into unit (surefire) and integration (failsafe) phases.
             spring-boot-starter-test     → JUnit 5, Mockito, AssertJ, Spring test support
             spring-boot-webmvc-test      → RestTestClient (Spring Boot 4 MockMvc DSL)
