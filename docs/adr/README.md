@@ -151,6 +151,7 @@ monotonic across supersessions.
 | 0059 | Accepted | [Grafana Cloud AI Observability (POC opt-in)](0059-grafana-cloud-ai-observability-poc.md) |
 | 0060 | Accepted | [SB3 compat target = prod-grade, not informational](0060-sb3-compat-prod-grade.md) |
 | 0061 | Living | [SB3 / SB4 incompatibility catalog](0061-sb3-sb4-incompatibility-catalog.md) |
+| 0062 | Proposed | [MCP server : `@Tool` per-method on the service layer](0062-mcp-server-tool-exposure-per-method.md) |
 <!-- ADR-INDEX:END -->
 
 ## Hierarchical index (by theme)
