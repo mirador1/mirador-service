@@ -53,6 +53,27 @@ When a CI job fails, NEVER reach for `allow_failure: true` as the fix. Pick (a) 
 - **Versions-freshness pass — weekly, or at the start of any session that touches dependencies.** Renovate (`renovate.json`) runs the automated weekly sweep and opens MRs. If you add a new dependency manually, check Maven Central / npm for the latest stable BEFORE pinning — don't paste an old version. For properties already in `pom.xml`, `npm outdated` / `mvn versions:display-property-updates` gives the current lag. Security-sensitive libs (`@auth0/*`, `sonar-scanner`, `findsecbugs-plugin`, `dependency-check-maven`, Spring AI) are always worth checking manually. Archived/deprecated packages must be replaced **the same session they're discovered**.
 - **Budget watch — at session start, and after any `bin/cluster/demo/up.sh` / live cluster action.** Run `bin/budget/budget.sh status` (current cap + thresholds) and `bin/budget/gcp-cost-audit.sh` (structural idle-cost scan — orphaned PVCs, reserved IPs, NAT, LBs, snapshots). The ephemeral pattern (ADR-0022) targets ≤€2/month idle; drift is the single biggest project-health risk. `bin/budget/gcp-cost-audit.sh --yes` is cron-safe for unattended monthly cleanup. Full doc: `docs/ops/cost-control.md`.
 
+## Submodule pattern (2-tier flat α — see common ADR-0060)
+
+This repo has **2 git submodules** (since 2026-04-26 split) :
+
+- `infra/common/` → [mirador-common](https://gitlab.com/mirador1/mirador-common) — universal cross-repo conventions (release scripts, ADR drift tooling, Conventional Commits CI template, Renovate base). Consumed by all 4 mirador1 repos including UI.
+- `infra/shared/` → [mirador-service-shared](https://gitlab.com/mirador1/mirador-service-shared) — backend infrastructure (clusters, terraform, K8s, OTel collector, postgres+kafka+redis dev stack, observability dashboards, backend ADRs). Consumed by java + python only (NOT ui).
+
+**Pattern α (flat 2-submodule)** chosen over β (transitive nested) for : independent SHA pinning per consumer (java can pin `common@SHA-X` while python pins `common@SHA-Y`), symmetric path everywhere (`infra/common/bin/...` works in all 4 repos), standard clone (`git submodule update --init`, no `--recursive` needed). Full rationale : [common ADR-0060](https://gitlab.com/mirador1/mirador-common/-/blob/main/docs/adr/0060-flat-vs-transitive-submodule-inheritance.md).
+
+**Where to find what** :
+- Universal scripts (pre-sync, changelog, gitlab-release, regen-adr-index) → `infra/common/bin/...`
+- Backend infra scripts (cluster lifecycle, budget, runner-healthcheck) → `infra/shared/bin/...`
+- Backend deploy manifests (K8s, terraform) → `infra/shared/deploy/...`
+- Backend dev stack (compose Postgres+Kafka+Redis+LGTM) → `infra/shared/compose/dev-stack.yml`
+- Cross-cutting backend ADRs (observability, SLO, ESO, multi-cloud) → `infra/shared/docs/adr/`
+- Universal cross-repo ADRs (submodule pattern, release engineering, Renovate) → `infra/common/docs/adr/`
+
+**Bumping submodule SHAs** : each is independent. To bump common only, `cd infra/common && git pull origin main && cd ../.. && git add infra/common && git commit`. Same for shared.
+
+**Tag prefix for this repo** : `stable-v` (default ; per [common ADR-0061](https://gitlab.com/mirador1/mirador-common/-/blob/main/docs/adr/0061-per-repo-tag-namespace-pattern.md)). Run release scripts as : `infra/common/bin/ship/changelog.sh` (no `--tag-prefix` flag needed).
+
 ## Project overview
 
 Spring Boot 4 + Java 25 backend API with full observability stack.

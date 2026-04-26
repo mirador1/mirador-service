@@ -35,7 +35,7 @@ Three candidates were evaluated :
 |---|---|---|---|---|
 | `semantic-release` + `@semantic-release/gitlab` | 1-2 h | `node_modules` on a Java repo | ~2 min/tag | ✅ full |
 | `standard-version` | 30 min | `node_modules` on a Java repo | 0 (local) | ⚠️ partial |
-| Hand-rolled bash (`infra/shared/bin/ship/changelog.sh`) | 1 h | None | 0 | ✅ full |
+| Hand-rolled bash (`infra/common/bin/ship/changelog.sh`) | 1 h | None | 0 | ✅ full |
 
 The second driver is **release cadence**. Mirador is a solo-maintainer
 portfolio project with ~3-6 `stable-v*` tags per dev day. At that
@@ -52,12 +52,14 @@ audit surface that Renovate will eventually ask us to bump.
 
 ## Decision
 
-Ship **two shell scripts** as the release automation. Both **live in the
-shared submodule** since 2026-04-26 (factored per [ADR-0001](0001-shared-repo-via-submodule.md)
+Ship **two shell scripts** as the release automation. Both **live in
+[mirador-common](https://gitlab.com/mirador1/mirador-common)** (universal
+submodule, leaf, factored 2026-04-26 per [common ADR-0001](https://gitlab.com/mirador1/mirador-common/-/blob/main/docs/adr/0001-shared-repo-via-submodule.md)
++ [common ADR-0060 (α flat 2-submodule pattern)](https://gitlab.com/mirador1/mirador-common/-/blob/main/docs/adr/0060-flat-vs-transitive-submodule-inheritance.md)
 to avoid duplicating identical scripts across the 4 sibling repos) and
-are called from any consumer via `infra/shared/bin/ship/...` :
+are called from any consumer via `infra/common/bin/ship/...` :
 
-- **[`infra/shared/bin/ship/changelog.sh`](../../infra/shared/bin/ship/changelog.sh)** (~170 LOC
+- **[`infra/common/bin/ship/changelog.sh`](../../infra/common/bin/ship/changelog.sh)** (~170 LOC
   bash) — reads `git log <last-tag-prefix*>..HEAD` output, classifies
   each subject by Conventional-Commit type
   (`feat!` / `feat` / `fix` / `perf` / `refactor` / `docs` / `test` /
@@ -68,7 +70,7 @@ are called from any consumer via `infra/shared/bin/ship/...` :
   `--dry-run`, `--include-chore`, `--tag-prefix <pfx>` (default
   `stable-v` for Java + UI ; Python passes `stable-py-v`).
 
-- **[`infra/shared/bin/ship/gitlab-release.sh`](../../infra/shared/bin/ship/gitlab-release.sh)**
+- **[`infra/common/bin/ship/gitlab-release.sh`](../../infra/common/bin/ship/gitlab-release.sh)**
   (~80 LOC bash) — takes a `<prefix>X.Y.Z` tag, runs `glab release
   create` with the annotated tag message (or custom `--notes`) to
   create a GitLab Release object at `/-/releases`.
@@ -78,12 +80,12 @@ The workflow (documented in
 is 5 steps :
 
 ```bash
-infra/shared/bin/ship/changelog.sh                            # 1. regen entry (Java/UI default)
-# Python: infra/shared/bin/ship/changelog.sh --tag-prefix stable-py-v
+infra/common/bin/ship/changelog.sh                            # 1. regen entry (Java/UI default)
+# Python: infra/common/bin/ship/changelog.sh --tag-prefix stable-py-v
 git add CHANGELOG.md && git commit -m "chore(changelog): bump for vX.Y.Z"
 git tag -a stable-vX.Y.Z -m "..."                             # 2. tag
 git push origin stable-vX.Y.Z                                 # 3. push
-infra/shared/bin/ship/gitlab-release.sh stable-vX.Y.Z         # 4. promote
+infra/common/bin/ship/gitlab-release.sh stable-vX.Y.Z         # 4. promote
                                                               # 5. announce (optional)
 ```
 
@@ -214,10 +216,12 @@ Until one of those triggers, the shell scripts are canon.
 
 ## References
 
-- [`infra/shared/bin/ship/changelog.sh`](../../infra/shared/bin/ship/changelog.sh) — the generator (factored 2026-04-26)
-- [`infra/shared/bin/ship/gitlab-release.sh`](../../infra/shared/bin/ship/gitlab-release.sh) — the promoter (factored 2026-04-26)
-- [`infra/shared/bin/ship/pre-sync.sh`](../../infra/shared/bin/ship/pre-sync.sh) — git-safety pre-flight (also factored)
-- [ADR-0001](0001-shared-repo-via-submodule.md) — submodule pattern that hosts these scripts
+- [`infra/common/bin/ship/changelog.sh`](../../infra/common/bin/ship/changelog.sh) — the generator (factored 2026-04-26)
+- [`infra/common/bin/ship/gitlab-release.sh`](../../infra/common/bin/ship/gitlab-release.sh) — the promoter (factored 2026-04-26)
+- [`infra/common/bin/ship/pre-sync.sh`](../../infra/common/bin/ship/pre-sync.sh) — git-safety pre-flight (also factored)
+- [common ADR-0001](https://gitlab.com/mirador1/mirador-common/-/blob/main/docs/adr/0001-shared-repo-via-submodule.md) — submodule pattern that hosts these scripts
+- [common ADR-0060](https://gitlab.com/mirador1/mirador-common/-/blob/main/docs/adr/0060-flat-vs-transitive-submodule-inheritance.md) — α flat 2-submodule choice rationale
+- [common ADR-0061](https://gitlab.com/mirador1/mirador-common/-/blob/main/docs/adr/0061-per-repo-tag-namespace-pattern.md) — per-repo `stable-X-v*` tag prefix pattern
 - [`docs/how-to/changelog-workflow.md`](../how-to/changelog-workflow.md) — 5-step workflow
 - [svc MR !169](https://gitlab.com/mirador1/mirador-service/-/merge_requests/169) — svc release-please removal
 - [UI MR !102](https://gitlab.com/mirador1/mirador-ui/-/merge_requests/102) — UI release-please removal

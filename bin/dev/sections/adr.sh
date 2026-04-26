@@ -43,12 +43,18 @@ section_adr_index() {
   echo "▸ ADR flat-index auto-regen drift…"
   for repo in "$SVC_DIR" "$UI_DIR"; do
     local name=$(basename "$repo")
-    # Prefer the SHARED regenerator (factored 2026-04-26 per ADR-0001 — one
-    # script per concern across the 4 repos). Fall back to a legacy local
-    # copy when a repo hasn't yet bumped its submodule SHA. When both are
-    # missing, skip silently (UI today, repos without docs/adr/, etc.).
+    # Prefer the COMMON regenerator (factored 2026-04-26 into mirador-common
+    # per ADR-0001 + ADR-0060 — universal layer, separate from backend-only
+    # mirador-service-shared). Fall back order :
+    #   1. infra/common/bin/dev/regen-adr-index.sh   (current canonical, since 2026-04-26 split)
+    #   2. infra/shared/bin/dev/regen-adr-index.sh   (legacy, before common was split out)
+    #   3. bin/dev/regen-adr-index.sh                (legacy, before factorisation)
+    # Skip silently when none exists (UI repo before it adds infra/common,
+    # repos without docs/adr/, etc.).
     local script
-    if [[ -x "$repo/infra/shared/bin/dev/regen-adr-index.sh" ]]; then
+    if [[ -x "$repo/infra/common/bin/dev/regen-adr-index.sh" ]]; then
+      script="$repo/infra/common/bin/dev/regen-adr-index.sh"
+    elif [[ -x "$repo/infra/shared/bin/dev/regen-adr-index.sh" ]]; then
       script="$repo/infra/shared/bin/dev/regen-adr-index.sh"
     elif [[ -x "$repo/bin/dev/regen-adr-index.sh" ]]; then
       script="$repo/bin/dev/regen-adr-index.sh"
