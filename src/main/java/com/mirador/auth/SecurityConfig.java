@@ -120,6 +120,17 @@ public class SecurityConfig {
                         // latency, saturate CPU) — ADMIN only, no exceptions.
                         // Backed by /chaos/{experiment} in com.mirador.chaos.
                         .requestMatchers("/chaos/**").hasRole(ROLE_ADMIN)
+                        // MCP server endpoints (Spring AI starter exposes
+                        // /sse + /mcp/message) — authenticated users only.
+                        // Per ADR-0062, role-based gating happens at the
+                        // tool method via @PreAuthorize so that a single
+                        // MCP path can carry both READ-safe tools and
+                        // ADMIN-only ones (trigger_chaos_experiment,
+                        // get_health_detail). Allowing the path itself
+                        // means "any authenticated user can talk to the
+                        // MCP server" ; the per-tool @PreAuthorize then
+                        // decides what they actually invoke.
+                        .requestMatchers("/sse", "/sse/**", "/mcp/**").authenticated()
                         .requestMatchers(HttpMethod.DELETE, CUSTOMERS_API).hasRole(ROLE_ADMIN)           // delete — ROLE_ADMIN only
                         .requestMatchers(HttpMethod.POST, "/customers").hasAnyRole(ROLE_ADMIN, "USER")   // create — ROLE_ADMIN or ROLE_USER
                         .requestMatchers(HttpMethod.POST, "/customers/batch").hasAnyRole(ROLE_ADMIN, "USER") // batch

@@ -267,6 +267,36 @@ DELETE {{base}}/products/{{product_id}}
 Authorization: Bearer {{rotated_access_token}}
 HTTP 204
 
+# ───────────────────────────────────────────────────────────────────────
+# 9.bis MCP server (Model Context Protocol) — auth boundary check.
+# ───────────────────────────────────────────────────────────────────────
+# Per ADR-0062 the MCP HTTP/SSE endpoint at /sse + /mcp/message is gated
+# by Spring Security exactly like every other protected path. The wire
+# protocol itself (handshake, capabilities, tool calls) is the upstream
+# Spring AI / MCP SDK's responsibility ; here we only assert the security
+# boundary holds. Three checks :
+#   1. Un-authenticated /sse → 401 (the security filter blocks).
+#   2. Un-authenticated /mcp/message → 401.
+#   3. Authenticated request gets through (status MAY vary based on the
+#      MCP wire-protocol — anything that's NOT 401 means security passed).
+# Note : the MCP backend stays infrastructure-agnostic — NO Loki / Mimir /
+# Grafana / GitLab / GitHub clients in this jar. External infra MCP servers
+# are SEPARATE community servers added per-developer via `claude mcp add`.
+
+GET {{base}}/sse
+HTTP 401
+
+GET {{base}}/mcp/message
+HTTP 401
+
+# Authenticated GET /sse — security filter passes ; the MCP framework
+# may return 4xx for a malformed handshake but the test only cares that
+# the response is NOT 401.
+GET {{base}}/sse
+Authorization: Bearer {{rotated_access_token}}
+[Asserts]
+status != 401
+
 # 10. Cleanup — delete the customer we created and logout.
 # ───────────────────────────────────────────────────────────────────────
 # Use the rotated access token to prove it works.

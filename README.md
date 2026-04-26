@@ -324,6 +324,111 @@ faster than a human. Enumeration is cheap. Choosing is not.
 
 ---
 
+## AI integration via MCP
+
+The backend ships its own
+[Model Context Protocol](https://modelcontextprotocol.io/) server —
+designed and audited per [ADR-0062](docs/adr/0062-mcp-server-tool-exposure-per-method.md)
+— so a Claude Code session pointed at the running app can ask the
+domain in plain English instead of constructing brittle shell
+incantations. Every tool is typed, audited, secured, and bounded.
+
+### 60-second demo (running locally)
+
+```bash
+# 1. Start the backend (Postgres + Kafka + Redis + the app)
+docker compose up -d db kafka redis
+./mvnw spring-boot:run
+
+# 2. In another shell, get an admin JWT
+TOKEN=$(curl -s -X POST http://localhost:8080/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"admin"}' | jq -r .accessToken)
+
+# 3. Wire Claude Code to the MCP server
+claude mcp add mirador http://localhost:8080/sse \
+  --transport sse \
+  --header "Authorization: Bearer $TOKEN"
+
+# 4. Talk to your domain
+#  $ claude
+#  > Show me the 5 most recent orders that are still PENDING.
+#  > Which products are below stock = 5?
+#  > Give me the 360 view of customer 42.
+#  > What's the health of the backend?
+```
+
+### The 14 tools (per ADR-0062)
+
+**Domain tools (7)** — Order / Product / Customer / Chaos:
+
+| Tool | What it does |
+|---|---|
+| `list_recent_orders(limit, status?)` | Newest-first orders, optional status filter, capped 100. |
+| `get_order_by_id(id)` | Order header for a single ID ; structured `not_found` sentinel. |
+| `create_order(customerId)` | Empty order ; idempotent via the existing `Idempotency-Key` filter. |
+| `cancel_order(id)` | Marks CANCELLED, preserves lines for audit. |
+| `find_low_stock_products(threshold?)` | Stock-asc sort, default threshold 10, capped 100. |
+| `get_customer_360(id)` | Customer header + count + total revenue + last-order timestamp. |
+| `trigger_chaos_experiment(slug)` | pod-kill / network-delay / cpu-stress — admin only. |
+
+**Backend-local observability tools (7)** — read in-process state, NO external HTTP:
+
+| Tool | Backed by |
+|---|---|
+| `tail_logs(n, level?, requestId?)` | Custom Logback ring-buffer appender (last 500 events). |
+| `get_metrics(nameRegex?, tags?)` | `MeterRegistry` bean, Caffeine-cached 5 s. |
+| `get_health()` | `HealthEndpoint` (composite UP/DOWN/...). |
+| `get_health_detail()` | Same WITH per-indicator details — admin only. |
+| `get_actuator_env(prefix?)` | `Environment` snapshot, secrets auto-redacted. |
+| `get_actuator_info()` | Build / git / version (`InfoEndpoint`). |
+| `get_openapi_spec(summary)` | Springdoc OpenAPI bean — paths-by-verb summary or full spec. |
+
+### Auth, audit, redaction
+
+- The MCP HTTP path inherits the existing security filter chain :
+  un-authenticated → 401 ; authenticated user → tools allowed by
+  per-tool `@PreAuthorize`. `trigger_chaos_experiment` and
+  `get_health_detail` are ADMIN-only by annotation.
+- Every tool call writes one row to `audit_event` (action =
+  `MCP_TOOL_CALL`, detail = JSON of args + outcome, user from JWT).
+  Failures are audited too — operators spot a tool that errors out
+  consistently.
+- `get_actuator_env` redacts any property whose name matches
+  `(?i).*(password|secret|token|key|credential).*` with `***` BEFORE
+  the response leaves the JVM.
+- The `Idempotency-Key` header is honoured on `create_order` (the
+  MCP transport reuses the same Spring filter chain as REST).
+
+### Architectural constraint — backend stays infra-agnostic
+
+Per [ADR-0062 § Observability tools — backend-LOCAL only](docs/adr/0062-mcp-server-tool-exposure-per-method.md),
+the Mirador backend MUST stay infrastructure-agnostic. The jar
+contains :
+
+- ❌ NO Loki client
+- ❌ NO Mimir / Prometheus client
+- ❌ NO Grafana client
+- ❌ NO GitLab / GitHub client
+- ❌ NO `kubectl` / Docker shell-out
+- ✅ ONLY in-process state : Logback / Micrometer / Actuator / springdoc
+
+External-infra MCP servers are **SEPARATE community servers** that
+each developer adds via `claude mcp add` independently — see
+[modelcontextprotocol/servers](https://github.com/modelcontextprotocol/servers).
+Claude composes across them in a single prompt :
+```
+Use mirador.tail_logs to find the WARN with request_id=req-42, then
+prometheus.query for http_server_requests_seconds{uri="/customers"}
+to correlate with the spike.
+```
+
+This split keeps the deploy unit (Spring Boot jar) decoupled from
+the deploy environment (which observability stack, which CI vendor,
+which K8s flavour).
+
+---
+
 ## Known limitations
 
 The items below are caveats that a live session will surface anyway.

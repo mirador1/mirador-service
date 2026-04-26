@@ -101,6 +101,10 @@ spring:
     caffeine:
       spec: maximumSize=1000,expireAfterWrite=5m,recordStats  # recordStats: expose hit/miss ratio to Micrometer
     cache-names: customer-by-id
+    # mcp-metrics: separately registered as a CaffeineCache bean in
+    # com.mirador.mcp.McpConfig with a tighter 5-second TTL — the global
+    # 5-minute spec above is too long for live MeterRegistry samples but
+    # right for entity reads. ADR-0062 § Caching for the design rationale.
 
   # ---------------------------------------------------------------------------
   # Spring AI — Ollama (local LLM)                              [Spring AI 1.0]
