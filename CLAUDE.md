@@ -147,7 +147,7 @@ Keycloak and LGTM are replaced by managed services in production — no self-hos
 
 | Service | Provider | Free tier | Notes |
 |---|---|---|---|
-| OAuth2/OIDC | Auth0 | 7 500 MAU | Replaces Keycloak :9090; same Spring Security config, only issuer URI changes |
+| OAuth2/OIDC | Auth0 | 7 500 MAU | Replaces Keycloak :8888; same Spring Security config, only issuer URI changes |
 | Traces | Grafana Cloud (Tempo) | 50 GB/month | OTLP/HTTP push from Spring Boot via `OTEL_EXPORTER_OTLP_ENDPOINT` |
 | Metrics | Grafana Cloud (Mimir) | 10 k active series | Prometheus remote_write |
 | Logs | Grafana Cloud (Loki) | 50 GB/month | OTLP/HTTP push |
@@ -172,7 +172,7 @@ Keycloak and LGTM are replaced by managed services in production — no self-hos
 | **8085** | **gcloud auth login** | **Reserved — OAuth callback for Google Cloud CLI. Do NOT assign any service to this port.** |
 | 8086 | Compodoc | Angular API docs (moved from 8085) |
 | 9000 | SonarQube | |
-| 9090 | Keycloak | |
+| 8888 | Keycloak | Migrated 2026-04-26 from 9090 (elgato-mcp host conflict). Realm `mirador-service`, admin/admin |
 
 ## Known gotchas
 

@@ -165,7 +165,11 @@ services:
   #   monitoring-service  / dev-secret-readonly  → ROLE_USER
   #
   # See infra/keycloak/README.md for the full architecture and production guidance.
-  # Access the admin console at http://localhost:9090 (admin / admin).
+  # Access the admin console at http://localhost:8888 (admin / admin).
+  # Port migrated 2026-04-26 from 9090 → 8888 — 9090 conflicts with the
+  # elgato-mcp host process on dev machines, and 8090 was already taken by
+  # the kind ingress in this repo's docs/scripts. 8888 is well clear of
+  # both ranges.
   # ---------------------------------------------------------------------------
   keycloak:
     profiles: ["full"]
@@ -187,7 +191,7 @@ services:
       KC_HOSTNAME_STRICT: "false"
       KC_HOSTNAME_STRICT_HTTPS: "false"
     ports:
-      - "9090:8080"
+      - "8888:8080"
     volumes:
       # realm-dev.json (and realm-prod.json) are imported once at first startup (--import-realm flag)
       - ./infra/keycloak:/opt/keycloak/data/import

@@ -55,12 +55,12 @@ Represents a read-only caller (e.g. an observability pipeline or reporting tool)
 **Get a token (dev only):**
 ```bash
 # Full access
-curl -s -X POST http://localhost:9090/realms/customer-service/protocol/openid-connect/token \
+curl -s -X POST http://localhost:8888/realms/customer-service/protocol/openid-connect/token \
   -d "grant_type=client_credentials&client_id=api-gateway&client_secret=dev-secret" \
   | python3 -m json.tool
 
 # Read-only
-curl -s -X POST http://localhost:9090/realms/customer-service/protocol/openid-connect/token \
+curl -s -X POST http://localhost:8888/realms/customer-service/protocol/openid-connect/token \
   -d "grant_type=client_credentials&client_id=monitoring-service&client_secret=dev-secret-readonly" \
   | python3 -m json.tool
 ```
