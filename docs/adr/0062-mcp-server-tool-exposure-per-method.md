@@ -332,6 +332,28 @@ merely *accesses*, you :
 
 Stick to "produces" → small, focused, deploy-portable app MCP.
 
+### Corollary : prefer community MCP servers over custom
+
+Whenever a community MCP server already covers a concern (DB, Mimir,
+Grafana, Loki, GitLab, GitHub, k8s, Slack, Filesystem, etc.), **use it**.
+Do NOT re-build the same thing in the application MCP. Reasons :
+
+- **Battle-tested** : maintained by people who know the wrapped tool deeply (Postgres MCP by people who know JDBC + the libpq edge cases ; Grafana MCP by people who know the dashboards API).
+- **Stays current** : when the underlying tool ships v2, the MCP package updates ; we don't have to track upstream changes in our codebase.
+- **Isolated dependency** : a versioned npm/pip/Docker package, not a transitive in our `pom.xml`. CVE in the GitLab MCP doesn't bleed into our build.
+- **Scoped auth** : each MCP has its own credential (Postgres MCP gets a read-only DB user ; GitLab MCP gets a project-scoped PAT ; GitHub MCP gets an SSO-restricted token). Auth boundaries match the tool boundaries.
+- **Less maintenance for us** : every line of code we don't write is a line we don't have to test, secure, or upgrade.
+
+What stays custom in the app MCP :
+- Things truly **specific to our domain** that no community MCP covers (Order, Product, Customer, Chaos — mirroring our business model).
+- Things that need our **app's runtime context** (Logback ring buffer with our request-id MDC, Micrometer registry with our custom meters — only WE can serve these).
+- Things that wrap our **internal endpoints** the community can't see (Actuator, our OpenAPI spec).
+
+If a community MCP exists for a concern → use it.
+If not, evaluate :
+- Is it specific to our domain ? → custom in app MCP.
+- Is it cross-cutting infra ? → write a STANDALONE MCP server (separate repo / npm package), don't bake into the backend jar.
+
 These backend-local observability tools are gated by **role** (read-only
 role can call all of them except `get_health_detail` and
 `trigger_chaos_experiment`, which are admin-only). Role check uses
