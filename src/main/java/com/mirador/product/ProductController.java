@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -67,6 +68,31 @@ public class ProductController {
         p.setStockQuantity(req.stockQuantity());
         Product saved = repo.save(p);
         return ProductDto.from(saved);
+    }
+
+    /**
+     * Update a product. Per shared ADR-0059, modifying {@code unitPrice}
+     * here MUST NOT propagate to existing {@code OrderLine.unitPriceAtOrder}
+     * (which carries an immutable snapshot). Stock_quantity may go up or
+     * down freely (subject to the {@code >= 0} CHECK constraint).
+     *
+     * <p>Returns 404 if the product doesn't exist (no implicit upsert).
+     */
+    @Operation(summary = "Update a product (partial body — fields supplied are replaced)")
+    @PutMapping("/{id}")
+    public ResponseEntity<ProductDto> update(
+            @PathVariable Long id,
+            @Valid @RequestBody CreateProductRequest req) {
+        return repo.findById(id)
+                .map(p -> {
+                    p.setName(req.name());
+                    p.setDescription(req.description());
+                    p.setUnitPrice(req.unitPrice());
+                    p.setStockQuantity(req.stockQuantity());
+                    return ProductDto.from(repo.save(p));
+                })
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     @Operation(summary = "Delete a product")
