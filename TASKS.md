@@ -80,4 +80,55 @@ Captured from portfolio review session feedback :
   workflow (record-demo.sh in shared) once the SLO dashboard is connected
   to a live LGTM stack.
 
+## 🎯 Augmenter la surface fonctionnelle — nouvelles entités
+
+☐ Ajouter 4 entités au backend Java pour étendre la surface fonctionnelle
+au-delà de `Customer`.
+
+**Scope final (validé utilisateur 2026-04-26)** : Pattern A (e-commerce)
++ relation `User` extraite du Pattern B (SaaS rôles) :
+
+- **`User`** — identité auth avec rôles (USER / ADMIN / MANAGER), `email`,
+  `password_hash` (à factoriser avec l'auth JWT existante côté `Customer`
+  si applicable). Linked to `Customer` via `customer_id` (le user
+  représente un opérateur attaché à un Customer).
+- **`Order`** — entité principale, **DEUX FKs** :
+  - `customer_id` → `Customer` existant (le buyer / owner de la commande)
+  - `created_by_user_id` → `User` (l'opérateur qui a créé la commande)
+  - statut (PENDING / CONFIRMED / SHIPPED / CANCELLED), `total_amount`
+    calculé
+- **`Product`** — entité indépendante : `name`, `description`,
+  `unit_price`, `stock_quantity`.
+- **`OrderLine`** — jonction Order ↔ Product : `quantity`,
+  `unit_price_at_order` (immutable, snapshot du prix au moment de la
+  commande pour audit).
+
+### Acceptance criteria
+
+- [ ] 4 migrations Flyway (V8 = user, V9 = order, V10 = product, V11 = order_line)
+- [ ] Spring Data JPA repositories par entité
+- [ ] Domain feature-slicing per ADR-0008 (`com.mirador.user.*`,
+      `com.mirador.order.*`, `com.mirador.product.*`)
+- [ ] REST controllers : full CRUD (`/users`, `/orders`, `/products`,
+      `/orders/{id}/lines`) + OpenAPI annotations + Spring Security rôles
+- [ ] **Auth refactor si applicable** : si `Customer` portait l'auth JWT,
+      la déplacer vers `User` (entité dédiée à l'identité avec rôles).
+      `Customer` redevient pure entité métier (le buyer).
+- [ ] Coverage ≥ 90 % sur le nouveau code
+- [ ] Property tests sur invariants (total = Σ lignes, stock ≥ 0,
+      OrderLine immutability, role transitions valides)
+- [ ] Integration tests end-to-end (Postgres + actuator/health + JWT auth)
+- [ ] ADR documentant le modèle de données + relations + le refactor auth
+- [ ] Update `bin/dev/api-smoke.sh` avec les nouveaux endpoints
+- [ ] CHANGELOG entry au prochain `stable-vX.Y.Z`
+
+### Cross-repo coordination (cf. common ADR-0001 polyrepo)
+
+Doit être implementé **EN PARALLÈLE** dans
+[`mirador-service-python`](https://gitlab.com/mirador1/mirador-service-python)
+(même API contract OpenAPI) ET visualisé dans
+[`mirador-ui`](https://gitlab.com/mirador1/mirador-ui) (pages list / create
+/ edit + role-aware visibility). Voir `TASKS.md` de chaque repo.
+Acceptance partielle si l'un des 3 repos n'a pas livré.
+
 ## 🔧 Other
