@@ -55,6 +55,16 @@
           }) on OllamaApiAutoConfiguration, pointing at the Spring Boot 3 package.
         -->
         <spring-ai.version>1.1.4</spring-ai.version>
+        <!--
+          ONNX Runtime — Microsoft's official Java binding for ONNX models.
+          Per shared ADR-0060, we use the ONNX format as the cross-language
+          inference contract (training in Python, serving identically in
+          Java + Python). The 1.21.0 release ships ~30 MB of bundled native
+          libs for Linux x86_64, Linux ARM64, macOS x86_64, macOS ARM64,
+          Windows x86_64 — covers GKE prod (linux/amd64) + macbook-local
+          dev (darwin/arm64).
+        -->
+        <onnxruntime.version>1.21.0</onnxruntime.version>
         <datasource-micrometer.version>2.2.1</datasource-micrometer.version> <!-- JDBC DataSource observation bridge → query latency in Prometheus -->
         <!--
           springdoc 3.0.3 (upgraded from 3.0.2) — bundles swagger-ui 5.32.2 which patches
@@ -571,6 +581,20 @@
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-starter-mcp-server-webmvc</artifactId>
             <version>${spring-ai.version}</version>
+        </dependency>
+
+        <!--
+          ONNX Runtime — Microsoft's Java bindings for cross-language ML
+          inference. Loads `.onnx` artefacts produced by the Python
+          training pipeline (mirador-service-python `mirador_service.ml.train_churn`)
+          and runs predictions in-process — NO sidecar service. Per shared
+          ADR-0060 §"Decision". Ships ~30 MB bundled native libs ; the JAR
+          stays usable on every runtime arch we deploy to.
+        -->
+        <dependency>
+            <groupId>com.microsoft.onnxruntime</groupId>
+            <artifactId>onnxruntime</artifactId>
+            <version>${onnxruntime.version}</version>
         </dependency>
 
         <!--

@@ -17,7 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Integration test : boots the full Mirador Spring Boot context (incl.
  * Postgres / Kafka / Redis testcontainers) and verifies that the MCP
- * {@link ToolCallbackProvider} exposes the 14 expected tools and that
+ * {@link ToolCallbackProvider} exposes the 15 expected tools and that
  * invoking three representative ones yields the right shape.
  *
  * <h3>Why this layer, not an HTTP/SSE round-trip ?</h3>
@@ -30,9 +30,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 class McpServerITest extends AbstractIntegrationTest {
 
     /**
-     * Names of the 14 tools per ADR-0062 catalogue. The set is checked
-     * against the runtime registry so a future addition / removal must
-     * be reflected here on purpose.
+     * Names of the 15 tools per ADR-0062 catalogue (14 Phase-1 + the
+     * {@code predict_customer_churn} added per shared ADR-0061 Phase B,
+     * 2026-04-27). The set is checked against the runtime registry so a
+     * future addition / removal must be reflected here on purpose.
      */
     private static final Set<String> EXPECTED_TOOLS = Set.of(
             "list_recent_orders",
@@ -42,6 +43,7 @@ class McpServerITest extends AbstractIntegrationTest {
             "find_low_stock_products",
             "get_customer_360",
             "trigger_chaos_experiment",
+            "predict_customer_churn",
             "tail_logs",
             "get_metrics",
             "get_health",

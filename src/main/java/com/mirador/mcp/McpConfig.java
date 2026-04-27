@@ -30,15 +30,19 @@ import java.time.Duration;
  * ones added by transitive dependencies (Spring Boot starters, Spring AI
  * itself, …) ; that's the loss-of-control mode the ADR rejects.
  *
- * <p>The 9 services registered below cover the 14-tool catalogue :
+ * <p>The 10 services registered below cover the 15-tool catalogue :
  * <ul>
  *   <li>4 domain : {@link OrderToolService} (4 tools), {@link ProductToolService}
  *       (1 tool), {@link CustomerToolService} (1 tool), {@link ChaosToolService}
  *       (1 tool) — total 7 domain tools.</li>
- *   <li>5 backend-local observability : {@link LogsService} (1 tool),
+ *   <li>4 backend-local observability : {@link LogsService} (1 tool),
  *       {@link MetricsService} (1 tool), {@link ActuatorService} (4 tools :
  *       health summary / detail / env / info), {@link OpenApiService}
  *       (1 tool) — total 7 observability tools.</li>
+ *   <li>1 ML inference : {@code ChurnMcpToolService} (1 tool —
+ *       {@code predict_customer_churn}) — added per shared ADR-0061
+ *       Phase B (Customer Churn ONNX inference in-process via
+ *       {@code com.mirador.ml.ChurnPredictor}).</li>
  * </ul>
  *
  * <h3>What this configuration does NOT do</h3>
@@ -103,7 +107,7 @@ public class McpConfig {
      * @param metricsService 1 metrics tool
      * @param actuatorService 4 actuator tools (health x 2, env, info)
      * @param openApiService 1 OpenAPI tool
-     * @return provider that registers all 14 tools at startup
+     * @return provider that registers all 15 tools at startup
      */
     @Bean
     public ToolCallbackProvider miradorToolProvider(
@@ -114,7 +118,8 @@ public class McpConfig {
             LogsService logsService,
             MetricsService metricsService,
             ActuatorService actuatorService,
-            OpenApiService openApiService
+            OpenApiService openApiService,
+            com.mirador.ml.ChurnMcpToolService churnTool
     ) {
         return MethodToolCallbackProvider.builder()
                 .toolObjects(
@@ -125,7 +130,8 @@ public class McpConfig {
                         logsService,
                         metricsService,
                         actuatorService,
-                        openApiService
+                        openApiService,
+                        churnTool
                 )
                 .build();
     }
