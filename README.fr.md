@@ -18,13 +18,6 @@
 > - 🏛 **Architecture** — Hexagonal Lite (ADR-0044, `port/` uniquement quand le couplage cross-feature émerge) + Feature-slicing (ADR-0008, `com.mirador.{customer, order, product, mcp, …}`) + sous-modules polyrepo flat α (ADR-0060) + exposition MCP `@Tool` par méthode (ADR-0062, règle "produces vs accesses") + 7 non-négociables Clean Code (binding, audités dans `docs/audit/clean-code-architecture-*.md`) + 60+ ADR.
 > - 🛠 **DevX** — Renovate hebdo + hooks Lefthook commit-msg + pre-push + `bin/dev/stability-check.sh` (gate complet sectionné) + dispatcher `./run.sh` (28 cas : `app`, `db`, `obs`, `kafka`, `k8s-local`, `clean`, `nuke`, …) + `bin/dev/api-smoke.sh` (flows Hurl) + `bin/budget/*` discipline coût + tâches programmées pour TODO datés (ex. revisite CVE mcp-core 2026-05-26) + ADR drift checker + template CI Conventional Commits (partagé via `infra/common/`).
 
-<!-- NOTE 2026-04-27 : ce README.fr.md est en retard sur la version anglaise
-     (1118 lignes EN vs 342 lignes FR — la majorité du corps EN n'est pas
-     encore traduite). Le bloc "Ce que ce projet démontre comme maîtrise"
-     ci-dessus est synchronisé. Le reste du fichier reflète encore la
-     structure pré-2026-04-25, à resynchroniser dans une session de
-     traduction dédiée (tracé dans TASKS.md). -->
-
 <!-- Bandeau de badges : 8 essentiels en haut. Couverture techno exhaustive
      plus bas dans la section "Couverture technologique". -->
 [![pipeline](https://gitlab.com/mirador1/mirador-service-java/badges/main/pipeline.svg)](https://gitlab.com/mirador1/mirador-service-java/-/pipelines)
@@ -73,10 +66,21 @@ donc un déploiement réel pourrait geler sur le couple LTS sans aucun changemen
 > _Construit avec les bons outils et les bonnes méthodes._
 
 **Mirador** — *watchtower* en espagnol — est un point d'observation.
-Le projet prend un backend concret de gestion de clients (API Customer)
-et l'observe sous tous les angles en même temps : **le code, les métriques
-runtime, les pipelines CI/CD, et l'outillage industriel standard câblé
-autour**. Le même backend live est visible à travers deux « fenêtres »
+Le projet prend un **service d'onboarding & enrichissement client**
+concret et l'observe sous tous les angles en même temps : **le code,
+les métriques runtime, les pipelines CI/CD, et l'outillage industriel
+standard câblé autour**.
+
+Le mini-domaine est délibérément industriel : un Customer suit le
+parcours **inscription → validation → enrichissement externe (JSONPlaceholder
++ LLM Ollama) → événements d'audit Kafka → suivi d'état → endpoints de
+diagnostic d'incident** (`/customers/diagnostic/{slow-query, db-failure,
+kafka-timeout}` pour le chaos contrôlé). C'est le profil d'un flow
+d'onboarding en industrie régulée (KYC, AML, vue 360° client) sans
+hériter du poids réglementaire — le focus reste sur les disciplines
+d'ingénierie.
+
+Le même backend live est visible à travers deux « fenêtres »
 complémentaires :
 
 - l'UI associée ([`mirador-ui`](https://gitlab.com/mirador1/mirador-ui))
@@ -85,11 +89,15 @@ complémentaires :
 - Grafana le montre du **côté observabilité** — métriques Prometheus,
   traces Tempo, logs Loki, le tout via OpenTelemetry.
 
-Les deux vues regardent exactement la même instance `mirador-service` ;
-rien n'est mocké entre les deux.
+Les deux vues regardent exactement la même instance
+`mirador-service-java` ; rien n'est mocké entre les deux.
 
-Ce repo contient le **backend Spring Boot 4 / Java 25**. C'est celui qui
-est observé.
+Ce repo contient le **backend Spring Boot 4 / Java 25** (branche par
+défaut). La matrice de compat CI build + teste aussi vert sur
+**Java 21 LTS + Spring Boot 3.x** depuis le même code — c'est la cible
+production conservatrice. Voir
+[Ce que ça prouve pour un architecte backend senior](#ce-que-ça-prouve-pour-un-architecte-backend-senior)
+plus bas pour le résumé recruteur.
 
 Ce que le projet met réellement en œuvre :
 
@@ -134,11 +142,27 @@ ADR-NNNN)`, le lien va à l'enregistrement complet.
 
 ## Table des matières
 
+- [Ce que ça prouve pour un architecte backend senior](#ce-que-ça-prouve-pour-un-architecte-backend-senior)
 - [Pourquoi ceci, pas cela — les arbitrages](#pourquoi-ceci-pas-cela--les-arbitrages)
 - [Leviers de simplification](#leviers-de-simplification)
 - [Intégration assistée par IA — où elle a contribué, où elle n'a pas](#intégration-assistée-par-ia--où-elle-a-contribué-où-elle-na-pas)
 - [Limites connues](#limites-connues)
 - [Détails techniques](#détails-techniques) → renvoi au README EN
+
+---
+
+## Ce que ça prouve pour un architecte backend senior
+
+| Préoccupation | Ce que ce repo démontre | Pourquoi ça compte en production |
+|---|---|---|
+| **Conception système** | Layering hexagonal verrouillé par ArchUnit ; ADRs (39+) documentent chaque rejet ; pattern Kafka request-reply avec correlation ID + timeout ; circuit-breaker Resilience4j + retry sur chaque appel externe. | Les décisions d'architecture sont relisables + réversibles ; le système est construit autour des cas d'usage, pas des frameworks. |
+| **Sécurité** | JWT (HS256) + rotation refresh-token + révocation jti ; Auth0 + Keycloak les deux câblés ; rate limiting (Bucket4j) ; SAST (Semgrep) + SCA (OWASP Dep-Check + Trivy + Grype) + signature image (cosign) + SBOM (Syft) tous bloquants en CI. | Défense en profondeur, intégrité de la supply chain, pas de « on l'ajoutera plus tard ». |
+| **Observabilité** | OTel SDK → Collector → LGTM ; **3 SLOs définis-as-code via Sloth** avec alerting multi-window multi-burn-rate (Google SRE Workbook) ; le dashboard Grafana SLO trace la consommation du budget d'erreur. | « Sommes-nous dans les clous ce mois-ci ? » devient une question objective avec un graphe, pas un ressenti. |
+| **Données + état** | PostgreSQL + migrations Flyway ; ring buffer + cache Redis ; Kafka KRaft avec auto-create off en prod ; consommateurs idempotents ; pattern transactional outbox (voir ADR). | L'état est intentionnel, les migrations sont relisables, les replays sont possibles. |
+| **Discipline CI/CD** | GitLab CI exclusivement (pas de quota SaaS) ; runner group-level qui sert 4 repos ; hooks lefthook 3-tier ; conventional-commits enforced ; SonarCloud + JaCoCo + PIT mutation tous gatés ; Docker multi-arch via buildx. | Les contrats qualité > la bonne volonté du reviewer ; les régressions cassent le build, pas le prochain déploiement. |
+| **Opérations** | Argo CD GitOps ; canary Argo Rollouts ; endpoints chaos diagnostic ; URLs runbook dans chaque alerte ; RTO/RPO discutés dans la doc SLA ; cluster éphémère (coût contrôlé) avec alertes budget. | Le système est opérable, pas seulement déployable. |
+| **Évolution** | Matrice de compat Java 17/21/25 × SB3/SB4 — même code source, les deux stacks build + test vert ; les ADRs se remplacent au lieu de réécrire les docs ; Renovate auto-bump avec MRs groupées. | La techno évolue sans réécriture ; le chemin LTS conservateur est toujours atteignable. |
+| **Cohérence polyrepo** | Repos frères ([UI](https://gitlab.com/mirador1/mirador-ui), [miroir Python](https://gitlab.com/mirador1/mirador-service-python), [infra partagée](https://gitlab.com/mirador1/mirador-service-shared)) partagent runner + templates CI + observabilité + cross-références ADR via git submodule. | Démontre comment garder plusieurs services cohérents sans verrouillage monorepo. |
 
 ---
 
