@@ -253,6 +253,36 @@ HTTP 200
 [Asserts]
 jsonpath "$.totalAmount" == 20.00
 
+# Order status state-machine — PENDING → CONFIRMED → SHIPPED.
+# Self-transitions allowed (idempotency for retries) ; backwards
+# transitions return 409 ProblemDetail with currentStatus + targetStatus
+# (the UI uses these fields to render a meaningful error).
+PUT {{base}}/orders/{{order_id}}/status
+Authorization: Bearer {{rotated_access_token}}
+Content-Type: application/json
+{ "status": "CONFIRMED" }
+HTTP 200
+[Asserts]
+jsonpath "$.status" == "CONFIRMED"
+
+# Forbidden transition — CONFIRMED can only go to SHIPPED or CANCELLED.
+# Going back to PENDING violates the state machine.
+PUT {{base}}/orders/{{order_id}}/status
+Authorization: Bearer {{rotated_access_token}}
+Content-Type: application/json
+{ "status": "PENDING" }
+HTTP 409
+[Asserts]
+jsonpath "$.currentStatus" == "CONFIRMED"
+jsonpath "$.targetStatus" == "PENDING"
+
+# Self-transition is allowed (retry-safe).
+PUT {{base}}/orders/{{order_id}}/status
+Authorization: Bearer {{rotated_access_token}}
+Content-Type: application/json
+{ "status": "CONFIRMED" }
+HTTP 200
+
 # DELETE order cascades remaining line ; product NOT touched
 DELETE {{base}}/orders/{{order_id}}
 Authorization: Bearer {{rotated_access_token}}
