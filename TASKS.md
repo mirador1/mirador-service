@@ -23,13 +23,14 @@ Remaining :
   threshold based on the SLA's documented RTO/RPO. Deferred from
   iteration 2 (needs working Chaos Mesh + DB pod, complex setup).
 
-- 🟢 **Dedicated chaos endpoints** : iteration 2 wired annotations
-  to existing `/customers/slow-query` + symptom-based 5xx/504
-  detectors. To get distinct annotations for `db-failure` vs
-  `kafka-timeout` vs `slow-query`, add explicit endpoints to
-  `CustomerDiagnosticsController` (or a new `ChaosController`) and
-  update annotation `expr` to filter on the new `uri` values. Source
-  changes required, hence deferred.
+- ☐ **Update SLO dashboard annotation `expr`** : the dedicated chaos
+  endpoints `POST /customers/db-failure` + `POST /customers/kafka-timeout`
+  shipped 2026-04-27 via [!233](https://gitlab.com/mirador1/mirador-service-java/-/merge_requests/233).
+  Now the dashboard JSONs in `infra/observability/grafana-dashboards/`
+  need their annotation queries updated to filter on
+  `uri="/customers/db-failure"` + `uri="/customers/kafka-timeout"` so
+  the 3 chaos scenarios surface as distinct annotations on the SLO
+  breakdown panels (instead of generic 5xx/504 detectors).
 
 ## 🎨 README polish (post 2026-04-25 review)
 
