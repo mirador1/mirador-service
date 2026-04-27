@@ -10,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -96,6 +97,72 @@ public class OrderLineController {
         orderRepo.findById(orderId).ifPresent(this::recomputeOrderTotal);
 
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Update an {@link OrderLine}'s status — state-machine validated per
+     * <a href="https://gitlab.com/mirador1/mirador-service-shared/-/blob/main/docs/adr/0063-order-line-refund-state-machine.md">shared ADR-0063</a>.
+     *
+     * <p>Forward-only graph : {@code PENDING → SHIPPED → REFUNDED}. The
+     * skip {@code PENDING → REFUNDED} is rejected by design — a refund
+     * must follow a shipment for audit traceability.
+     *
+     * <p>Refunding does NOT change the line's monetary value : the
+     * snapshot {@code unitPriceAtOrder} stays as-is so historical
+     * orders remain auditable. Money flow (issuing the refund through
+     * a payment processor) is OUT OF SCOPE per ADR-0063 §"Consequences :
+     * Negative" — the state transition is the trigger event ; an
+     * orchestrator listens to it and handles the financial side.
+     *
+     * <p>Same wire shape as the Python sibling so the UI doesn't branch.
+     *
+     * @return 200 + updated DTO on valid transition,
+     *         404 if order or line missing,
+     *         409 ProblemDetail with currentStatus + targetStatus + reason
+     *           on forbidden transition,
+     *         422 if status is unknown.
+     */
+    @Operation(summary = "Update an order line's status (state-machine validated, ADR-0063)",
+            description = "Body : {\"status\": \"PENDING|SHIPPED|REFUNDED\", \"reason\": \"…optional…\"}. "
+                    + "Valid transitions : PENDING → SHIPPED → REFUNDED. PENDING → REFUNDED rejected (audit "
+                    + "requirement). Self-transitions allowed (idempotency). Refund does NOT mutate the price "
+                    + "snapshot — money flow handled separately.")
+    @PatchMapping("/{lineId}/status")
+    @Transactional
+    public ResponseEntity<?> updateLineStatus(
+            @PathVariable Long orderId,
+            @PathVariable Long lineId,
+            @Valid @RequestBody UpdateOrderLineStatusRequest req) {
+        Optional<OrderLine> existing = lineRepo.findById(lineId);
+        if (existing.isEmpty() || !existing.get().getOrderId().equals(orderId)) {
+            return ResponseEntity.notFound().build();
+        }
+        OrderLine line = existing.get();
+        OrderLineStatus current = line.getStatus();
+        OrderLineStatus target = req.status();
+        if (!current.canTransitionTo(target)) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(java.util.Map.of(
+                    "type", "urn:problem:invalid-line-status-transition",
+                    "title", "Invalid order line status transition",
+                    "status", 409,
+                    "detail", "Cannot transition line from " + current + " to " + target,
+                    "currentStatus", current.name(),
+                    "targetStatus", target.name(),
+                    "reason", req.reason() == null ? "" : req.reason()
+            ));
+        }
+        line.setStatus(target);
+        OrderLine saved = lineRepo.save(line);
+        // Audit log : the structured log line is what AuditService picks up
+        // (per the existing JWT correlation pattern) ; the reason carries
+        // forward into the audit_event row. The total recompute is NOT
+        // triggered : refunding does NOT change line.quantity *
+        // unit_price_at_order per ADR-0063 §"Refund refunds the snapshot".
+        org.slf4j.LoggerFactory.getLogger(OrderLineController.class)
+                .info("order_line_status_changed orderId={} lineId={} from={} to={} reason={}",
+                        orderId, lineId, current, target,
+                        req.reason() == null ? "" : req.reason());
+        return ResponseEntity.ok(OrderLineDto.from(saved));
     }
 
     /**

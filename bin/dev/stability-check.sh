@@ -252,6 +252,7 @@ main() {
   section_sonar_freshness
   section_java_logging
   section_ui_console
+  section_feature_slices
   section_file_length
   section_docs
   section_adr_sequence

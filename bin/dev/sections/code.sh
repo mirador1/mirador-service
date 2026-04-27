@@ -126,6 +126,43 @@ section_ui_console() {
   fi
 }
 
+# ── Section 5h-bis: Feature-slice health snapshot (e-commerce + ML) ────────
+# Per-slice LOC + test count for the 3 newer feature slices :
+#   - com.mirador.order.*   (V8/V9 migrations, 2026-04-26)
+#   - com.mirador.product.* (V7 migration, 2026-04-26)
+#   - com.mirador.ml.*      (Phase B Customer Churn ONNX inference,
+#                            shared ADR-0061, 2026-04-27)
+#
+# Surfaces a low-cost "is this slice still healthy" signal that the
+# generic greps above can't (they aggregate across the whole code-base).
+# Reports as info — not blocking — but worth scanning at every run.
+section_feature_slices() {
+  echo "▸ Feature-slice health snapshot…"
+  for slice in order product ml; do
+    local main_root="$SVC_DIR/src/main/java/com/mirador/$slice"
+    local test_root="$SVC_DIR/src/test/java/com/mirador/$slice"
+    if [ ! -d "$main_root" ]; then
+      finding info "svc: slice $slice — no main src/ directory (skipped)"
+      continue
+    fi
+    local main_loc test_loc main_count test_count
+    main_loc=$( (find "$main_root" -name "*.java" -print0 2>/dev/null \
+      | xargs -0 cat 2>/dev/null | wc -l | tr -d ' ') )
+    test_loc=$( (find "$test_root" -name "*.java" -print0 2>/dev/null \
+      | xargs -0 cat 2>/dev/null | wc -l | tr -d ' ') )
+    main_count=$( (find "$main_root" -name "*.java" 2>/dev/null | wc -l | tr -d ' ') )
+    test_count=$( (find "$test_root" -name "*.java" 2>/dev/null | wc -l | tr -d ' ') )
+    finding info "svc: slice $slice — main ${main_count}f/${main_loc}L, test ${test_count}f/${test_loc}L"
+    # Soft check : every slice should have at least 1 test file (catches
+    # the case where someone shipped a feature without an accompanying
+    # test class — unit-tests at the project level would still pass with
+    # the existing JaCoCo gate, but the slice itself is naked).
+    if [ "$test_count" -eq 0 ] && [ "$main_count" -gt 0 ]; then
+      finding warn "svc: slice $slice has $main_count source file(s) but no tests — write at least one"
+    fi
+  done
+}
+
 # ── Section 5i: Hand-written files ≥ 1500 lines (split-now tier) ───────────
 # Enforces the "File length hygiene" rule in ~/.claude/CLAUDE.md:
 #

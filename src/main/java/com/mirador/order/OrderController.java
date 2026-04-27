@@ -12,12 +12,14 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
+import java.util.Map;
 
 /**
  * REST controller for order management.
@@ -64,6 +66,53 @@ public class OrderController {
         o.setTotalAmount(BigDecimal.ZERO);
         Order saved = repo.save(o);
         return OrderDto.from(saved);
+    }
+
+    /**
+     * Update the status of an existing order. Status transitions follow
+     * the state machine declared on {@link OrderStatus#canTransitionTo} :
+     *
+     * <ul>
+     *   <li>PENDING → CONFIRMED, CANCELLED (or self).</li>
+     *   <li>CONFIRMED → SHIPPED, CANCELLED (or self).</li>
+     *   <li>SHIPPED, CANCELLED → terminal (only self).</li>
+     * </ul>
+     *
+     * <p>Invalid transitions return 409 with a ProblemDetail body
+     * surfacing the source / target / allowed-set so the UI can render
+     * a meaningful error. 404 if the order doesn't exist.
+     *
+     * <p>This endpoint mirrors the Python sibling exactly so the UI's
+     * order-edit screen works identically against either backend.
+     */
+    @Operation(summary = "Update order status — PUT /orders/{id}/status",
+            description = "Body : {\"status\": \"PENDING|CONFIRMED|SHIPPED|CANCELLED\"}. "
+                    + "Returns 200 + updated order on success, 404 if missing, "
+                    + "409 if the requested transition violates the state machine, "
+                    + "422 if the body is malformed.")
+    @PutMapping("/{id}/status")
+    public ResponseEntity<?> updateStatus(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateOrderStatusRequest req) {
+        var order = repo.findById(id).orElse(null);
+        if (order == null) {
+            return ResponseEntity.notFound().build();
+        }
+        OrderStatus current = order.getStatus();
+        OrderStatus target = req.status();
+        if (!current.canTransitionTo(target)) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                    "type", "urn:problem:invalid-status-transition",
+                    "title", "Invalid order status transition",
+                    "status", 409,
+                    "detail", "Cannot transition from " + current + " to " + target,
+                    "currentStatus", current.name(),
+                    "targetStatus", target.name()
+            ));
+        }
+        order.setStatus(target);
+        Order saved = repo.save(order);
+        return ResponseEntity.ok(OrderDto.from(saved));
     }
 
     @Operation(summary = "Delete an order (CASCADE deletes its lines per V9 ON DELETE CASCADE)")

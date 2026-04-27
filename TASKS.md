@@ -5,7 +5,7 @@ here ; done items removed (use `git tag -l` for history).
 
 ---
 
-## 📊 SLO/SLA backlog (post Quick wins ADR-0058 + iteration 2)
+## 📊 SLO/SLA backlog (post Quick wins ADR-0058 + iterations 2 + 3)
 
 Quick wins SHIPPED 2026-04-25 : 3 SLOs as code (Sloth) + multi-burn-rate
 alerting + Grafana SLO dashboard + ADR-0058 + sla.md.
@@ -15,55 +15,46 @@ latency heatmap dashboard, Apdex dashboard, 3 runbooks (availability /
 latency / enrichment), chaos-driven Grafana annotations on all 3
 repo-local SLO dashboards, Java-specific review-cadence addendum.
 
+Iteration 3 SHIPPED 2026-04-27 :
+- ✅ Dedicated chaos endpoints `POST /customers/db-failure` +
+  `POST /customers/kafka-timeout` ([!233](https://gitlab.com/mirador1/mirador-service-java/-/merge_requests/233))
+- ✅ SLO dashboard annotation `expr` switched to deterministic URI
+  filters + 4th 'Real 5xx (catch-all)' annotation
+  ([!235](https://gitlab.com/mirador1/mirador-service-java/-/merge_requests/235))
+
 Remaining :
 
 - 🟢 **RTO/RPO measurement via chaos** : kill DB pod → measure
   time-to-recovery (RTO) + lost-transaction count (RPO). Chaos Mesh
   scenario already exists ; needs a results dashboard + pass/fail
-  threshold based on the SLA's documented RTO/RPO. Deferred from
-  iteration 2 (needs working Chaos Mesh + DB pod, complex setup).
+  threshold based on the SLA's documented RTO/RPO. Deferred (needs
+  working Chaos Mesh + DB pod, complex setup).
 
-- ☐ **Update SLO dashboard annotation `expr`** : the dedicated chaos
-  endpoints `POST /customers/db-failure` + `POST /customers/kafka-timeout`
-  shipped 2026-04-27 via [!233](https://gitlab.com/mirador1/mirador-service-java/-/merge_requests/233).
-  Now the dashboard JSONs in `infra/observability/grafana-dashboards/`
-  need their annotation queries updated to filter on
-  `uri="/customers/db-failure"` + `uri="/customers/kafka-timeout"` so
-  the 3 chaos scenarios surface as distinct annotations on the SLO
-  breakdown panels (instead of generic 5xx/504 detectors).
+## 🎨 README polish
 
-## 🎨 README polish (post 2026-04-25 review)
+Major sync wave **shipped 2026-04-27** :
+- ✅ README.fr.md mastery block + 8-row matrix +
+  "Customer onboarding" reframing + URL fixes
+  ([!237](https://gitlab.com/mirador1/mirador-service-java/-/merge_requests/237))
 
-Captured from portfolio review session feedback :
+Remaining (low priority) :
 
-- 🟢 **README.fr.md sync** : Java README.md got a major rewrite 2026-04-25
-  (badges trim 50+ → 8, TL;DR for hiring managers, "What this proves for
-  a senior backend architect" matrix, URL fixes, "Customer onboarding &
-  enrichment service" reframing). The French version still reflects the
-  old structure — sync needed. Lefthook readme-i18n-sync hook flags it ;
-  was bypassed for the initial push.
+- 🟢 **GitHub mirror push verification** : confirm the GitHub mirror at
+  github.com/mirador1/mirador-service mirrors correctly (badge URLs,
+  Wayback caching, anchor links). Manual check, ad-hoc.
 
-- 🟢 **GitHub mirror push verification** : after the README rewrite + URL
-  fixes (`benoit.besson/mirador-service` → `mirador1/mirador-service-java`),
-  verify the GitHub mirror at github.com/mirador1/mirador-service mirrors
-  correctly (badge URLs, Wayback caching, anchor links).
+- 🟢 **Mini-domain rename consideration** : the README narrative
+  describes "Customer onboarding & enrichment service" but the CODE
+  still uses `Customer*` classes. Refactor 50+ files when there's a
+  real recruiter signal that the term feels generic.
 
-- 🟢 **Mini-domain rename consideration** : the README narrative now
-  describes "Customer onboarding & enrichment service" but the CODE still
-  uses `Customer*` classes/endpoints. Genuine rename to `Onboarding*` or
-  `Case*` is a 50+ file refactor — defer until there's a real recruiter
-  signal that the term still feels generic. Narrative reframing in the
-  README probably enough.
-
-- 🟢 **Banner.svg refresh** : the `docs/assets/banner.svg` was authored
-  before the multi-repo split. Update to mention the polyrepo structure
-  + the SLO/SLA addition + the conservative LTS target. Same dimensions,
-  same color scheme.
+- 🟢 **Banner.svg refresh** : `docs/assets/banner.svg` predates the
+  multi-repo split. Update to mention the polyrepo structure + the
+  SLO/SLA addition + the conservative LTS target.
 
 - 🟢 **Add screenshots to "Screenshots" section** of new SLO dashboard
-  + the architect matrix rendered. Use the existing GIF demo recording
-  workflow (record-demo.sh in shared) once the SLO dashboard is connected
-  to a live LGTM stack.
+  + the architect matrix rendered. Use `record-demo.sh` (in shared)
+  once the SLO dashboard is connected to a live LGTM stack.
 
 ## 🎯 Surface fonctionnelle — entités e-commerce
 
@@ -72,30 +63,39 @@ Foundation **shippée 2026-04-26** dans [stable-v1.2.3](https://gitlab.com/mirad
 - ✅ Feature-sliced sous `com.mirador.{order,product}.*` (ADR-0008)
 - ✅ REST controllers minimaux : `/products`, `/orders`, `/orders/{id}/lines/{lineId}`
 
-### Reste à compléter (post-foundation)
+Wave 2 **shippée 2026-04-27** :
+- ✅ ADR data model — [shared ADR-0059](https://gitlab.com/mirador1/mirador-service-shared/-/blob/main/docs/adr/0059-customer-order-product-data-model.md)
+- ✅ Server-side product search ([!236](https://gitlab.com/mirador1/mirador-service-java/-/merge_requests/236))
+- ✅ PUT /orders/{id}/status state-machine endpoint ([!238](https://gitlab.com/mirador1/mirador-service-java/-/merge_requests/238))
+- ✅ GET /products/{id}/orders ([!241](https://gitlab.com/mirador1/mirador-service-java/-/merge_requests/241))
+- ✅ JaCoCo HTML artifact + cobertura widget on MR pipelines ([!239](https://gitlab.com/mirador1/mirador-service-java/-/merge_requests/239))
+- ✅ `bin/dev/api-smoke.sh` (Hurl) PUT /orders/{id}/status flow ([!240](https://gitlab.com/mirador1/mirador-service-java/-/merge_requests/240))
 
-- ✅ **ADR data model** — landed 2026-04-26 in shared as
-  [shared ADR-0059](https://gitlab.com/mirador1/mirador-service-shared/-/blob/main/docs/adr/0059-customer-order-product-data-model.md)
-  (cross-language : Java + Python + UI). Documents 6 invariants for property tests.
-- ☐ **JaCoCo coverage ≥ 90 %** sur `com.mirador.{order,product}.*` :
-  configurer `<rule><BUNDLE>` à 90 % dans `jacoco-maven-plugin` — fail
-  build si en-dessous. Aujourd'hui min global = 70 %.
-- ☐ **Property-based tests (jqwik)** : invariants
-  `total_amount == Σ(line.qty × line.unit_price_at_order)`,
-  `stock_quantity ≥ 0`, immutabilité de `unit_price_at_order`.
+### Reste à compléter (scheduled)
+
+The following items are bundled into the
+[`java-ecommerce-coverage-batch`](file:///Users/benoitbesson/.claude/scheduled-tasks/java-ecommerce-coverage-batch/SKILL.md)
+scheduled task (2026-05-04 14:00) :
+
+- ☐ **JaCoCo coverage ≥ 90 %** sur `com.mirador.{order,product}.*`
+- ☐ **Property-based tests (jqwik)** : invariants `total_amount`,
+  `stock_quantity ≥ 0`, immutabilité de `unit_price_at_order`
 - ☐ **Spring Boot integration tests** (`@SpringBootTest` + Testcontainers
+<<<<<<< HEAD
   Postgres) : full HTTP roundtrip (create → read → update → delete),
   rollback, contraintes JPA.
 - ☐ **PIT mutations score ≥ 75 %** sur le nouveau code.
 - ☐ **`bin/dev/api-smoke.sh`** : ajouter POST /orders avec 2 OrderLines,
   GET, DELETE, vérifier total recalculé.
 - ☐ **`bin/dev/sections/code.sh`** : inclure les nouveaux modules.
+=======
+  Postgres) : full HTTP roundtrip + rollback + contraintes JPA
+- ☐ **PIT mutations score ≥ 75 %** sur le nouveau code
+- ☐ **`bin/dev/sections/code.sh`** : inclure les nouveaux modules
+>>>>>>> b51ef7e (chore(tasks): strike 2026-04-27 wave + scheduled-batch pointer for coverage)
 
 ### Cross-repo coordination (ADR-0001 polyrepo)
 
 OpenAPI contract doit matcher [Python](https://gitlab.com/mirador1/mirador-service-python)
 (même paths, schemas, response codes). UI ([mirador-ui](https://gitlab.com/mirador1/mirador-ui))
 doit pouvoir basculer entre les 2 backends transparently.
-
-## 🔧 Other
-

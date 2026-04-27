@@ -1,5 +1,7 @@
 package com.mirador.product;
 
+import com.mirador.order.OrderDto;
+import com.mirador.order.OrderRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -38,9 +40,11 @@ public class ProductController {
     static final String PATH_PRODUCTS = "/products";
 
     private final ProductRepository repo;
+    private final OrderRepository orderRepo;
 
-    public ProductController(ProductRepository repo) {
+    public ProductController(ProductRepository repo, OrderRepository orderRepo) {
         this.repo = repo;
+        this.orderRepo = orderRepo;
     }
 
     /**
@@ -116,5 +120,28 @@ public class ProductController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) {
         repo.deleteById(id);
+    }
+
+    /**
+     * Paginated list of orders that contain at least one line for this
+     * product. Replaces the UI-side fan-out previously implemented as
+     * "list 50 recent orders + filter client-side" in
+     * {@code ProductDetailComponent#findConsumerOrders} on the consumer
+     * side.
+     *
+     * <p>Returns 404 if the product itself doesn't exist (avoids
+     * silently returning empty results for a typo in the path) ; an
+     * empty page is the legitimate result for an existing but unsold
+     * product.
+     */
+    @Operation(summary = "List orders that contain at least one line for this product")
+    @GetMapping("/{id}/orders")
+    public ResponseEntity<Page<OrderDto>> ordersForProduct(
+            @PathVariable Long id,
+            @PageableDefault(size = 20) Pageable pageable) {
+        if (!repo.existsById(id)) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(orderRepo.findByProductId(id, pageable).map(OrderDto::from));
     }
 }
