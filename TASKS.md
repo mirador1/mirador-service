@@ -87,8 +87,6 @@ Foundation **shippée 2026-04-26** dans [stable-v1.2.3](https://gitlab.com/mirad
   Postgres) : full HTTP roundtrip (create → read → update → delete),
   rollback, contraintes JPA.
 - ☐ **PIT mutations score ≥ 75 %** sur le nouveau code.
-- ☐ **Coverage report HTML** publié dans CI artifacts (`target/site/jacoco/`).
-- ☐ **Trend tracking** : commenter le delta coverage dans la pipeline MR.
 - ☐ **`bin/dev/api-smoke.sh`** : ajouter POST /orders avec 2 OrderLines,
   GET, DELETE, vérifier total recalculé.
 - ☐ **`bin/dev/sections/code.sh`** : inclure les nouveaux modules.
