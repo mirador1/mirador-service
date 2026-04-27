@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -42,10 +43,25 @@ public class ProductController {
         this.repo = repo;
     }
 
-    @Operation(summary = "List products (paginated)")
+    /**
+     * List products, optionally filtered by a case-insensitive substring
+     * search on name + description. Mirrors the Customer search pattern :
+     * the UI debounces 300 ms before issuing the request, so this hot
+     * path stays cheap on the backend.
+     *
+     * <p>An empty / blank {@code search} param falls through to the
+     * unfiltered listing — same shape as before the search support
+     * landed, so existing callers keep working unchanged.
+     */
+    @Operation(summary = "List products (paginated, optional search)")
     @GetMapping
-    public Page<ProductDto> list(@PageableDefault(size = 20) Pageable pageable) {
-        return repo.findAll(pageable).map(ProductDto::from);
+    public Page<ProductDto> list(
+            @RequestParam(required = false) String search,
+            @PageableDefault(size = 20) Pageable pageable) {
+        if (search == null || search.isBlank()) {
+            return repo.findAll(pageable).map(ProductDto::from);
+        }
+        return repo.search(search.trim(), pageable).map(ProductDto::from);
     }
 
     @Operation(summary = "Get product by ID")
