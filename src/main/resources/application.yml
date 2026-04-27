@@ -137,6 +137,18 @@ spring:
           log-prompt: ${MIRADOR_AI_LOG_CONTENT:false}
           log-completion: ${MIRADOR_AI_LOG_CONTENT:false}
 
+    # MCP server — switch from default SSE transport to STREAMABLE (single
+    # HTTP endpoint at /mcp) to align with the MCP 2025-03-26 spec that
+    # claude's `--transport http` consumes. The legacy SSE protocol (with
+    # separate /sse + /mcp/message endpoints + session IDs) caused
+    # `claude mcp list` to show ✗ Failed to connect against this backend
+    # — the SSE handshake timed out on claude's side. Streamable-http is
+    # a single POST per JSON-RPC call, much simpler. Endpoint defaults
+    # to `/mcp` (overrideable via spring.ai.mcp.server.streamable-http.mcp-endpoint).
+    mcp:
+      server:
+        protocol: STREAMABLE
+
   # ---------------------------------------------------------------------------
   # Virtual Threads (Project Loom)                                  [Java 21+]
   # Replaces platform threads for Tomcat request processing, @Async, and Kafka
