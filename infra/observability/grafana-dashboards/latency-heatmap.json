@@ -17,12 +17,12 @@
         "datasource": {"type": "prometheus", "uid": "prometheus"},
         "enable": true,
         "iconColor": "rgba(108, 117, 125, 0.9)",
-        "name": "Chaos — kafka-timeout (504)",
-        "expr": "changes(http_server_requests_seconds_count{job=\"mirador-service\",uri=~\".*/enrich.*\",status=\"504\"}[1m]) > 0",
+        "name": "Chaos — kafka-timeout",
+        "expr": "changes(http_server_requests_seconds_count{job=\"mirador-service\",uri=\"/customers/kafka-timeout\"}[1m]) > 0",
         "step": "1m",
-        "tagKeys": "uri,status",
-        "titleFormat": "Chaos: enrichment 504",
-        "textFormat": "Kafka request-reply timed out — pushes p99 above 500ms threshold.",
+        "tagKeys": "uri",
+        "titleFormat": "Chaos: kafka-timeout",
+        "textFormat": "Synthetic Kafka 504 via CustomerDiagnosticsController#kafkaTimeout — pushes p99 above 500ms threshold.",
         "useValueForTime": false
       }
     ]
