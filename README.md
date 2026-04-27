@@ -2,6 +2,22 @@
 
 <sub>**English** · [Français](README.fr.md)</sub>
 
+> **What this project demonstrates mastery of**
+>
+> _A 30-second skim of the central themes of current backend mastery — each axis
+> is verified at every `stable-v*` tag. Source of truth for what "this rev guarantees" :
+> `git show stable-vX.Y.Z`._
+>
+> - 🤖 **IA** — Spring AI 1.1.4 + Ollama local LLM (llama3.2) + 14 in-process MCP tools (per-method `@Tool` annotations, ADR-0062) + claude-compatible streamable-http transport (`spring.ai.mcp.server.protocol=STREAMABLE`) + AI Observability (`gen_ai.*` OTel spans → Tempo) + audit log per tool call.
+> - 🔒 **Sécurité** — JWT HS256 (15 min, refresh-token rotation) + X-API-Key static fallback + OAuth2/OIDC (Auth0 prod / Keycloak dev) + RBAC (`ROLE_ADMIN` / `ROLE_USER`) + Bucket4j rate-limit (100 req/min/IP) + IdempotencyFilter (POST/PATCH) + SecurityHeadersFilter (CSP/HSTS/X-Frame-Options) + per-MR security gates : grype + trivy + cosign sign+verify + dockle + OWASP dependency-check + secret-detection + semgrep-sast — all green.
+> - 🧠 **Fonctionnel** — Customer onboarding & enrichment (Spring AI Ollama-driven bio generation, observable with `gen_ai.*` spans) + Order / Product / OrderLine domain (6 invariants enforced via `jqwik` property tests, JaCoCo per-package gates) + Chaos Mesh diagnostic endpoints (`/customers/diagnostic/{slow-query, db-failure, kafka-timeout}`).
+> - ☁️ **Infrastructure & Cloud** — GKE production cluster `mirador-prod` (europe-west1) + Terraform IaC + multi-cloud deploy targets (AKS, EKS, Cloud Run, Fly.io — manual jobs in CI) + cert-manager + ingress-nginx + Argo CD GitOps + ephemeral pattern (ADR-0022) targeting ≤ €2/month idle + Workload Identity Federation (no service account JSON keys) + budget alerts via `bin/budget/budget.sh`.
+> - 📊 **Observabilité** — OpenTelemetry traces + logs + metrics → LGTM stack (Tempo / Loki / Mimir / Grafana) + 3 SLOs as code via Sloth (availability / latency / enrichment) + multi-burn-rate alerting + 4 dashboards (SLO overview, Apdex, latency heatmap, SLO breakdown by endpoint) + chaos-driven SLO demo annotations + 3 runbooks (slo-availability, slo-latency, slo-enrichment) + monthly review cadence doc.
+> - ✅ **Qualité** — JaCoCo merged unit+IT coverage 70 % gate + per-package gates on `com.mirador.{order,product}` + PIT mutation testing + SonarCloud quality gate + Spectral OpenAPI 3.1 lint + hadolint + Checkstyle + SpotBugs + findsecbugs + jqwik property-based tests + Testcontainers integration tests (Postgres + Kafka + Redis).
+> - 🔄 **CI/CD** — GitLab CI 19+ jobs across `lint / test / integration / k8s / package / sonar / native / compat / deploy` stages + compat matrix SB3/SB4 × Java17/21/25 (5 combos) + Conventional Commits enforced (Lefthook + commitlint) + auto-merge with `--remove-source-branch=false` + cosign sign+verify + SBOM (syft) + Renovate weekly dependency bumps + workflow `changes:` allowlist.
+> - 🏛 **Architecture** — Hexagonal Lite (ADR-0044, `port/` only when cross-feature coupling emerges) + Feature-slicing (ADR-0008, `com.mirador.{customer, order, product, mcp, …}`) + polyrepo flat α submodules (ADR-0060) + per-method MCP `@Tool` exposure (ADR-0062, "produces vs accesses" rule) + Clean Code 7 non-negotiables (binding, audited at `docs/audit/clean-code-architecture-*.md`) + 60+ Architecture Decision Records.
+> - 🛠 **DevX** — Renovate weekly + Lefthook commit-msg + pre-push hooks + `bin/dev/stability-check.sh` comprehensive gate (sectioned) + `./run.sh` dispatcher (28 cases : `app`, `db`, `obs`, `kafka`, `k8s-local`, `clean`, `nuke`, …) + `bin/dev/api-smoke.sh` (Hurl flows) + `bin/budget/*` cost discipline + scheduled tasks for dated TODOs (e.g. mcp-core CVE revisit 2026-05-26) + ADR drift checker + Conventional Commits CI template (shared via `infra/common/`).
+
 <!-- Top-line badges : 8 essentials. Build status + 4 baseline tech + 3
      industrial gates (security, SLO, mutation). The exhaustive tech
      coverage lives in the "Technology coverage" section further down,
