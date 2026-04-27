@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 
@@ -280,6 +281,51 @@ public class CustomerService {
     /** Simulates a slow database query for observability demos. */
     public void simulateSlowQuery(double seconds) {
         repository.simulateSlowQuery(seconds);
+    }
+
+    /**
+     * Triggers a deliberate DB failure (intentionally bad SQL → DBAPIError →
+     * 500). Used by the SLO chaos demo to exercise the availability SLO
+     * burn-rate alert with a distinct {@code uri=/customers/db-failure}
+     * label, separating it from the latency SLO that {@link
+     * #simulateSlowQuery(double)} drives.
+     *
+     * <p>Wrapped in a try/catch so we can attach a structured log line
+     * before letting the framework's exception handler map the error to
+     * a 500 response.
+     */
+    public void simulateDbFailure() {
+        try {
+            repository.simulateDbFailure();
+        } catch (org.springframework.dao.DataAccessException e) {
+            // Re-throw — the @ExceptionHandler in ApiExceptionHandler maps
+            // this to ProblemDetail(500). The catch is here only to log
+            // the deliberate trigger so it's distinguishable from a real
+            // DB failure in postmortem analysis.
+            org.slf4j.LoggerFactory.getLogger(CustomerService.class)
+                    .warn("chaos_db_failure_triggered cause={}", e.getMessage());
+            throw e;
+        }
+    }
+
+    /**
+     * Triggers a synthetic Kafka-timeout response (no real broker call).
+     * Mirrors the existing {@code /customers/{id}/enrich} 504 path but
+     * with a distinct {@code uri=/customers/kafka-timeout} label so SLO
+     * dashboards can annotate this scenario separately from a real
+     * enrichment timeout.
+     *
+     * @return a marker map describing the synthetic event ; the caller
+     *         (controller) translates it into a 504 response.
+     */
+    public Map<String, String> simulateKafkaTimeout() {
+        org.slf4j.LoggerFactory.getLogger(CustomerService.class)
+                .warn("chaos_kafka_timeout_triggered synthetic=true");
+        return Map.of(
+                "scenario", "kafka-timeout",
+                "synthetic", "true",
+                "detail", "504 — synthetic, no broker call (matches /customers/{id}/enrich timeout shape)"
+        );
     }
 
     /** Maps a JPA entity to a v1 DTO (id, name, email). */

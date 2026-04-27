@@ -66,4 +66,14 @@ public interface CustomerRepository extends JpaRepository<Customer, Long> {
      */
     @Query(value = "SELECT pg_sleep(:seconds)", nativeQuery = true)
     void simulateSlowQuery(double seconds);
+
+    /**
+     * Intentionally bad SQL for chaos / observability demos. Hitting a
+     * non-existent table forces Postgres to reject the statement with a
+     * {@code DBAPIError} ; the service layer rethrows as a 500 so the
+     * SLO dashboards see a deliberate 5xx and the burn-rate alert can
+     * fire on demand. Mirrors the Python sibling's {@code _chaos_db_failure}.
+     */
+    @Query(value = "SELECT 1 FROM mirador_nonexistent_table_for_chaos", nativeQuery = true)
+    void simulateDbFailure();
 }

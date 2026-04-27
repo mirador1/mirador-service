@@ -84,6 +84,42 @@ class CustomerDiagnosticsControllerTest {
         assertThat(result).containsEntry("duration", "0.5s");
     }
 
+    // ── /db-failure ────────────────────────────────────────────────────────────
+
+    @Test
+    void dbFailure_delegatesToServiceAndPropagatesException() {
+        // The service throws DataAccessException when the bad SQL hits
+        // Postgres ; the controller is a thin pass-through. We verify
+        // both the delegation AND the exception surface so the
+        // framework's @ExceptionHandler can map it to a 500 ProblemDetail.
+        org.mockito.Mockito.doThrow(new org.springframework.dao.DataIntegrityViolationException(
+                "deliberate-chaos relation \"mirador_nonexistent_table_for_chaos\" does not exist"))
+                .when(service).simulateDbFailure();
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> controller.dbFailure())
+                .isInstanceOf(org.springframework.dao.DataAccessException.class)
+                .hasMessageContaining("nonexistent");
+
+        verify(service).simulateDbFailure();
+    }
+
+    // ── /kafka-timeout ─────────────────────────────────────────────────────────
+
+    @Test
+    void kafkaTimeout_returns504WithSyntheticBody() {
+        when(service.simulateKafkaTimeout()).thenReturn(Map.of(
+                "scenario", "kafka-timeout",
+                "synthetic", "true",
+                "detail", "504 — synthetic, no broker call"));
+
+        ResponseEntity<Map<String, String>> response = controller.kafkaTimeout();
+
+        assertThat(response.getStatusCode().value()).isEqualTo(504);
+        assertThat(response.getBody()).containsEntry("scenario", "kafka-timeout");
+        assertThat(response.getBody()).containsEntry("synthetic", "true");
+        verify(service).simulateKafkaTimeout();
+    }
+
     // ── /export ────────────────────────────────────────────────────────────────
 
     @Test

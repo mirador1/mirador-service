@@ -11,9 +11,11 @@ import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -105,6 +107,56 @@ public class CustomerDiagnosticsController {
         double capped = Math.min(seconds, 10);
         service.simulateSlowQuery(capped);
         return Map.of("status", "completed", "duration", capped + "s");
+    }
+
+    /**
+     * Triggers a deliberate database failure for chaos demos. Runs an
+     * intentionally-bad SQL statement (SELECT from a non-existent table)
+     * — Postgres rejects it, the framework maps the resulting
+     * DataAccessException to a 500 ProblemDetail. The dedicated URI
+     * lets the SLO dashboards annotate "db-failure" distinctly from
+     * "slow-query" or "kafka-timeout" via Prometheus
+     * {@code uri="/customers/db-failure"} filter.
+     *
+     * <p>Why a separate endpoint when the MCP {@code trigger_chaos_experiment}
+     * tool already does this : Prometheus annotations need a stable HTTP
+     * URI to filter on. The MCP tool calls go through {@code /mcp}, not
+     * the chaos URL, so they're invisible to the SLO dashboards. The
+     * dedicated endpoint gives the dashboards a distinct burn signal.
+     */
+    @Operation(summary = "Simulate a deliberate DB failure",
+            description = "Runs intentionally-bad SQL (SELECT from a non-existent table) — Postgres rejects it, "
+                    + "the framework returns a 500 ProblemDetail. Use this to exercise the availability SLO burn-rate "
+                    + "alert via a distinct `uri=/customers/db-failure` label.")
+    @ApiResponse(responseCode = "500", description = "DB rejected the bad SQL — ProblemDetail body.")
+    @PostMapping("/db-failure")
+    public Map<String, String> dbFailure() {
+        service.simulateDbFailure();
+        // Unreachable — simulateDbFailure always throws — but the
+        // method needs a return for the compiler.
+        return Map.of("scenario", "db-failure", "synthetic", "false");
+    }
+
+    /**
+     * Triggers a synthetic Kafka-timeout response. Returns 504 with a
+     * marker body — no actual broker call is made. The dedicated URI
+     * lets the SLO dashboards annotate "kafka-timeout" distinctly from
+     * the real {@code /customers/{id}/enrich} 504 path (which is on
+     * the enrichment SLO).
+     *
+     * <p>Mirrors the Python sibling's {@code _trigger_chaos_experiment}
+     * synthetic 504 — same shape so the demo behaves identically across
+     * backends.
+     */
+    @Operation(summary = "Simulate a Kafka timeout",
+            description = "Returns 504 with a synthetic marker body — no real broker call. Distinct "
+                    + "`uri=/customers/kafka-timeout` label for SLO annotation. Mirrors the synthetic "
+                    + "504 shape from the MCP `trigger_chaos_experiment` tool.")
+    @ApiResponse(responseCode = "504", description = "Synthetic timeout — no broker called.")
+    @PostMapping("/kafka-timeout")
+    public ResponseEntity<Map<String, String>> kafkaTimeout() {
+        Map<String, String> body = service.simulateKafkaTimeout();
+        return ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT).body(body);
     }
 
     /**
