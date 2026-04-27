@@ -2,6 +2,29 @@
 
 <sub>[English](README.md) · **Français**</sub>
 
+> **Ce que ce projet démontre comme maîtrise**
+>
+> _Un survol 30 secondes des thèmes centraux de la maîtrise backend actuelle —
+> chaque axe est vérifié à chaque tag `stable-v*`. Source de vérité pour
+> "ce que cette révision garantit" : `git show stable-vX.Y.Z`._
+>
+> - 🤖 **IA** — Spring AI 1.1.4 + LLM local Ollama (llama3.2) + 14 outils MCP en in-process (annotations `@Tool` par méthode, ADR-0062) + transport streamable-http compatible claude (`spring.ai.mcp.server.protocol=STREAMABLE`) + AI Observability (spans OTel `gen_ai.*` → Tempo) + log d'audit par appel d'outil.
+> - 🔒 **Sécurité** — JWT HS256 (15 min, rotation refresh-token) + X-API-Key statique en repli + OAuth2/OIDC (Auth0 prod / Keycloak dev) + RBAC (`ROLE_ADMIN` / `ROLE_USER`) + rate-limit Bucket4j (100 req/min/IP) + IdempotencyFilter (POST/PATCH) + SecurityHeadersFilter (CSP/HSTS/X-Frame-Options) + portails sécurité par MR : grype + trivy + cosign sign+verify + dockle + OWASP dependency-check + secret-detection + semgrep-sast — tous verts.
+> - 🧠 **Fonctionnel** — Onboarding & enrichissement client (génération de bio par Spring AI Ollama, observable via spans `gen_ai.*`) + domaine Order / Product / OrderLine (6 invariants vérifiés via tests de propriétés `jqwik`, gates JaCoCo par paquet) + endpoints Chaos Mesh (`/customers/diagnostic/{slow-query, db-failure, kafka-timeout}`).
+> - ☁️ **Infrastructure & Cloud** — Cluster GKE de production `mirador-prod` (europe-west1) + IaC Terraform + cibles de déploiement multi-cloud (AKS, EKS, Cloud Run, Fly.io — jobs manuels CI) + cert-manager + ingress-nginx + GitOps Argo CD + pattern éphémère (ADR-0022) ciblant ≤ 2 €/mois en idle + Workload Identity Federation (zéro clé JSON de service account) + alertes budget via `bin/budget/budget.sh`.
+> - 📊 **Observabilité** — Traces + logs + métriques OpenTelemetry → stack LGTM (Tempo / Loki / Mimir / Grafana) + 3 SLOs as code via Sloth (disponibilité / latence / enrichissement) + alerting multi-burn-rate + 4 dashboards (vue d'ensemble SLO, Apdex, heatmap latence, breakdown par endpoint) + annotations chaos-driven sur les SLO + 3 runbooks (slo-availability, slo-latency, slo-enrichment) + cadence de revue mensuelle documentée.
+> - ✅ **Qualité** — Coverage JaCoCo unit+IT mergée à 70 % min + gates par paquet sur `com.mirador.{order,product}` + tests de mutation PIT + quality gate SonarCloud + lint OpenAPI 3.1 Spectral + hadolint + Checkstyle + SpotBugs + findsecbugs + tests de propriétés jqwik + tests d'intégration Testcontainers (Postgres + Kafka + Redis).
+> - 🔄 **CI/CD** — GitLab CI 19+ jobs sur `lint / test / integration / k8s / package / sonar / native / compat / deploy` + matrice de compat SB3/SB4 × Java17/21/25 (5 combos) + Conventional Commits enforced (Lefthook + commitlint) + auto-merge avec `--remove-source-branch=false` + cosign sign+verify + SBOM (syft) + Renovate hebdo + allowlist `changes:` du workflow.
+> - 🏛 **Architecture** — Hexagonal Lite (ADR-0044, `port/` uniquement quand le couplage cross-feature émerge) + Feature-slicing (ADR-0008, `com.mirador.{customer, order, product, mcp, …}`) + sous-modules polyrepo flat α (ADR-0060) + exposition MCP `@Tool` par méthode (ADR-0062, règle "produces vs accesses") + 7 non-négociables Clean Code (binding, audités dans `docs/audit/clean-code-architecture-*.md`) + 60+ ADR.
+> - 🛠 **DevX** — Renovate hebdo + hooks Lefthook commit-msg + pre-push + `bin/dev/stability-check.sh` (gate complet sectionné) + dispatcher `./run.sh` (28 cas : `app`, `db`, `obs`, `kafka`, `k8s-local`, `clean`, `nuke`, …) + `bin/dev/api-smoke.sh` (flows Hurl) + `bin/budget/*` discipline coût + tâches programmées pour TODO datés (ex. revisite CVE mcp-core 2026-05-26) + ADR drift checker + template CI Conventional Commits (partagé via `infra/common/`).
+
+<!-- NOTE 2026-04-27 : ce README.fr.md est en retard sur la version anglaise
+     (1118 lignes EN vs 342 lignes FR — la majorité du corps EN n'est pas
+     encore traduite). Le bloc "Ce que ce projet démontre comme maîtrise"
+     ci-dessus est synchronisé. Le reste du fichier reflète encore la
+     structure pré-2026-04-25, à resynchroniser dans une session de
+     traduction dédiée (tracé dans TASKS.md). -->
+
 <!-- Bandeau de badges : 8 essentiels en haut. Couverture techno exhaustive
      plus bas dans la section "Couverture technologique". -->
 [![pipeline](https://gitlab.com/mirador1/mirador-service-java/badges/main/pipeline.svg)](https://gitlab.com/mirador1/mirador-service-java/-/pipelines)
