@@ -1,5 +1,32 @@
 {
-  "annotations": {"list": []},
+  "annotations": {
+    "list": [
+      {
+        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "enable": true,
+        "iconColor": "rgba(255, 96, 0, 0.9)",
+        "name": "Chaos — slow-query",
+        "expr": "changes(http_server_requests_seconds_count{job=\"mirador-service\",uri=\"/customers/slow-query\"}[1m]) > 0",
+        "step": "1m",
+        "tagKeys": "uri",
+        "titleFormat": "Chaos: slow-query",
+        "textFormat": "Synthetic latency injection — overlay shows distribution shift.",
+        "useValueForTime": false
+      },
+      {
+        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "enable": true,
+        "iconColor": "rgba(108, 117, 125, 0.9)",
+        "name": "Chaos — kafka-timeout (504)",
+        "expr": "changes(http_server_requests_seconds_count{job=\"mirador-service\",uri=~\".*/enrich.*\",status=\"504\"}[1m]) > 0",
+        "step": "1m",
+        "tagKeys": "uri,status",
+        "titleFormat": "Chaos: enrichment 504",
+        "textFormat": "Kafka request-reply timed out — pushes p99 above 500ms threshold.",
+        "useValueForTime": false
+      }
+    ]
+  },
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,

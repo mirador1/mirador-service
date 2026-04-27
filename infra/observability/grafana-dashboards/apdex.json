@@ -1,5 +1,32 @@
 {
-  "annotations": {"list": []},
+  "annotations": {
+    "list": [
+      {
+        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "enable": true,
+        "iconColor": "rgba(255, 96, 0, 0.9)",
+        "name": "Chaos — slow-query",
+        "expr": "changes(http_server_requests_seconds_count{job=\"mirador-service\",uri=\"/customers/slow-query\"}[1m]) > 0",
+        "step": "1m",
+        "tagKeys": "uri",
+        "titleFormat": "Chaos: slow-query",
+        "textFormat": "Synthetic latency — drops Apdex toward tolerating/frustrated.",
+        "useValueForTime": false
+      },
+      {
+        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "enable": true,
+        "iconColor": "rgba(220, 53, 69, 0.9)",
+        "name": "Chaos — 5xx burst",
+        "expr": "changes(http_server_requests_seconds_count{job=\"mirador-service\",uri=~\"/customers.*\",status=~\"5..\"}[1m]) > 0",
+        "step": "1m",
+        "tagKeys": "uri,status",
+        "titleFormat": "Chaos: 5xx burst",
+        "textFormat": "Server errors — counted as frustrated requests in Apdex.",
+        "useValueForTime": false
+      }
+    ]
+  },
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,

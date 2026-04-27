@@ -5,47 +5,31 @@ here ; done items removed (use `git tag -l` for history).
 
 ---
 
-## 📊 SLO/SLA backlog (post Quick wins ADR-0058)
+## 📊 SLO/SLA backlog (post Quick wins ADR-0058 + iteration 2)
 
 Quick wins SHIPPED 2026-04-25 : 3 SLOs as code (Sloth) + multi-burn-rate
-alerting + Grafana SLO dashboard + ADR-0058 + sla.md. Below = next iterations.
+alerting + Grafana SLO dashboard + ADR-0058 + sla.md.
 
-- 🟢 **Dashboard "SLO breakdown by endpoint"** : current dashboard is
-  service-wide. Add a panel sliced by `uri` to identify which endpoints
-  contribute most to the budget burn. When SLO breaches happen — answers
-  "which endpoint is dragging us down ?".
+Iteration 2 SHIPPED 2026-04-27 : SLO breakdown by endpoint dashboard,
+latency heatmap dashboard, Apdex dashboard, 3 runbooks (availability /
+latency / enrichment), chaos-driven Grafana annotations on all 3
+repo-local SLO dashboards, Java-specific review-cadence addendum.
 
-- 🟢 **Chaos-driven SLO demo** : wire `/customers/diagnostic/{slow-query,
-  db-failure,kafka-timeout}` to intentionally burn budget for demo
-  purposes. A "demo mode" Grafana annotation that overlays the burn rate
-  timeseries with the chaos test markers. Sells the observability story
-  in 30 seconds.
-
-- 🟢 **Runbook section "What to do when SLO breached"** :
-  `docs/runbooks/slo-availability.md`, `slo-latency.md`, `slo-enrichment.md`
-  (URLs already referenced in `slo.yaml` annotations). Each : symptoms,
-  first investigation steps, common root causes, escalation path,
-  rollback procedure. Currently empty — links 404 on Alertmanager.
-
-- 🟢 **Latency heatmap par endpoint** : Grafana panel using
-  `http_server_requests_seconds_bucket` series, x=time × y=latency-bucket,
-  color=request count. Shows tail-latency distribution in one glance —
-  complement to p99 SLO compliance.
-
-- 🟢 **Apdex score dashboard** : add `Apdex(0.5s, 2s)` calculation to the
-  SLO dashboard. Apdex = (satisfied + tolerating/2) / total. Single number
-  that captures "user satisfaction" — easier to communicate to non-SRE
-  stakeholders than 3 separate SLOs.
+Remaining :
 
 - 🟢 **RTO/RPO measurement via chaos** : kill DB pod → measure
   time-to-recovery (RTO) + lost-transaction count (RPO). Chaos Mesh
   scenario already exists ; needs a results dashboard + pass/fail
-  threshold based on the SLA's documented RTO/RPO.
+  threshold based on the SLA's documented RTO/RPO. Deferred from
+  iteration 2 (needs working Chaos Mesh + DB pod, complex setup).
 
-- 🟢 **Monthly SLO review meeting cadence** : document in
-  `docs/slo/review-cadence.md`. What to bring (compliance %, top burn
-  contributors, capacity changes, deploy correlation), who attends,
-  what's the output (tighten/relax SLO, error budget policy update).
+- 🟢 **Dedicated chaos endpoints** : iteration 2 wired annotations
+  to existing `/customers/slow-query` + symptom-based 5xx/504
+  detectors. To get distinct annotations for `db-failure` vs
+  `kafka-timeout` vs `slow-query`, add explicit endpoints to
+  `CustomerDiagnosticsController` (or a new `ChaosController`) and
+  update annotation `expr` to filter on the new `uri` values. Source
+  changes required, hence deferred.
 
 ## 🎨 README polish (post 2026-04-25 review)
 
