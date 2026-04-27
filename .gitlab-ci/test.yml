@@ -13,14 +13,39 @@ unit-test:
     # surefire-report:report-only removed — it requires maven-site skin config which GitLab
     # runners don't have. GitLab reads JUnit XML directly from target/surefire-reports/*.xml.
     - mvn $MAVEN_CLI_OPTS test
+    # Print a "Total X.XX% covered" line that the job's coverage: regex below
+    # picks up — populates the % shown on the MR widget and the "Coverage"
+    # column in the pipeline view. JaCoCo Maven plugin does NOT print a
+    # console summary by default, so we synthesise it from jacoco.csv (the
+    # plugin emits it alongside the HTML/XML reports during the `report` goal).
+    - |
+      awk -F',' 'NR>1 {miss+=$4; cov+=$5} END {if (miss+cov>0) printf "Total %.2f%% covered\n", cov*100/(miss+cov)}' \
+        target/site/jacoco/jacoco.csv
+    # Convert JaCoCo XML to Cobertura XML so GitLab can render the per-file
+    # delta annotation in MR diff views ("X% of new lines covered" + green/red
+    # gutter marks). GitLab's `coverage_report:` parser supports only Cobertura
+    # as of 2026-04 (no JaCoCo importer). Pure-stdlib Python — no extra deps
+    # to install. `|| true` so a test failure doesn't double-fail on a missing
+    # XML when the JaCoCo report goal didn't run.
+    - python3 bin/ci/jacoco-to-cobertura.py target/site/jacoco/jacoco.xml target/site/jacoco/cobertura.xml || true
+  # GitLab parses this regex against the job log; the captured group becomes
+  # the job's coverage percentage. Matches the synthesised "Total 81.85% covered"
+  # line emitted just before artifact upload above.
+  coverage: '/Total\s+([0-9]{1,3}\.[0-9]+)%/'
   artifacts:
     when: always    # upload even on test failure so the JUnit report is always available for diagnosis
     reports:
       junit: target/surefire-reports/*.xml    # populates the "Tests" tab in the MR and pipeline view
+      # Per-file coverage annotation in the MR diff view. Sourced from the
+      # JaCoCo→Cobertura conversion done in the script step above. Skipped
+      # silently if the file is missing (e.g. test phase failed before report).
+      coverage_report:
+        coverage_format: cobertura
+        path: target/site/jacoco/cobertura.xml
     paths:
       - target/jacoco.exec      # binary coverage data — forwarded to integration-test for JaCoCo merge
-      - target/site/jacoco/     # HTML unit coverage report (browsable in the job artifacts panel)
-    expire_in: 1 week    # short-lived: only needed until the integration job completes and the MR is merged
+      - target/site/jacoco/     # HTML unit coverage report — browsable on the job artifacts panel
+    expire_in: 7 days    # bounded storage: HTML report is only useful until the MR merges
 
 # GitLab SAST — static application security testing.
 # Runs semgrep rules against the source code to detect: injection flaws,
