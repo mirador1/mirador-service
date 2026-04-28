@@ -53,22 +53,6 @@ sonar-analysis:
       artifacts: true
       optional: true
   rules:
-    # 2026-04-28 (Iris rebrand) — TEMPORARILY SCOPED OUT until the
-    # `iris-7` org is created on SonarCloud. pom.xml now uses
-    # sonar.organization=iris-7 and sonar.projectKey=iris-7_iris-service-java
-    # but the org doesn't exist yet on sonarcloud.io (verified via
-    # GET /api/organizations/search?organizations=iris-7 → empty).
-    # User action required : create the `iris-7` organization on
-    # SonarCloud (Account → Organizations → Create), then either :
-    #   (a) re-import the project under iris-7 with key
-    #       `iris-7_iris-service-java`, or
-    #   (b) accept that historical trend (coverage delta, quality
-    #       gate ageing) restarts from this rebrand.
-    # Then remove the `- when: never` line below to re-enable the
-    # main-branch analysis.
-    # TODO remove by 2026-05-15 — SonarCloud iris-7 org creation pending.
-    - when: never
-    # ↓ Original rules (re-enable after SonarCloud org creation)
     # MAIN ONLY — SonarCloud free tier does NOT support PR/MR analysis
     # (the "Project not found" error you see if you try). Branch+MR
     # decoration requires the paid Developer Edition.
