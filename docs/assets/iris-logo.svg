@@ -22,7 +22,14 @@
       <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
     </linearGradient>
   </defs>
-  <rect width="512" height="512" fill="url(#logo-bg)"/>
+  <!-- Background rect REMOVED 2026-04-28 per user request — transparent bg
+       adapts to GitLab dark/light themes (group + project icons). The
+       diaphragm's central inner circle (r=91, fill=#0a0a14) keeps a
+       contained dark frame for the wedges, so removing the outer rect
+       doesn't lose contrast on light backgrounds. The `logo-bg` gradient
+       def above is kept for non-icon uses that want the dark backdrop. -->
+  <!-- <rect width="512" height="512" fill="url(#logo-bg)"/> -->
+
 
   <!-- Iris diaphragm centered + scaled 2.5× from the banner version (icon was
        95px radius at viewBox 1200×280 ; here viewBox is 512×512 so we want
