@@ -200,8 +200,15 @@
             bootstrap classes and observability infrastructure that have no business logic.
         -->
         <sonar.host.url>https://sonarcloud.io</sonar.host.url>
-        <sonar.organization>iris-7</sonar.organization>
-        <sonar.projectKey>iris-7_iris-service</sonar.projectKey>
+        <!-- SonarCloud org kept on the legacy 'mirador1' name post-Iris-rebrand
+             2026-04-28 : the org rename on sonarcloud.io is a manual user action
+             and we want to preserve the historical analysis (quality gate trend,
+             coverage history, issue ageing) which is tied to the project key.
+             If you rename the org on SonarCloud later, update both lines here
+             AND the in-house mirror at .gitlab-ci/quality.yml's sonar-analysis
+             job — keep them in sync. -->
+        <sonar.organization>mirador1</sonar.organization>
+        <sonar.projectKey>mirador1_mirador-service</sonar.projectKey>
         <sonar.projectName>Iris Service</sonar.projectName>
         <sonar.coverage.jacoco.xmlReportPaths>
             ${project.reporting.outputDirectory}/jacoco/jacoco.xml,

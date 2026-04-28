@@ -53,18 +53,21 @@ sonar-analysis:
       artifacts: true
       optional: true
   rules:
-    # 2026-04-28 (Iris rebrand) — TEMPORARILY SCOPED OUT until the
-    # SonarCloud organization is renamed from `mirador1` to `iris-7`.
-    # Pipeline #969 failed with:
-    #   Error 404 on https://api.sonarcloud.io/analysis/analyses :
-    #   {"errors":[{"msg":"Organization key 'iris-7' does not exist."}]}
-    # User action required : SonarCloud → Account → Organizations → rename
-    # the `mirador1` org to `iris-7` (or update pom.xml's
-    # sonar.organization back to `mirador1` if you prefer to keep the
-    # old SonarCloud naming).
-    # TODO remove by 2026-05-15 — SonarCloud org rename pending.
-    - when: never
-    # ↓ Original rules (re-enable after SonarCloud org rename)
+    # 2026-04-28 (Iris rebrand) — pom.xml's sonar.organization reverted to
+    # `mirador1` to preserve historical Sonar analysis (quality gate trend,
+    # coverage history). The legacy SonarCloud org/project key are kept
+    # because :
+    #   1. Renaming an org on SonarCloud is a manual user action.
+    #   2. Re-creating the project loses the trend data (quality gate
+    #      ageing, coverage delta, issue first-seen timestamps).
+    #   3. The Sonar key is just a string, decoupled from the GitLab path.
+    # If a future rev wants to fully consolidate under iris-7 :
+    #   (a) create the iris-7 org on SonarCloud
+    #   (b) update both pom.xml's <sonar.organization> + <sonar.projectKey>
+    #   (c) update this comment block
+    # Shield removed 2026-04-28 — the analysis hits the existing mirador1
+    # org/project successfully.
+    #
     # MAIN ONLY — SonarCloud free tier does NOT support PR/MR analysis
     # (the "Project not found" error you see if you try). Branch+MR
     # decoration requires the paid Developer Edition.
