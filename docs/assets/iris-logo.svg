@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Iris — robot diaphragm logo, 7 facets">
+  <defs>
+    <radialGradient id="logo-bg" cx="50%" cy="50%" r="60%">
+      <stop offset="0%" stop-color="#0a0a14"/>
+      <stop offset="100%" stop-color="#000000"/>
+    </radialGradient>
+    <linearGradient id="rim-light" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#cbd5e1" stop-opacity="0.6"/>
+      <stop offset="50%" stop-color="#1e293b" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#cbd5e1" stop-opacity="0.5"/>
+    </linearGradient>
+    <radialGradient id="sensor-glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="60%" stop-color="#7ddffe" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#7ddffe" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="glass-refract-progressive" x1="0" y1="0.5" x2="1" y2="0">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.5"/>
+      <stop offset="22%" stop-color="#ffffff" stop-opacity="0.32"/>
+      <stop offset="48%" stop-color="#ffffff" stop-opacity="0.16"/>
+      <stop offset="75%" stop-color="#ffffff" stop-opacity="0.05"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#logo-bg)"/>
+
+  <!-- Iris diaphragm centered + scaled 2.5× from the banner version (icon was
+       95px radius at viewBox 1200×280 ; here viewBox is 512×512 so we want
+       the icon ~220px radius for a comfortable square logo with breathing). -->
+  <g transform="translate(256 256) scale(2.45)">
+    <!-- Outer scope ring -->
+    <circle r="100" fill="none" stroke="#34d4d4" stroke-width="0.6" opacity="0.5"/>
+
+    <!-- Lens barrel rings -->
+    <circle r="95" fill="none" stroke="url(#rim-light)" stroke-width="2"/>
+    <circle r="91" fill="#0a0a14" stroke="#1e293b" stroke-width="1"/>
+    <circle r="88" fill="none" stroke="#475569" stroke-width="0.5" opacity="0.6"/>
+
+    <!-- 16 tick marks -->
+    <g stroke="#7ddffe" stroke-width="0.7" opacity="0.6">
+      <g><line x1="0" y1="-100" x2="0" y2="-94"/></g>
+      <g transform="rotate(22.5)"><line x1="0" y1="-100" x2="0" y2="-94"/></g>
+      <g transform="rotate(45)"><line x1="0" y1="-100" x2="0" y2="-94"/></g>
+      <g transform="rotate(67.5)"><line x1="0" y1="-100" x2="0" y2="-94"/></g>
+      <g transform="rotate(90)"><line x1="0" y1="-100" x2="0" y2="-94"/></g>
+      <g transform="rotate(112.5)"><line x1="0" y1="-100" x2="0" y2="-94"/></g>
+      <g transform="rotate(135)"><line x1="0" y1="-100" x2="0" y2="-94"/></g>
+      <g transform="rotate(157.5)"><line x1="0" y1="-100" x2="0" y2="-94"/></g>
+      <g transform="rotate(180)"><line x1="0" y1="-100" x2="0" y2="-94"/></g>
+      <g transform="rotate(202.5)"><line x1="0" y1="-100" x2="0" y2="-94"/></g>
+      <g transform="rotate(225)"><line x1="0" y1="-100" x2="0" y2="-94"/></g>
+      <g transform="rotate(247.5)"><line x1="0" y1="-100" x2="0" y2="-94"/></g>
+      <g transform="rotate(270)"><line x1="0" y1="-100" x2="0" y2="-94"/></g>
+      <g transform="rotate(292.5)"><line x1="0" y1="-100" x2="0" y2="-94"/></g>
+      <g transform="rotate(315)"><line x1="0" y1="-100" x2="0" y2="-94"/></g>
+      <g transform="rotate(337.5)"><line x1="0" y1="-100" x2="0" y2="-94"/></g>
+    </g>
+
+    <!-- 7 spectrum blades with refract gradient -->
+    <g stroke="#000000" stroke-width="0.4">
+      <g transform="rotate(-90)">
+        <path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="#ff2d20" opacity="0.55"/>
+        <path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="url(#glass-refract-progressive)"/>
+      </g>
+      <g transform="rotate(-38.57)">
+        <path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="#ff9500" opacity="0.55"/>
+        <path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="url(#glass-refract-progressive)"/>
+      </g>
+      <g transform="rotate(12.86)">
+        <path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="#ffcc00" opacity="0.55"/>
+        <path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="url(#glass-refract-progressive)"/>
+      </g>
+      <g transform="rotate(64.29)">
+        <path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="#34c759" opacity="0.55"/>
+        <path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="url(#glass-refract-progressive)"/>
+      </g>
+      <g transform="rotate(115.72)">
+        <path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="#30c9d4" opacity="0.55"/>
+        <path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="url(#glass-refract-progressive)"/>
+      </g>
+      <g transform="rotate(167.15)">
+        <path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="#007aff" opacity="0.55"/>
+        <path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="url(#glass-refract-progressive)"/>
+      </g>
+      <g transform="rotate(218.58)">
+        <path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="#af52de" opacity="0.55"/>
+        <path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="url(#glass-refract-progressive)"/>
+      </g>
+    </g>
+
+    <!-- Crosshair reticle -->
+    <g stroke="#7ddffe" stroke-width="0.5" opacity="0.5">
+      <line x1="-90" y1="0" x2="-22" y2="0"/>
+      <line x1="22" y1="0" x2="90" y2="0"/>
+      <line x1="0" y1="-90" x2="0" y2="-22"/>
+      <line x1="0" y1="22" x2="0" y2="90"/>
+    </g>
+
+    <!-- Heptagonal aperture -->
+    <polygon points="0,-12 10.78,-5.16 10.78,5.16 0,12 -10.78,5.16 -10.78,-5.16 -5.39,-10.71"
+      fill="#000000"/>
+
+    <!-- Sensor glow + active dot -->
+    <circle r="9" fill="url(#sensor-glow)"/>
+    <circle r="2.5" fill="#ffffff"/>
+    <circle r="1" fill="#7ddffe"/>
+  </g>
+</svg>
