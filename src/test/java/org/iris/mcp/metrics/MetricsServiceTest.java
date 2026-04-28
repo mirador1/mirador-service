@@ -116,4 +116,87 @@ class MetricsServiceTest {
         List<MetricSnapshot> result = service.getMetrics("test\\.cap\\..*", null);
         assertThat(result).hasSize(MetricsService.MAX_RESULTS);
     }
+
+    @Test
+    void timeGaugePrimaryValueIsTheConvertedDuration() {
+        // TimeGauge is the meter type Spring Boot uses for things like
+        // "process.start.time". Pinned : the snapshot value is the
+        // base-unit-converted-to-seconds reading.
+        java.util.concurrent.atomic.AtomicLong ref =
+                new java.util.concurrent.atomic.AtomicLong(2_000); // 2000ms
+        io.micrometer.core.instrument.TimeGauge.builder(
+                "uptime",
+                ref,
+                java.util.concurrent.TimeUnit.MILLISECONDS,
+                java.util.concurrent.atomic.AtomicLong::doubleValue
+        ).register(registry);
+
+        List<MetricSnapshot> result = service.getMetrics("^uptime$", null);
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).type()).isEqualTo("GAUGE");
+        // SimpleMeterRegistry reports a TimeGauge as a regular gauge with
+        // the converted value ; the service's switch hits the TimeGauge
+        // case and returns 2000ms = 2.0s.
+        assertThat(result.get(0).value()).isEqualTo(2.0);
+    }
+
+    @Test
+    void distributionSummaryPrimaryValueIsMean() {
+        io.micrometer.core.instrument.DistributionSummary summary =
+                io.micrometer.core.instrument.DistributionSummary
+                        .builder("payload.size.bytes")
+                        .register(registry);
+        summary.record(100);
+        summary.record(300);
+
+        List<MetricSnapshot> result = service.getMetrics("^payload\\.size\\.bytes$", null);
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).type()).isEqualTo("DISTRIBUTION_SUMMARY");
+        assertThat(result.get(0).value()).isEqualTo(200.0);
+    }
+
+    @Test
+    void longTaskTimerPrimaryValueIsActiveTasks() {
+        io.micrometer.core.instrument.LongTaskTimer ltt =
+                io.micrometer.core.instrument.LongTaskTimer.builder("ingest.job.active")
+                        .register(registry);
+        // Start two concurrent tasks → activeTasks() = 2.
+        var s1 = ltt.start();
+        var s2 = ltt.start();
+
+        List<MetricSnapshot> result = service.getMetrics("^ingest\\.job\\.active$", null);
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).type()).isEqualTo("LONG_TASK_TIMER");
+        assertThat(result.get(0).value()).isEqualTo(2.0);
+
+        s1.stop();
+        s2.stop();
+    }
+
+    @Test
+    void emptyMeterFallbackPath_yieldsNaN() {
+        // Custom non-standard Meter type → switch falls through to the
+        // default (firstMeasurement). With an empty measurements iterator,
+        // the value is NaN per the documented fallback contract.
+        io.micrometer.core.instrument.Meter custom = io.micrometer.core.instrument.Meter
+                .builder("custom.no.measurements", io.micrometer.core.instrument.Meter.Type.OTHER, List.of())
+                .register(registry);
+        assertThat(custom).isNotNull();
+
+        List<MetricSnapshot> result = service.getMetrics("^custom\\.no\\.measurements$", null);
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).type()).isEqualTo("OTHER");
+        assertThat(Double.isNaN(result.get(0).value())).isTrue();
+    }
+
+    @Test
+    void nameFilterUsesFindNotFullMatch() {
+        // Pinned : the matcher uses .find() not .matches() so an
+        // unanchored pattern still works ("requests" matches
+        // "http.server.requests"). This is the practical behaviour an
+        // LLM expects when it types a substring instead of a full regex.
+        registry.counter("http.server.requests");
+        List<MetricSnapshot> result = service.getMetrics("requests", null);
+        assertThat(result).hasSize(1);
+    }
 }
