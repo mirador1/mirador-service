@@ -61,9 +61,16 @@ set -euo pipefail
 
 # ── Locate the two repos (this script lives in svc) ─────────────────────────
 SVC_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
-UI_DIR="$(cd "$SVC_DIR/../../js/mirador-ui" 2>/dev/null && pwd || echo "")"
+# Try the new flat layout first (~/dev/mirador/mirador-ui, post-2026-04-26 migration),
+# fall back to the old workspace-modern layout for backward compatibility.
+UI_DIR="$(cd "$SVC_DIR/../mirador-ui" 2>/dev/null && pwd || echo "")"
 if [[ -z "$UI_DIR" || ! -d "$UI_DIR" ]]; then
-  echo "✗ UI repo not found at expected sibling path ($SVC_DIR/../../js/mirador-ui)"
+  UI_DIR="$(cd "$SVC_DIR/../../js/mirador-ui" 2>/dev/null && pwd || echo "")"
+fi
+if [[ -z "$UI_DIR" || ! -d "$UI_DIR" ]]; then
+  echo "✗ UI repo not found — tried both:"
+  echo "    $SVC_DIR/../mirador-ui            (new flat layout)"
+  echo "    $SVC_DIR/../../js/mirador-ui      (old workspace-modern layout)"
   echo "  Update SVC_DIR/UI_DIR resolution at the top of this script."
   exit 2
 fi
