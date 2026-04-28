@@ -53,14 +53,21 @@ sonar-analysis:
       artifacts: true
       optional: true
   rules:
+    # 2026-04-28 (Iris rebrand) — TEMPORARILY SCOPED OUT until the
+    # SonarCloud organization is renamed from `mirador1` to `iris-7`.
+    # Pipeline #969 failed with:
+    #   Error 404 on https://api.sonarcloud.io/analysis/analyses :
+    #   {"errors":[{"msg":"Organization key 'iris-7' does not exist."}]}
+    # User action required : SonarCloud → Account → Organizations → rename
+    # the `mirador1` org to `iris-7` (or update pom.xml's
+    # sonar.organization back to `mirador1` if you prefer to keep the
+    # old SonarCloud naming).
+    # TODO remove by 2026-05-15 — SonarCloud org rename pending.
+    - when: never
+    # ↓ Original rules (re-enable after SonarCloud org rename)
     # MAIN ONLY — SonarCloud free tier does NOT support PR/MR analysis
     # (the "Project not found" error you see if you try). Branch+MR
-    # decoration requires the paid Developer Edition. Keeping the MR
-    # rule was masked for months by `allow_failure: true` (now removed
-    # 2026-04-21); see [pipeline #570 sonar-analysis trace](https://gitlab.com/iris-7/iris-service-java/-/jobs/14011853839)
-    # for the failure shape. Main-branch analysis is the source of
-    # truth for the SonarCloud quality gate; per-MR feedback comes
-    # from `code-quality` (PMD/Checkstyle/SpotBugs annotations).
+    # decoration requires the paid Developer Edition.
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
     # Skip entirely if SONAR_TOKEN is not configured (avoids failing new environments)
     - if: '$SONAR_TOKEN == null || $SONAR_TOKEN == ""'
