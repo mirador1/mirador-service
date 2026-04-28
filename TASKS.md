@@ -22,13 +22,19 @@ Iteration 3 SHIPPED 2026-04-27 :
   filters + 4th 'Real 5xx (catch-all)' annotation
   ([!235](https://gitlab.com/mirador1/mirador-service-java/-/merge_requests/235))
 
+RTO measured 2026-04-28 :
+- ✅ **RTO** : 7 seconds for postgres pod-kill on GKE Autopilot
+  (chaos scenario + measurement procedure documented in
+  [shared/docs/runbooks/rto-rpo-measurement.md](https://gitlab.com/mirador1/mirador-service-shared/-/blob/main/docs/runbooks/rto-rpo-measurement.md),
+  shared [!8](https://gitlab.com/mirador1/mirador-service-shared/-/merge_requests/8)).
+  Comfortably beats the 30s SLA target.
+
 Remaining :
 
-- 🟢 **RTO/RPO measurement via chaos** : kill DB pod → measure
-  time-to-recovery (RTO) + lost-transaction count (RPO). Chaos Mesh
-  scenario already exists ; needs a results dashboard + pass/fail
-  threshold based on the SLA's documented RTO/RPO. Deferred (needs
-  working Chaos Mesh + DB pod, complex setup).
+- 🟢 **RPO measurement** : same procedure but with steady-state write
+  traffic during the chaos window (k6 at 50 req/s POSTing /customers,
+  count post-recovery `SELECT id FROM customer WHERE id IN (...)`
+  holes). Needs the Java app deployed alongside postgres.
 
 ## 🎨 README polish
 
