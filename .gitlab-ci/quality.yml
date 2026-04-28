@@ -57,7 +57,7 @@ sonar-analysis:
     # (the "Project not found" error you see if you try). Branch+MR
     # decoration requires the paid Developer Edition. Keeping the MR
     # rule was masked for months by `allow_failure: true` (now removed
-    # 2026-04-21); see [pipeline #570 sonar-analysis trace](https://gitlab.com/mirador1/mirador-service/-/jobs/14011853839)
+    # 2026-04-21); see [pipeline #570 sonar-analysis trace](https://gitlab.com/iris-7/iris-service-java/-/jobs/14011853839)
     # for the failure shape. Main-branch analysis is the source of
     # truth for the SonarCloud quality gate; per-MR feedback comes
     # from `code-quality` (PMD/Checkstyle/SpotBugs annotations).
@@ -71,7 +71,7 @@ sonar-analysis:
   # to re-run later rather than silently merging without a fresh quality
   # scan. The MR-rule removal above eliminated the "Project not found"
   # 404 that was failing every MR pipeline — investigated 2026-04-21
-  # via [pipeline #570](https://gitlab.com/mirador1/mirador-service/-/pipelines/2467312321).
+  # via [pipeline #570](https://gitlab.com/iris-7/iris-service-java/-/pipelines/2467312321).
   cache:
     key: "$CI_COMMIT_REF_SLUG"
     paths:

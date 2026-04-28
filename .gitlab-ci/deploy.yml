@@ -198,7 +198,7 @@ terraform-apply:
         # or a different branch (e.g. a fork's fly branch), verify fails
         # and the deploy aborts — which is what we want.
         COSIGN_EXPERIMENTAL=1 cosign verify \
-          --certificate-identity-regexp "^https://gitlab\.com/mirador1/mirador-service//\.gitlab-ci\.yml@refs/" \
+          --certificate-identity-regexp "^https://gitlab\.com/iris-7/iris-service-java//\.gitlab-ci\.yml@refs/" \
           --certificate-oidc-issuer "https://gitlab.com" \
           "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA" \
           > /tmp/cosign-verify.json
