@@ -41,10 +41,19 @@ class BioServiceTest {
     void generateBio_callsChatClientAndReturnsContent() {
         ChatClientRequestSpec requestSpec = mock(ChatClientRequestSpec.class);
         CallResponseSpec callResponseSpec = mock(CallResponseSpec.class);
+        ChatClient.PromptUserSpec userSpec = mock(ChatClient.PromptUserSpec.class);
 
         when(chatClient.prompt()).thenReturn(requestSpec);
-        // user(Consumer<PromptUserSpec>) overload — explicit cast avoids ambiguity
-        when(requestSpec.user(any(Consumer.class))).thenReturn(requestSpec);
+        // Invoke the consumer so the lambda body (text + param + param)
+        // is actually exercised — JaCoCo otherwise reports the lambda as
+        // missed even when generateBio() succeeds.
+        when(requestSpec.user(any(Consumer.class))).thenAnswer(inv -> {
+            Consumer<ChatClient.PromptUserSpec> consumer = inv.getArgument(0);
+            consumer.accept(userSpec);
+            return requestSpec;
+        });
+        when(userSpec.text(any(String.class))).thenReturn(userSpec);
+        when(userSpec.param(any(String.class), any())).thenReturn(userSpec);
         when(requestSpec.call()).thenReturn(callResponseSpec);
         when(callResponseSpec.content()).thenReturn("Alice is a software engineer.");
 
@@ -52,6 +61,9 @@ class BioServiceTest {
         String bio = service.generateBio(customer);
 
         assertThat(bio).isEqualTo("Alice is a software engineer.");
+        // Verify the named parameters reached the prompt template.
+        org.mockito.Mockito.verify(userSpec).param("name", "Alice");
+        org.mockito.Mockito.verify(userSpec).param("email", "alice@example.com");
     }
 
     @Test
