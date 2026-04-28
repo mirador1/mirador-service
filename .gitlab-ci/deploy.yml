@@ -57,25 +57,26 @@
 # Output is stored as an artifact so terraform-apply can use it.
 terraform-plan:
   extends: .terraform-base
-  # Shield removed 2026-04-21 — replaced with a `when: never` rule when
-  # `TF_STATE_BUCKET` is unset (same pattern as `sonar-analysis` after
-  # the SonarCloud free-tier-MR-analysis fix). The job was failing
-  # 5/5 on main + 5/5 on MR with "bucket doesn't exist", silently
-  # tolerated by the shield, polluting every pipeline view with red
-  # squares. Per ADR-0022 the project deliberately doesn't provision
-  # a permanent GCS state bucket (ephemeral demo cluster pattern), so
-  # `TF_STATE_BUCKET` is not set in CI variables — and trying to run
-  # `terraform init` against an empty backend config fails 100%. The
-  # right fix is to NOT run the job rather than shield a guaranteed
-  # failure. When the bucket is provisioned, set `TF_STATE_BUCKET` in
-  # CI/CD variables → the rule below stops short-circuiting → the job
-  # runs as a real gate.
+  # 2026-04-28 (Iris rebrand) — TEMPORARILY SCOPED OUT until the GCP WIF
+  # (Workload Identity Federation) attribute condition is updated to allow
+  # the new path `iris-7/iris-service-java` (was `mirador1/mirador-service-java`).
+  # The OIDC subject from GitLab changed after the group + project rename, and
+  # the GCP IAM provider rejects the new identity with:
+  #   "The given credential is rejected by the attribute condition"
+  # User action required : update the WIF provider's attribute condition in
+  # GCP Console → IAM & Admin → Workload Identity Federation → <provider>.
+  # Once fixed, remove the TODO `when: never` block below.
+  # TODO remove by 2026-05-15 — GCP WIF condition update pending.
+  #
+  # Earlier shield context preserved : `TF_STATE_BUCKET == null` rule was
+  # added 2026-04-21 because the project deliberately doesn't provision a
+  # permanent GCS state bucket per ADR-0022 (ephemeral demo cluster pattern).
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
-    # Skip entirely if TF_STATE_BUCKET is unset — terraform init can't
-    # configure the GCS backend without it. Also covers the case where
-    # the variable is set to an empty string by GitLab UI default.
+    # Iris rebrand 2026-04-28 : scope-out until WIF condition update.
+    - when: never
+    # ↓ Original rules (re-enable after WIF update)
     - if: '$TF_STATE_BUCKET == null || $TF_STATE_BUCKET == ""'
       when: never
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
