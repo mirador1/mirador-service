@@ -57,26 +57,14 @@
 # Output is stored as an artifact so terraform-apply can use it.
 terraform-plan:
   extends: .terraform-base
-  # 2026-04-28 (Iris rebrand) — TEMPORARILY SCOPED OUT until the GCP WIF
-  # (Workload Identity Federation) attribute condition is updated to allow
-  # the new path `iris-7/iris-service-java` (was `iris-7/iris-service-java`).
-  # The OIDC subject from GitLab changed after the group + project rename, and
-  # the GCP IAM provider rejects the new identity with:
-  #   "The given credential is rejected by the attribute condition"
-  # User action required : update the WIF provider's attribute condition in
-  # GCP Console → IAM & Admin → Workload Identity Federation → <provider>.
-  # Once fixed, remove the TODO `when: never` block below.
-  # TODO remove by 2026-05-15 — GCP WIF condition update pending.
-  #
-  # Earlier shield context preserved : `TF_STATE_BUCKET == null` rule was
-  # added 2026-04-21 because the project deliberately doesn't provision a
-  # permanent GCS state bucket per ADR-0022 (ephemeral demo cluster pattern).
+  # `TF_STATE_BUCKET == null` rule added 2026-04-21 because the project
+  # deliberately doesn't provision a permanent GCS state bucket per
+  # ADR-0022 (ephemeral demo cluster pattern). Skip cleanly when the
+  # var is unset rather than failing on `terraform init` against an
+  # empty backend.
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
-    # Iris rebrand 2026-04-28 : scope-out until WIF condition update.
-    - when: never
-    # ↓ Original rules (re-enable after WIF update)
     - if: '$TF_STATE_BUCKET == null || $TF_STATE_BUCKET == ""'
       when: never
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
