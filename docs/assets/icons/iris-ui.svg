@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Iris — single-color logo #30c9d4">
+  <defs>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#cbd5e1" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#1e293b" stop-opacity="0.7"/>
+    </linearGradient>
+    <linearGradient id="refract" x1="0" y1="0.5" x2="1" y2="0">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.5"/>
+      <stop offset="22%" stop-color="#ffffff" stop-opacity="0.32"/>
+      <stop offset="48%" stop-color="#ffffff" stop-opacity="0.16"/>
+      <stop offset="75%" stop-color="#ffffff" stop-opacity="0.05"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <!-- Transparent bg -->
+  <g transform="translate(256 256) scale(2.3)">
+    <!-- Outer scope ring -->
+    <circle r="100" fill="none" stroke="#30c9d4" stroke-width="0.6" opacity="0.5"/>
+    <circle r="95" fill="none" stroke="url(#rim)" stroke-width="2"/>
+    <circle r="91" fill="#0a0a14" stroke="#1e293b" stroke-width="1"/>
+    <circle r="88" fill="none" stroke="#475569" stroke-width="0.5" opacity="0.6"/>
+    <!-- 7 wedges, all the SAME color (single-color identity per project) -->
+    <g>
+      <g transform="rotate(-90)"><path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="#30c9d4" opacity="0.55"/><path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="url(#refract)"/></g>
+      <g transform="rotate(-38.57)"><path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="#30c9d4" opacity="0.55"/><path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="url(#refract)"/></g>
+      <g transform="rotate(12.86)"><path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="#30c9d4" opacity="0.55"/><path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="url(#refract)"/></g>
+      <g transform="rotate(64.29)"><path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="#30c9d4" opacity="0.55"/><path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="url(#refract)"/></g>
+      <g transform="rotate(115.72)"><path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="#30c9d4" opacity="0.55"/><path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="url(#refract)"/></g>
+      <g transform="rotate(167.15)"><path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="#30c9d4" opacity="0.55"/><path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="url(#refract)"/></g>
+      <g transform="rotate(218.58)"><path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="#30c9d4" opacity="0.55"/><path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="url(#refract)"/></g>
+    </g>
+    <polygon points="0,-12 10.78,-5.16 10.78,5.16 0,12 -10.78,5.16 -10.78,-5.16 -5.39,-10.71" fill="#000000"/>
+    <circle r="9" fill="#ffffff" opacity="0.95"/>
+    <circle r="2.5" fill="#ffffff"/>
+    <circle r="1" fill="#30c9d4"/>
+  </g>
+</svg>
