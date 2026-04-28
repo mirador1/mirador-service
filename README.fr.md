@@ -18,20 +18,12 @@
 > - <span style="color: #af52de">●</span> **Qualité** — JaCoCo gate 70% + per-package gates + PIT mutation + SonarCloud + Spectral OpenAPI lint + jqwik property tests + Testcontainers IT.
 >
 > _Plus dimensions complémentaires : Fonctionnel (Customer onboarding & enrichment, Order/Product/OrderLine), Frontend (iris-ui Angular 21 zoneless), DevX (Renovate, Lefthook, stability-check.sh)._
-> - 🔒 **Sécurité** — JWT HS256 (15 min, rotation refresh-token) + X-API-Key statique en repli + OAuth2/OIDC (Auth0 prod / Keycloak dev) + RBAC (`ROLE_ADMIN` / `ROLE_USER`) + rate-limit Bucket4j (100 req/min/IP) + IdempotencyFilter (POST/PATCH) + SecurityHeadersFilter (CSP/HSTS/X-Frame-Options) + portails sécurité par MR : grype + trivy + cosign sign+verify + dockle + OWASP dependency-check + secret-detection + semgrep-sast — tous verts.
-> - 🧠 **Fonctionnel** — Onboarding & enrichissement client (génération de bio par Spring AI Ollama, observable via spans `gen_ai.*`) + domaine Order / Product / OrderLine (6 invariants vérifiés via tests de propriétés `jqwik`, gates JaCoCo par paquet) + endpoints Chaos Mesh (`/customers/diagnostic/{slow-query, db-failure, kafka-timeout}`).
-> - ☁️ **Infrastructure & Cloud** — Cluster GKE de production `mirador-prod` (europe-west1) + IaC Terraform + cibles de déploiement multi-cloud (AKS, EKS, Cloud Run, Fly.io — jobs manuels CI) + cert-manager + ingress-nginx + GitOps Argo CD + pattern éphémère (ADR-0022) ciblant ≤ 2 €/mois en idle + Workload Identity Federation (zéro clé JSON de service account) + alertes budget via `bin/budget/budget.sh`.
-> - 📊 **Observabilité** — Traces + logs + métriques OpenTelemetry → stack LGTM (Tempo / Loki / Mimir / Grafana) + 3 SLOs as code via Sloth (disponibilité / latence / enrichissement) + alerting multi-burn-rate + 4 dashboards (vue d'ensemble SLO, Apdex, heatmap latence, breakdown par endpoint) + annotations chaos-driven sur les SLO + 3 runbooks (slo-availability, slo-latency, slo-enrichment) + cadence de revue mensuelle documentée.
-> - ✅ **Qualité** — Coverage JaCoCo unit+IT mergée à 70 % min + gates par paquet sur `com.mirador.{order,product}` + tests de mutation PIT + quality gate SonarCloud + lint OpenAPI 3.1 Spectral + hadolint + Checkstyle + SpotBugs + findsecbugs + tests de propriétés jqwik + tests d'intégration Testcontainers (Postgres + Kafka + Redis).
-> - 🔄 **CI/CD** — GitLab CI 19+ jobs sur `lint / test / integration / k8s / package / sonar / native / compat / deploy` + matrice de compat SB3/SB4 × Java17/21/25 (5 combos) + Conventional Commits enforced (Lefthook + commitlint) + auto-merge avec `--remove-source-branch=false` + cosign sign+verify + SBOM (syft) + Renovate hebdo + allowlist `changes:` du workflow.
-> - 🏛 **Architecture** — Hexagonal Lite (ADR-0044, `port/` uniquement quand le couplage cross-feature émerge) + Feature-slicing (ADR-0008, `com.mirador.{customer, order, product, mcp, …}`) + sous-modules polyrepo flat α (ADR-0060) + exposition MCP `@Tool` par méthode (ADR-0062, règle "produces vs accesses") + 7 non-négociables Clean Code (binding, audités dans `docs/audit/clean-code-architecture-*.md`) + 60+ ADR.
-> - 🛠 **DevX** — Renovate hebdo + hooks Lefthook commit-msg + pre-push + `bin/dev/stability-check.sh` (gate complet sectionné) + dispatcher `./run.sh` (28 cas : `app`, `db`, `obs`, `kafka`, `k8s-local`, `clean`, `nuke`, …) + `bin/dev/api-smoke.sh` (flows Hurl) + `bin/budget/*` discipline coût + tâches programmées pour TODO datés (ex. revisite CVE mcp-core 2026-05-26) + ADR drift checker + template CI Conventional Commits (partagé via `infra/common/`).
 
 <!-- Bandeau de badges : 8 essentiels en haut. Couverture techno exhaustive
      plus bas dans la section "Couverture technologique". -->
-[![pipeline](https://gitlab.com/mirador1/mirador-service-java/badges/main/pipeline.svg)](https://gitlab.com/mirador1/mirador-service-java/-/pipelines)
-[![coverage](https://gitlab.com/mirador1/mirador-service-java/badges/main/coverage.svg)](https://gitlab.com/mirador1/mirador-service-java/-/pipelines)
-[![SonarCloud](https://img.shields.io/badge/SonarCloud-quality_gate-F3702A?logo=sonarcloud&logoColor=white)](https://sonarcloud.io/project/overview?id=mirador1_mirador-service)
+[![pipeline](https://gitlab.com/iris-7/iris-service-java/badges/main/pipeline.svg)](https://gitlab.com/iris-7/iris-service-java/-/pipelines)
+[![coverage](https://gitlab.com/iris-7/iris-service-java/badges/main/coverage.svg)](https://gitlab.com/iris-7/iris-service-java/-/pipelines)
+[![SonarCloud](https://img.shields.io/badge/SonarCloud-quality_gate-F3702A?logo=sonarcloud&logoColor=white)](https://sonarcloud.io/project/overview?id=iris-7_iris-service-java)
 ![Java 21 LTS · 25](https://img.shields.io/badge/Java-21_LTS_+_25_compat-ED8B00?logo=openjdk&logoColor=white)
 ![Spring Boot 3.x · 4](https://img.shields.io/badge/Spring_Boot-3.x_LTS_+_4_compat-6DB33F?logo=springio&logoColor=white)
 ![GitOps Argo CD](https://img.shields.io/badge/Argo_CD-GitOps_+_canary-EF7B4D?logo=argo&logoColor=white)
@@ -40,7 +32,7 @@
 
 ## Ce que ce projet démontre
 
-Mirador est un démonstrateur de backend Java de niveau production centré sur des préoccupations
+Iris est un démonstrateur de backend Java de niveau production centré sur des préoccupations
 industrielles :
 - diagnostiquer les incidents via logs, métriques et traces ;
 - sécuriser les API avec JWT/OIDC, rate limiting et audit logs ;
@@ -68,17 +60,18 @@ donc un déploiement réel pourrait geler sur le couple LTS sans aucun changemen
 - **Opérations résilientes** : Argo CD GitOps + Argo Rollouts canary, Resilience4j circuit-
   breaker + retry, endpoints chaos, alertes liées à des runbooks. Cycle de vie cluster via Terraform.
 
-# Mirador — le mirador d'un système qui tourne
+# Iris — le diaphragme d'un système qui tourne
 
 > **Observer. Comprendre. Agir.**
 >
 > _Construit avec les bons outils et les bonnes méthodes._
 
-**Mirador** — *watchtower* en espagnol — est un point d'observation.
-Le projet prend un **service d'onboarding & enrichissement client**
-concret et l'observe sous tous les angles en même temps : **le code,
-les métriques runtime, les pipelines CI/CD, et l'outillage industriel
-standard câblé autour**.
+**Iris** — comme le diaphragme d'un appareil photo — est un point
+d'observation composite. Le projet prend un **service d'onboarding &
+enrichissement client** concret et l'observe sous tous les angles en
+même temps : **le code, les métriques runtime, les pipelines CI/CD,
+et l'outillage industriel standard câblé autour**. Aucune facette ne
+raconte tout — chacune révèle une partie du système.
 
 Le mini-domaine est délibérément industriel : un Customer suit le
 parcours **inscription → validation → enrichissement externe (JSONPlaceholder
@@ -92,14 +85,14 @@ d'ingénierie.
 Le même backend live est visible à travers deux « fenêtres »
 complémentaires :
 
-- l'UI associée ([`mirador-ui`](https://gitlab.com/mirador1/mirador-ui))
+- l'UI associée ([`iris-ui`](https://gitlab.com/iris-7/iris-ui))
   le montre du **côté métier** — endpoints REST, données clients,
   payloads requête/réponse, couche UX ;
 - Grafana le montre du **côté observabilité** — métriques Prometheus,
   traces Tempo, logs Loki, le tout via OpenTelemetry.
 
 Les deux vues regardent exactement la même instance
-`mirador-service-java` ; rien n'est mocké entre les deux.
+`iris-service-java` ; rien n'est mocké entre les deux.
 
 Ce repo contient le **backend Spring Boot 4 / Java 25** (branche par
 défaut). La matrice de compat CI build + teste aussi vert sur
@@ -171,7 +164,7 @@ ADR-NNNN)`, le lien va à l'enregistrement complet.
 | **Discipline CI/CD** | GitLab CI exclusivement (pas de quota SaaS) ; runner group-level qui sert 4 repos ; hooks lefthook 3-tier ; conventional-commits enforced ; SonarCloud + JaCoCo + PIT mutation tous gatés ; Docker multi-arch via buildx. | Les contrats qualité > la bonne volonté du reviewer ; les régressions cassent le build, pas le prochain déploiement. |
 | **Opérations** | Argo CD GitOps ; canary Argo Rollouts ; endpoints chaos diagnostic ; URLs runbook dans chaque alerte ; RTO/RPO discutés dans la doc SLA ; cluster éphémère (coût contrôlé) avec alertes budget. | Le système est opérable, pas seulement déployable. |
 | **Évolution** | Matrice de compat Java 17/21/25 × SB3/SB4 — même code source, les deux stacks build + test vert ; les ADRs se remplacent au lieu de réécrire les docs ; Renovate auto-bump avec MRs groupées. | La techno évolue sans réécriture ; le chemin LTS conservateur est toujours atteignable. |
-| **Cohérence polyrepo** | Repos frères ([UI](https://gitlab.com/mirador1/mirador-ui), [miroir Python](https://gitlab.com/mirador1/mirador-service-python), [infra partagée](https://gitlab.com/mirador1/mirador-service-shared)) partagent runner + templates CI + observabilité + cross-références ADR via git submodule. | Démontre comment garder plusieurs services cohérents sans verrouillage monorepo. |
+| **Cohérence polyrepo** | Repos frères ([UI](https://gitlab.com/iris-7/iris-ui), [miroir Python](https://gitlab.com/iris-7/iris-service-python), [infra partagée](https://gitlab.com/iris-7/iris-service-shared)) partagent runner + templates CI + observabilité + cross-références ADR via git submodule. | Démontre comment garder plusieurs services cohérents sans verrouillage monorepo. |
 
 ---
 
@@ -218,7 +211,7 @@ voici l'ordre dans lequel les éléments sortiraient, du coût le plus bas
 2. **Kafka.** La création, la mise à jour et la suppression de clients
    fonctionnent toutes sans bus de messages. Kafka est là pour exercer
    deux patterns (fire-and-forget + request-reply), nice-to-have, pas
-   core. Le package `com.mirador.messaging` entier pourrait disparaître
+   core. Le package `org.iris.messaging` entier pourrait disparaître
    et l'app passerait encore 80 % des tests.
 3. **Ollama + Spring AI.** L'endpoint `/customers/{id}/bio` est une
    vitrine pour circuit-breaker + retry + fallback — ces mêmes patterns
@@ -341,7 +334,7 @@ des trous non-intentionnels.
 - **Pas de chaos engineering planifié avec SLO gates** — Chaos Mesh
   est installé, la page "chaos" de l'UI déclenche de vrais CRs
   PodChaos / NetworkChaos / StressChaos via le backend
-  `ChaosController` ([`com.mirador.chaos`](src/main/java/com/mirador/chaos))
+  `ChaosController` ([`org.iris.chaos`](src/main/java/org/iris/chaos))
   avec Fabric8. Mais les runs restent interactifs (clic → expérience
   one-shot → auto-delete après la durée). Un vrai setup prod
   planifierait des expériences chaos hebdomadaires avec des gates
@@ -393,6 +386,7 @@ Pour aller plus loin :
 
 ---
 
-<sub>_Mirador_ — espagnol pour _mirador_ — se tient au-dessus d'un
-système réel qui tourne et répond à : "que fait le code là, tout de
-suite ?"</sub>
+<sub>_Iris_ — comme le diaphragme d'un appareil photo — compose la vue
+d'un système réel qui tourne et répond à : "que fait le code là, tout
+de suite ?" Chaque facette est un angle ; le système entier émerge de
+leur composition.</sub>
