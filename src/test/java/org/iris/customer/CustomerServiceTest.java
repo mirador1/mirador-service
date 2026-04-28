@@ -318,4 +318,108 @@ class CustomerServiceTest {
 
         verify(repository).simulateSlowQuery(2.5);
     }
+
+    // ── v2 shape (findAllV2 + searchV2) ──────────────────────────────────────
+
+    @Test
+    void findAllV2_mapsRepositoryPageToV2Dtos_carryingCreatedAt() {
+        Pageable pageable = PageRequest.of(0, 10);
+        Customer c = entity(1L, "Alice", "alice@example.com");
+        when(repository.findAll(pageable)).thenReturn(new PageImpl<>(List.of(c)));
+
+        Page<CustomerDtoV2> result = service.findAllV2(pageable);
+
+        assertThat(result.getContent()).hasSize(1);
+        CustomerDtoV2 dto = result.getContent().get(0);
+        assertThat(dto.id()).isEqualTo(1L);
+        assertThat(dto.name()).isEqualTo("Alice");
+        assertThat(dto.email()).isEqualTo("alice@example.com");
+        assertThat(dto.createdAt()).isEqualTo(Instant.parse("2026-04-23T00:00:00Z"));
+    }
+
+    @Test
+    void searchV2_delegatesAndMapsToV2Dtos() {
+        Pageable pageable = PageRequest.of(0, 10);
+        Customer c = entity(2L, "Bob", "bob@example.com");
+        when(repository.search("bob", pageable)).thenReturn(new PageImpl<>(List.of(c)));
+
+        Page<CustomerDtoV2> result = service.searchV2("bob", pageable);
+
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().get(0).id()).isEqualTo(2L);
+        assertThat(result.getContent().get(0).createdAt())
+                .isEqualTo(Instant.parse("2026-04-23T00:00:00Z"));
+    }
+
+    // ── projections + export ─────────────────────────────────────────────────
+
+    @Test
+    void findAllSummaries_delegatesToProjectionRepoMethod() {
+        Pageable pageable = PageRequest.of(0, 10);
+        @SuppressWarnings("unchecked")
+        Page<CustomerSummary> projected = mock(Page.class);
+        when(repository.findAllProjectedBy(pageable)).thenReturn(projected);
+
+        Page<CustomerSummary> result = service.findAllSummaries(pageable);
+
+        assertThat(result).isSameAs(projected);
+        verify(repository).findAllProjectedBy(pageable);
+    }
+
+    @Test
+    void findAllForExport_returnsFlatList() {
+        Customer a = entity(1L, "Alice", "a@x");
+        Customer b = entity(2L, "Bob", "b@x");
+        when(repository.findAll()).thenReturn(List.of(a, b));
+
+        List<Customer> all = service.findAllForExport();
+
+        assertThat(all).hasSize(2);
+    }
+
+    // ── chaos simulators (DB failure + Kafka timeout) ────────────────────────
+
+    @Test
+    void simulateDbFailure_logsAndReThrowsDataAccessException() {
+        // Pinned : the catch logs the deliberate trigger then re-throws so
+        // the framework's @ExceptionHandler maps it to a 500. Swallowing
+        // would silently turn the chaos endpoint green and break the SLO
+        // burn-rate demo.
+        org.springframework.dao.DataAccessException e =
+                new org.springframework.dao.InvalidDataAccessResourceUsageException("bad sql");
+        org.mockito.Mockito.doThrow(e).when(repository).simulateDbFailure();
+
+        assertThatThrownBy(() -> service.simulateDbFailure())
+                .isSameAs(e);
+    }
+
+    @Test
+    void simulateKafkaTimeout_returnsSyntheticMarker() {
+        // Pinned : the marker map MUST carry scenario=kafka-timeout and
+        // synthetic=true so the caller (controller) can branch on the
+        // synthetic flag without colliding with real broker timeouts.
+        java.util.Map<String, String> marker = service.simulateKafkaTimeout();
+
+        assertThat(marker)
+                .containsEntry("scenario", "kafka-timeout")
+                .containsEntry("synthetic", "true");
+        assertThat(marker.get("detail")).contains("504");
+    }
+
+    // ── currentUser fallback ─────────────────────────────────────────────────
+
+    @Test
+    void create_currentUserFallsBackToAnonymous_whenNoSecurityContext() {
+        // Pinned : when no Authentication is bound, currentUser() returns
+        // "anonymous" — the audit row still gets recorded with that
+        // sentinel rather than failing the create flow.
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        Customer saved = entity(7L, "Alice", "alice@example.com");
+        when(repository.save(any(Customer.class))).thenReturn(saved);
+
+        service.create(new CreateCustomerRequest("Alice", "alice@example.com"));
+
+        verify(auditPort).recordEvent(eq("anonymous"), eq("CUSTOMER_CREATED"),
+                anyString(), eq(null));
+    }
 }
