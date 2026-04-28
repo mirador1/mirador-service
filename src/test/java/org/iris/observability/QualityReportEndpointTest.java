@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.core.env.Environment;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -272,5 +273,39 @@ class QualityReportEndpointTest {
         var method = QualityReportEndpoint.class.getDeclaredMethod("formatUptime", long.class);
         method.setAccessible(true);
         return (String) method.invoke(endpoint, seconds);
+    }
+
+    // ─── buildJarLayersSection (via BOOT-INF/layers.idx test fixture) ────────
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void runtimeSection_jarLayers_parsesBootInfLayersIdxFromClasspath() {
+        // src/test/resources/BOOT-INF/layers.idx is a synthetic Spring Boot
+        // layered-jar index — the resource lands on the classpath at test
+        // time and exercises the parser end-to-end. Pinned format :
+        //   "- 'layer-name':"  → starts a new layer (header)
+        //   "  - 'entry'"     → entry counter increment
+        // Snapshot-dependencies has zero entries → "entries": 0 on its row.
+        Map<String, Object> result = endpoint.report();
+        Map<String, Object> runtime = (Map<String, Object>) result.get("runtime");
+
+        List<Map<String, Object>> layers = (List<Map<String, Object>>) runtime.get("jarLayers");
+        assertThat(layers).isNotNull().isNotEmpty();
+
+        // Build a name → entries map from the layers list. AssertJ's
+        // generic inference on the cast returns List<?> in some compiler
+        // configs, so we accumulate manually to keep types explicit.
+        Map<String, Integer> entryCounts = new java.util.LinkedHashMap<>();
+        for (Map<String, Object> l : layers) {
+            entryCounts.put((String) l.get("name"), (Integer) l.get("entries"));
+        }
+
+        assertThat(entryCounts.keySet()).containsExactly(
+                "dependencies", "spring-boot-loader",
+                "snapshot-dependencies", "application");
+        assertThat(entryCounts).containsEntry("dependencies", 3);
+        assertThat(entryCounts).containsEntry("spring-boot-loader", 1);
+        assertThat(entryCounts).containsEntry("snapshot-dependencies", 0);
+        assertThat(entryCounts).containsEntry("application", 2);
     }
 }
