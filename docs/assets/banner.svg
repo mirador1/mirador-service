@@ -1,95 +1,158 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 280" width="1200" height="280" role="img" aria-label="Mirador — watchtower over a running system">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 280" width="1200" height="280" role="img" aria-label="Iris (final candidate) — N base + progressive refract + HUD overlay, 7 axes of mastery">
   <defs>
-    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%"  stop-color="#0a1424"/>
-      <stop offset="50%" stop-color="#0f2238"/>
-      <stop offset="100%" stop-color="#081526"/>
-    </linearGradient>
-    <radialGradient id="beam" cx="18%" cy="55%" r="55%">
-      <stop offset="0%"   stop-color="#60a5fa" stop-opacity="0.22"/>
-      <stop offset="60%"  stop-color="#60a5fa" stop-opacity="0.04"/>
-      <stop offset="100%" stop-color="#60a5fa" stop-opacity="0"/>
+    <radialGradient id="iris-bg" cx="50%" cy="50%" r="60%">
+      <stop offset="0%" stop-color="#0a0a14"/>
+      <stop offset="100%" stop-color="#000000"/>
     </radialGradient>
     <linearGradient id="title-grad" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%"  stop-color="#e2e8f0"/>
-      <stop offset="55%" stop-color="#ffffff"/>
-      <stop offset="100%" stop-color="#93c5fd"/>
+      <stop offset="0%" stop-color="#ff3b30"/>
+      <stop offset="50%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#af52de"/>
     </linearGradient>
-    <!-- Pulsing dot for the lighthouse beacon -->
-    <radialGradient id="pulse" cx="50%" cy="50%" r="50%">
-      <stop offset="0%"  stop-color="#34d399" stop-opacity="1"/>
-      <stop offset="60%" stop-color="#34d399" stop-opacity="0.3"/>
-      <stop offset="100%" stop-color="#34d399" stop-opacity="0"/>
+    <radialGradient id="sensor-glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="60%" stop-color="#7ddffe" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#7ddffe" stop-opacity="0"/>
     </radialGradient>
+    <linearGradient id="rim-light" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#cbd5e1" stop-opacity="0.6"/>
+      <stop offset="50%" stop-color="#1e293b" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#cbd5e1" stop-opacity="0.5"/>
+    </linearGradient>
+    <!-- Progressive refract gradient : 5-stop smooth fade from leading edge
+         (left, bright) toward trailing arc (right, transparent). Replaces N's
+         3-stop version with 5 stops for a softer, more glass-like progression. -->
+    <linearGradient id="glass-refract-progressive" x1="0" y1="0.5" x2="1" y2="0">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.5"/>
+      <stop offset="22%" stop-color="#ffffff" stop-opacity="0.32"/>
+      <stop offset="48%" stop-color="#ffffff" stop-opacity="0.16"/>
+      <stop offset="75%" stop-color="#ffffff" stop-opacity="0.05"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
   </defs>
+  <rect width="1200" height="280" fill="url(#iris-bg)"/>
 
-  <!-- Sky -->
-  <rect width="1200" height="280" fill="url(#sky)"/>
-  <!-- Soft lighthouse beam, sweeping from the tower outward -->
-  <ellipse cx="210" cy="155" rx="900" ry="70" fill="url(#beam)" opacity="0.7"/>
+  <!-- IRIS final candidate
+       —————————————————————————————————————————————————————————————————
+       N base (opacity 0.55 colors + refract gradient) + 2 enhancements :
+         1. PROGRESSIVE refract gradient : 5 stops instead of 3 → smoother
+            fade from leading edge to trailing arc (less abrupt cliff)
+         2. HUD OVERLAY from J : 16 tick marks every 22.5° around the rim +
+            crosshair reticle + tech labels (f/2.8 · ● LOCK · 7-BLADE)
+       —————————————————————————————————————————————————————————————————
+  -->
+  <g transform="translate(180 110)">
+    <!-- Outer scope ring (subtle, from J) -->
+    <circle r="100" fill="none" stroke="#34d4d4" stroke-width="0.6" opacity="0.5"/>
 
-  <!-- Distant stars / data points — very sparse, very subtle -->
-  <g fill="#93c5fd" opacity="0.5">
-    <circle cx="860"  cy="48" r="1.1"/>
-    <circle cx="940"  cy="68" r="0.9"/>
-    <circle cx="1020" cy="34" r="1.3"/>
-    <circle cx="1100" cy="80" r="0.8"/>
-    <circle cx="980"  cy="110" r="0.7"/>
-    <circle cx="1130" cy="150" r="1.0"/>
-  </g>
-  <g fill="#34d399" opacity="0.45">
-    <circle cx="900"  cy="92" r="0.9"/>
-    <circle cx="1070" cy="52" r="1.0"/>
-  </g>
+    <!-- Lens barrel rings (from N) -->
+    <circle r="95" fill="none" stroke="url(#rim-light)" stroke-width="2"/>
+    <circle r="91" fill="#0a0a14" stroke="#1e293b" stroke-width="1"/>
+    <circle r="88" fill="none" stroke="#475569" stroke-width="0.5" opacity="0.6"/>
 
-  <!-- Thin horizon line -->
-  <line x1="0" y1="228" x2="1200" y2="228" stroke="#1e293b" stroke-width="1" opacity="0.9"/>
-
-  <!-- Watchtower silhouette — same shape as before, just more
-       confidently placed and nothing else nearby to compete with it. -->
-  <g transform="translate(140 72)" opacity="0.95">
-    <!-- Tower body -->
-    <rect x="22" y="76" width="30" height="80" rx="2" fill="#34d399" opacity="0.92"/>
-    <!-- Observation deck -->
-    <rect x="10" y="62" width="54" height="16" rx="2" fill="#34d399"/>
-    <!-- Battlements -->
-    <rect x="10" y="54" width="9" height="8" rx="1" fill="#34d399"/>
-    <rect x="23" y="54" width="9" height="8" rx="1" fill="#34d399"/>
-    <rect x="36" y="54" width="9" height="8" rx="1" fill="#34d399"/>
-    <rect x="49" y="54" width="9" height="8" rx="1" fill="#34d399"/>
-    <!-- Window / eye -->
-    <ellipse cx="37" cy="92" rx="5.5" ry="4.5" fill="#0a1424" stroke="#93c5fd" stroke-width="1.4"/>
-    <circle cx="37" cy="92" r="2.2" fill="#60a5fa"/>
-    <!-- Pulsing beacon at the very top -->
-    <circle cx="37" cy="50" r="5" fill="url(#pulse)"/>
-    <circle cx="37" cy="50" r="1.8" fill="#34d399"/>
-    <!-- Radar-style wide arcs sweeping right — the single visual motif -->
-    <g fill="none" stroke="#34d399" stroke-linecap="round" opacity="0.75">
-      <path d="M 80 60 A 32 32 0 0 1 112 92"   stroke-width="1.3"/>
-      <path d="M 80 46 A 48 48 0 0 1 128 92"   stroke-width="1.1" opacity="0.55"/>
-      <path d="M 80 32 A 64 64 0 0 1 144 92"   stroke-width="0.9" opacity="0.35"/>
-      <path d="M 80 18 A 80 80 0 0 1 160 92"   stroke-width="0.7" opacity="0.20"/>
+    <!-- 16 tick marks around the rim (from J) — every 22.5° -->
+    <g stroke="#7ddffe" stroke-width="0.7" opacity="0.6">
+      <g><line x1="0" y1="-100" x2="0" y2="-94"/></g>
+      <g transform="rotate(22.5)"><line x1="0" y1="-100" x2="0" y2="-94"/></g>
+      <g transform="rotate(45)"><line x1="0" y1="-100" x2="0" y2="-94"/></g>
+      <g transform="rotate(67.5)"><line x1="0" y1="-100" x2="0" y2="-94"/></g>
+      <g transform="rotate(90)"><line x1="0" y1="-100" x2="0" y2="-94"/></g>
+      <g transform="rotate(112.5)"><line x1="0" y1="-100" x2="0" y2="-94"/></g>
+      <g transform="rotate(135)"><line x1="0" y1="-100" x2="0" y2="-94"/></g>
+      <g transform="rotate(157.5)"><line x1="0" y1="-100" x2="0" y2="-94"/></g>
+      <g transform="rotate(180)"><line x1="0" y1="-100" x2="0" y2="-94"/></g>
+      <g transform="rotate(202.5)"><line x1="0" y1="-100" x2="0" y2="-94"/></g>
+      <g transform="rotate(225)"><line x1="0" y1="-100" x2="0" y2="-94"/></g>
+      <g transform="rotate(247.5)"><line x1="0" y1="-100" x2="0" y2="-94"/></g>
+      <g transform="rotate(270)"><line x1="0" y1="-100" x2="0" y2="-94"/></g>
+      <g transform="rotate(292.5)"><line x1="0" y1="-100" x2="0" y2="-94"/></g>
+      <g transform="rotate(315)"><line x1="0" y1="-100" x2="0" y2="-94"/></g>
+      <g transform="rotate(337.5)"><line x1="0" y1="-100" x2="0" y2="-94"/></g>
     </g>
+
+    <!-- 7 spectrum blades, N's opacity 0.55 + progressive refract gradient -->
+    <g stroke="#000000" stroke-width="0.4">
+      <g transform="rotate(-90)">
+        <path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="#ff2d20" opacity="0.55"/>
+        <path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="url(#glass-refract-progressive)"/>
+      </g>
+      <g transform="rotate(-38.57)">
+        <path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="#ff9500" opacity="0.55"/>
+        <path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="url(#glass-refract-progressive)"/>
+      </g>
+      <g transform="rotate(12.86)">
+        <path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="#ffcc00" opacity="0.55"/>
+        <path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="url(#glass-refract-progressive)"/>
+      </g>
+      <g transform="rotate(64.29)">
+        <path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="#34c759" opacity="0.55"/>
+        <path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="url(#glass-refract-progressive)"/>
+      </g>
+      <g transform="rotate(115.72)">
+        <path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="#30c9d4" opacity="0.55"/>
+        <path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="url(#glass-refract-progressive)"/>
+      </g>
+      <g transform="rotate(167.15)">
+        <path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="#007aff" opacity="0.55"/>
+        <path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="url(#glass-refract-progressive)"/>
+      </g>
+      <g transform="rotate(218.58)">
+        <path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="#af52de" opacity="0.55"/>
+        <path d="M 85 0 A 85 85 0 0 1 35.93 77.03 Q 5 30 5.92 12.69 Q 40 5 85 0 Z" fill="url(#glass-refract-progressive)"/>
+      </g>
+    </g>
+
+    <!-- Crosshair reticle (from J) -->
+    <g stroke="#7ddffe" stroke-width="0.5" opacity="0.5">
+      <line x1="-90" y1="0" x2="-22" y2="0"/>
+      <line x1="22" y1="0" x2="90" y2="0"/>
+      <line x1="0" y1="-90" x2="0" y2="-22"/>
+      <line x1="0" y1="22" x2="0" y2="90"/>
+    </g>
+
+    <!-- Heptagonal aperture -->
+    <polygon points="0,-12 10.78,-5.16 10.78,5.16 0,12 -10.78,5.16 -10.78,-5.16 -5.39,-10.71"
+      fill="#000000"/>
+
+    <!-- Sensor glow + active dot -->
+    <circle r="9" fill="url(#sensor-glow)"/>
+    <circle r="2.5" fill="#ffffff"/>
+    <circle r="1" fill="#7ddffe"/>
   </g>
 
-  <!-- Title -->
-  <g font-family="'Inter','Segoe UI',system-ui,sans-serif">
-    <text x="296" y="138" font-size="96" font-weight="800" letter-spacing="6" fill="url(#title-grad)">MIRADOR</text>
-    <!-- Subtitle — one honest line, no marketing. -->
-    <text x="298" y="174" font-size="15" font-weight="500" fill="#94a3b8" letter-spacing="4.5">
-      WATCHTOWER OVER A RUNNING SYSTEM
+  <!-- HUD tech labels (moved to top-left corner of banner so they don't
+       compete with the title — labels stay readable, title gets full
+       horizontal centering on the legend). -->
+  <g font-family="'JetBrains Mono','Fira Code',ui-monospace,monospace" font-size="9" fill="#7ddffe" letter-spacing="1.2">
+    <text x="20" y="30">f/2.8</text>
+    <text x="20" y="44" fill="#34c759">●  LOCK</text>
+    <text x="20" y="58" fill="#94a3b8">7-BLADE</text>
+  </g>
+
+  <!-- Title (centered on legend center x=380 ; legend spans x=40→720)
+       Subtitle "EVERY VIEW · 7 FACETS" reinforces the diaphragm-blade-as-
+       perspective metaphor : every view is partial, the system is composed
+       from 7 facets like the polished surfaces of a gemstone. -->
+  <g font-family="'Inter','Segoe UI',system-ui,sans-serif" text-anchor="middle">
+    <text x="380" y="115" font-size="92" font-weight="800" letter-spacing="6" fill="url(#title-grad)">IRIS</text>
+    <text x="380" y="148" font-size="13" font-weight="500" fill="#94a3b8" letter-spacing="3.5">
+      EVERY VIEW · 7 FACETS
     </text>
-    <!-- Minimal accent bar under the subtitle. -->
-    <rect x="298" y="186" width="80" height="2" rx="1" fill="#34d399" opacity="0.8"/>
-    <rect x="382" y="186" width="4"  height="2" rx="1" fill="#34d399" opacity="0.4"/>
-    <rect x="390" y="186" width="2"  height="2" rx="1" fill="#34d399" opacity="0.2"/>
   </g>
 
-  <!-- Bottom-right: two honest provenance labels, small, muted.
-       Nothing else. No tech list, no badge soup. -->
+  <!-- Legend -->
+  <g font-family="'Inter','Segoe UI',system-ui,sans-serif" font-size="9.5" letter-spacing="1.2">
+    <g transform="translate(40 232)"><rect width="100" height="3" rx="1" fill="#ff2d20"/><text x="0" y="17" fill="#cbd5e1" font-weight="700">OBSERVABILITY</text></g>
+    <g transform="translate(150 232)"><rect width="100" height="3" rx="1" fill="#ff9500"/><text x="0" y="17" fill="#cbd5e1" font-weight="700">INFRA · CLOUD</text></g>
+    <g transform="translate(260 232)"><rect width="80" height="3" rx="1" fill="#ffcc00"/><text x="0" y="17" fill="#cbd5e1" font-weight="700">SECURITY</text></g>
+    <g transform="translate(350 232)"><rect width="80" height="3" rx="1" fill="#34c759"/><text x="0" y="17" fill="#cbd5e1" font-weight="700">CI · CD</text></g>
+    <g transform="translate(440 232)"><rect width="100" height="3" rx="1" fill="#30c9d4"/><text x="0" y="17" fill="#cbd5e1" font-weight="700">ARCHITECTURE</text></g>
+    <g transform="translate(550 232)"><rect width="80" height="3" rx="1" fill="#007aff"/><text x="0" y="17" fill="#cbd5e1" font-weight="700">AI · ML</text></g>
+    <g transform="translate(640 232)"><rect width="80" height="3" rx="1" fill="#af52de"/><text x="0" y="17" fill="#cbd5e1" font-weight="700">QUALITY</text></g>
+  </g>
+
   <g font-family="'JetBrains Mono','Fira Code',ui-monospace,monospace"
-     fill="#64748b" font-size="10.5" letter-spacing="1" text-anchor="end">
-    <text x="1170" y="248">mirador-service-java  ·  Spring Boot 3.x LTS / 4  ·  Java 21 LTS / 25</text>
-    <text x="1170" y="264" fill="#475569" font-size="9.5">polyrepo java + ui + python + shared  ·  3 SLOs (Sloth)  ·  ONNX in-process ML</text>
+     fill="#64748b" font-size="9.5" letter-spacing="1" text-anchor="end">
+    <text x="1170" y="270">iris-service · polyrepo java + ui + python + shared · 3 SLOs · ONNX in-process ML</text>
   </g>
 </svg>

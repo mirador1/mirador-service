@@ -1,14 +1,23 @@
-![Mirador Service](docs/assets/banner.svg)
+![Iris](docs/assets/banner.svg)
 
 <sub>[English](README.md) · **Français**</sub>
 
-> **Ce que ce projet démontre comme maîtrise**
+> **Iris — vitrine observability-first sur 7 facettes**
 >
-> _Un survol 30 secondes des thèmes centraux de la maîtrise backend actuelle —
-> chaque axe est vérifié à chaque tag `stable-v*`. Source de vérité pour
-> "ce que cette révision garantit" : `git show stable-vX.Y.Z`._
+> _Aucun point de vue ne raconte tout — chaque facette révèle une partie
+> du système. Comme un diaphragme, l'image complète émerge de la
+> composition. Vérifié à chaque tag `stable-v*`. Source de vérité =
+> `git show stable-vX.Y.Z`._
 >
-> - 🤖 **IA** — Spring AI 1.1.4 + LLM local Ollama (llama3.2) + 14 outils MCP en in-process (annotations `@Tool` par méthode, ADR-0062) + transport streamable-http compatible claude (`spring.ai.mcp.server.protocol=STREAMABLE`) + AI Observability (spans OTel `gen_ai.*` → Tempo) + log d'audit par appel d'outil.
+> - <span style="color: #ff2d20">●</span> **Observabilité** (l'axe central) — OpenTelemetry traces + logs + métriques → stack LGTM (Tempo / Loki / Mimir / Grafana) + 3 SLOs as code via Sloth + alerting multi-burn-rate + 4 dashboards + démo SLO chaos-driven + 3 runbooks + RTO mesuré = 7s sur GKE Autopilot.
+> - <span style="color: #ff9500">●</span> **Infra · Cloud** — GKE production cluster `iris7-prod` (europe-west1) + Terraform IaC + déploiements multi-cloud (AKS, EKS, Cloud Run, Fly.io) + Argo CD GitOps + ephemeral pattern (ADR-0022).
+> - <span style="color: #ffcc00">●</span> **Sécurité** — JWT HS256 + X-API-Key + OAuth2/OIDC (Auth0) + RBAC + Bucket4j rate-limit + IdempotencyFilter + SecurityHeadersFilter + portails sécurité par MR : grype + trivy + cosign + OWASP dependency-check.
+> - <span style="color: #34c759">●</span> **CI · CD** — GitLab CI 19+ jobs + matrice de compat SB3/SB4 × Java17/21/25 + Conventional Commits + auto-merge + cosign + SBOM + Renovate hebdomadaire.
+> - <span style="color: #30c9d4">●</span> **Architecture** — Hexagonal Lite (ADR-0044) + Feature-slicing (ADR-0008) + polyrepo flat α (ADR-0060) + MCP `@Tool` par méthode (ADR-0062) + Clean Code 7 non-négociables + 60+ ADRs.
+> - <span style="color: #007aff">●</span> **AI · ML** — Spring AI 1.1.4 + Ollama LLM local + 14 outils MCP in-process + audit log par appel + Customer Churn ONNX (parité Java/Python ≤ 1e-6) + drift detection KS-test.
+> - <span style="color: #af52de">●</span> **Qualité** — JaCoCo gate 70% + per-package gates + PIT mutation + SonarCloud + Spectral OpenAPI lint + jqwik property tests + Testcontainers IT.
+>
+> _Plus dimensions complémentaires : Fonctionnel (Customer onboarding & enrichment, Order/Product/OrderLine), Frontend (iris-ui Angular 21 zoneless), DevX (Renovate, Lefthook, stability-check.sh)._
 > - 🔒 **Sécurité** — JWT HS256 (15 min, rotation refresh-token) + X-API-Key statique en repli + OAuth2/OIDC (Auth0 prod / Keycloak dev) + RBAC (`ROLE_ADMIN` / `ROLE_USER`) + rate-limit Bucket4j (100 req/min/IP) + IdempotencyFilter (POST/PATCH) + SecurityHeadersFilter (CSP/HSTS/X-Frame-Options) + portails sécurité par MR : grype + trivy + cosign sign+verify + dockle + OWASP dependency-check + secret-detection + semgrep-sast — tous verts.
 > - 🧠 **Fonctionnel** — Onboarding & enrichissement client (génération de bio par Spring AI Ollama, observable via spans `gen_ai.*`) + domaine Order / Product / OrderLine (6 invariants vérifiés via tests de propriétés `jqwik`, gates JaCoCo par paquet) + endpoints Chaos Mesh (`/customers/diagnostic/{slow-query, db-failure, kafka-timeout}`).
 > - ☁️ **Infrastructure & Cloud** — Cluster GKE de production `mirador-prod` (europe-west1) + IaC Terraform + cibles de déploiement multi-cloud (AKS, EKS, Cloud Run, Fly.io — jobs manuels CI) + cert-manager + ingress-nginx + GitOps Argo CD + pattern éphémère (ADR-0022) ciblant ≤ 2 €/mois en idle + Workload Identity Federation (zéro clé JSON de service account) + alertes budget via `bin/budget/budget.sh`.
