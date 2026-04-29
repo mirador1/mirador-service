@@ -991,14 +991,17 @@
                                         <limit>
                                             <counter>INSTRUCTION</counter>
                                             <value>COVEREDRATIO</value>
-                                            <!-- Ratcheted 2026-04-29 from 0.70 to 0.85 after the
-                                                 !270 coverage batch (e-commerce + mcp + customer
-                                                 + messaging packages all reached 90-100%).
-                                                 Measured 90.53% post-batch ; 0.85 leaves a
-                                                 reasonable cushion against routine refactor
-                                                 churn while preventing silent regression below
-                                                 the climb that just landed. -->
-                                            <minimum>0.85</minimum>
+                                            <!-- Climb history :
+                                                 - 2026-04-29 (!270) : 0.70 → 0.85 (post-batch
+                                                   measured 90.53%, every package above the
+                                                   per-package floor)
+                                                 - 2026-04-29 (!271) : 0.85 → 0.92 (post-batch
+                                                   measured 94.97% after closing ChurnPredictor
+                                                   via ONNX fixture + SecurityConfig via plain
+                                                   Spring context). 5% cushion against routine
+                                                   refactor churn ; ratcheting prevents the
+                                                   climb sliding back unnoticed. -->
+                                            <minimum>0.92</minimum>
                                         </limit>
                                     </limits>
                                 </rule>
