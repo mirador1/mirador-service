@@ -64,4 +64,114 @@ class ChurnPredictorTest {
 
         assertThat(predictor.modelVersion()).isEqualTo("unspecified");
     }
+
+    // ─── happy path with a real ONNX model fixture ────────────────────────────
+
+    /**
+     * Test fixture path. Built once via build_churn_test_onnx.py — a 166-byte
+     * model that maps an 8-feature input to a single logit equal to the sum
+     * of the inputs (single MatMul with all-ones weights). Reproducible :
+     * see bin/build-churn-test-onnx.sh in the repo for the regen recipe.
+     *
+     * <p>Working directory is the project root during {@code mvn test}, so
+     * the relative path resolves correctly.
+     */
+    private static final String TEST_ONNX_PATH =
+            "src/test/resources/churn-predictor-test.onnx";
+
+    @org.junit.jupiter.api.Test
+    void readyAndPredict_withRealOnnxFixture() throws ai.onnxruntime.OrtException {
+        // Pinned : when the model loads, isReady() flips to true and
+        // predictProbability returns a value in [0,1]. The fixture is
+        // logit = sum(features) with no bias, so an all-zero vector
+        // gives sigmoid(0) = 0.5 exactly. This pins the wiring (model
+        // load → OrtSession.run → sigmoid) end-to-end.
+        ChurnPredictor predictor = new ChurnPredictor(TEST_ONNX_PATH, "v0-test-fixture");
+        predictor.loadModel();
+
+        org.assertj.core.api.Assertions.assertThat(predictor.isReady()).isTrue();
+        org.assertj.core.api.Assertions.assertThat(predictor.modelVersion())
+                .isEqualTo("v0-test-fixture");
+
+        double prob = predictor.predictProbability(
+                new float[] {0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f});
+        org.assertj.core.api.Assertions.assertThat(prob)
+                .isCloseTo(0.5, org.assertj.core.data.Offset.offset(1e-4));
+
+        predictor.closeSession();
+    }
+
+    @org.junit.jupiter.api.Test
+    void predictProbability_highSumPushesProbabilityToOne() throws ai.onnxruntime.OrtException {
+        // Sum(features) = 4.0 → sigmoid(4) ≈ 0.982. Pinned so a future
+        // change that drops the sigmoid (or applies it twice) is caught.
+        ChurnPredictor predictor = new ChurnPredictor(TEST_ONNX_PATH, "v0-test-fixture");
+        predictor.loadModel();
+
+        double prob = predictor.predictProbability(
+                new float[] {4f, 0f, 0f, 0f, 0f, 0f, 0f, 0f});
+
+        org.assertj.core.api.Assertions.assertThat(prob)
+                .isCloseTo(0.9820, org.assertj.core.data.Offset.offset(1e-3));
+
+        predictor.closeSession();
+    }
+
+    @org.junit.jupiter.api.Test
+    void predictProbability_negativeSumDropsProbabilityToZero() throws ai.onnxruntime.OrtException {
+        // Sum(features) = -4.0 → sigmoid(-4) ≈ 0.018. Mirrors the
+        // numerical-stability branch of sigmoid (negative-logit path
+        // uses exp(logit) / (1 + exp(logit)), distinct from the
+        // positive-logit branch).
+        ChurnPredictor predictor = new ChurnPredictor(TEST_ONNX_PATH, "v0-test-fixture");
+        predictor.loadModel();
+
+        double prob = predictor.predictProbability(
+                new float[] {-4f, 0f, 0f, 0f, 0f, 0f, 0f, 0f});
+
+        org.assertj.core.api.Assertions.assertThat(prob)
+                .isCloseTo(0.0180, org.assertj.core.data.Offset.offset(1e-3));
+
+        predictor.closeSession();
+    }
+
+    @org.junit.jupiter.api.Test
+    void predictProbability_wrongFeatureCount_rejected_whenModelLoaded() {
+        // Pinned : the validation runs AFTER the isReady() check, so
+        // when the model loads the wrong-shape branch becomes reachable.
+        // Without this test the validation lived only in the dead-code
+        // path of an isReady=false predictor.
+        ChurnPredictor predictor = new ChurnPredictor(TEST_ONNX_PATH, "v0-test-fixture");
+        predictor.loadModel();
+
+        org.assertj.core.api.Assertions.assertThatIllegalArgumentException()
+                .isThrownBy(() -> predictor.predictProbability(new float[] {1f, 2f, 3f}))
+                .withMessageContaining("8")
+                .withMessageContaining("3");
+
+        predictor.closeSession();
+    }
+
+    @org.junit.jupiter.api.Test
+    void loadModel_corruptOnnxFile_isCaughtAndIsReadyStaysFalse(
+            @org.junit.jupiter.api.io.TempDir java.nio.file.Path tmp) throws java.io.IOException {
+        // The OrtException | IOException catch in loadModel() was
+        // unreachable from earlier tests — both nonexistent-file and
+        // happy-load tests sidestep it. A file that EXISTS but is NOT
+        // valid ONNX hits the OrtException branch. Pinned because a
+        // future refactor that lets the exception propagate would
+        // crash the bean and take the whole MCP server down on a
+        // subtly broken .onnx artefact (e.g. half-written by a
+        // ConfigMap update mid-rollout).
+        java.nio.file.Path corrupt = tmp.resolve("corrupt.onnx");
+        java.nio.file.Files.writeString(corrupt, "not-a-real-onnx-file");
+
+        ChurnPredictor predictor = new ChurnPredictor(corrupt.toString(), "v0-corrupt");
+        predictor.loadModel();
+
+        org.assertj.core.api.Assertions.assertThat(predictor.isReady()).isFalse();
+        // closeSession on a never-loaded predictor is a no-op (session is
+        // null) — covered indirectly by the isReady() guard inside.
+        predictor.closeSession();
+    }
 }
