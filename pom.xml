@@ -14,7 +14,7 @@
         <relativePath/>
     </parent>
 
-    <groupId>com.example</groupId>
+    <groupId>org.iris</groupId>
     <artifactId>iris</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>iris</name>
