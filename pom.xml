@@ -991,21 +991,24 @@
                                         <limit>
                                             <counter>INSTRUCTION</counter>
                                             <value>COVEREDRATIO</value>
-                                            <minimum>0.70</minimum>
+                                            <!-- Ratcheted 2026-04-29 from 0.70 to 0.85 after the
+                                                 !270 coverage batch (e-commerce + mcp + customer
+                                                 + messaging packages all reached 90-100%).
+                                                 Measured 90.53% post-batch ; 0.85 leaves a
+                                                 reasonable cushion against routine refactor
+                                                 churn while preventing silent regression below
+                                                 the climb that just landed. -->
+                                            <minimum>0.85</minimum>
                                         </limit>
                                     </limits>
                                 </rule>
                                 <!--
-                                  Per-package CLIMB GATE on the new e-commerce packages.
-                                  CI measures (post merge of cascade ITest 2026-04-26) :
-                                    org.iris.order   = 32% (entity + property tests)
-                                    org.iris.product = 3%  (entity only — no controller/repo tests yet)
-                                  Threshold deliberately set just under each measured value to
-                                  act as a regression gate WITHOUT requiring tests we haven't
-                                  written yet. CLIMB PLAN documented inline :
-                                  - now : order ≥ 30%, product ≥ 0% (regression-only)
-                                  - +1  : after @WebMvcTest controllers → order ≥ 60%, product ≥ 50%
-                                  - +2  : full integration coverage → both ≥ 90%
+                                  Per-package gate on the e-commerce slice.
+                                  Ratcheted 2026-04-29 after !270 closed both packages to 100%
+                                  instruction coverage (was order ≥ 30% / product disabled).
+                                  Floor at 0.90 leaves 10% cushion against routine churn while
+                                  pinning the climb so a future refactor can't silently drop
+                                  coverage on the 7-tool e-commerce surface.
                                 -->
                                 <rule>
                                     <element>PACKAGE</element>
@@ -1016,24 +1019,23 @@
                                         <limit>
                                             <counter>INSTRUCTION</counter>
                                             <value>COVEREDRATIO</value>
-                                            <minimum>0.30</minimum>
+                                            <minimum>0.90</minimum>
                                         </limit>
                                     </limits>
                                 </rule>
-                                <!-- Product gate disabled until controller tests land
-                                     (currently 3% — gate would always block).
-                                     TODO : add @WebMvcTest for ProductController + ProductRepository
-                                     repo tests, then enable :
-                                     <rule>
-                                         <element>PACKAGE</element>
-                                         <includes><include>org.iris.product</include></includes>
-                                         <limits><limit>
-                                             <counter>INSTRUCTION</counter>
-                                             <value>COVEREDRATIO</value>
-                                             <minimum>0.50</minimum>
-                                         </limit></limits>
-                                     </rule>
-                                -->
+                                <rule>
+                                    <element>PACKAGE</element>
+                                    <includes>
+                                        <include>org.iris.product</include>
+                                    </includes>
+                                    <limits>
+                                        <limit>
+                                            <counter>INSTRUCTION</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>0.90</minimum>
+                                        </limit>
+                                    </limits>
+                                </rule>
                             </rules>
                         </configuration>
                     </execution>

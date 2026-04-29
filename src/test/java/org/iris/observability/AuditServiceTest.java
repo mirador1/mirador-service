@@ -169,4 +169,34 @@ class AuditServiceTest {
 
         assertThat(page.totalElements()).isZero();
     }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void findAll_rowMapper_mapsResultSetThroughDto() throws Exception {
+        // findAll uses its OWN lambda `(rs, rowNum) -> mapRow(rs)` — distinct
+        // from findByCustomerId's. JaCoCo measures them as separate synthetic
+        // methods, so the latter being covered does NOT cover the former.
+        // Capture findAll's RowMapper, exercise it against a mock ResultSet.
+        when(jdbc.queryForObject(anyString(), eq(Long.class), any(Object[].class))).thenReturn(1L);
+        ArgumentCaptor<RowMapper<AuditEventDto>> captor = ArgumentCaptor.forClass(RowMapper.class);
+        when(jdbc.query(anyString(), captor.capture(), any(Object[].class))).thenReturn(List.of());
+
+        service.findAll(0, 10, null, null, null, null);
+
+        ResultSet rs = mock(ResultSet.class);
+        when(rs.getLong("id")).thenReturn(202L);
+        when(rs.getString("user_name")).thenReturn("bob");
+        when(rs.getString("action")).thenReturn("LOGIN_SUCCESS");
+        when(rs.getString("detail")).thenReturn("via JWT");
+        when(rs.getString("ip_address")).thenReturn("9.9.9.9");
+        Timestamp created = Timestamp.from(Instant.parse("2026-04-29T01:00:00Z"));
+        when(rs.getTimestamp("created_at")).thenReturn(created);
+
+        AuditEventDto dto = captor.getValue().mapRow(rs, 0);
+
+        assertThat(dto.id()).isEqualTo(202L);
+        assertThat(dto.userName()).isEqualTo("bob");
+        assertThat(dto.action()).isEqualTo("LOGIN_SUCCESS");
+        assertThat(dto.createdAt()).isEqualTo(created.toInstant());
+    }
 }

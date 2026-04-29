@@ -48,7 +48,10 @@ class RecentCustomerBufferTest {
 
     @BeforeEach
     void setUp() {
-        when(redisTemplate.opsForList()).thenReturn(listOps);
+        // lenient() — one test (add_swallowsJacksonException…) builds its
+        // own redisTemplate and never reaches opsForList(), so strict
+        // Mockito would flag this stub as unused.
+        org.mockito.Mockito.lenient().when(redisTemplate.opsForList()).thenReturn(listOps);
         buffer = new RecentCustomerBuffer(redisTemplate, objectMapper);
     }
 
@@ -115,6 +118,53 @@ class RecentCustomerBufferTest {
     @Test
     void size_returnsZero_whenRedisReturnsNull() {
         when(listOps.size(anyString())).thenReturn(null);
+
+        assertThat(buffer.size()).isZero();
+    }
+
+    // ─── failure containment paths (Redis down / serialisation breaks) ───────
+
+    @Test
+    void add_swallowsJacksonException_doesNotPropagate() {
+        // Use a broken ObjectMapper that throws on writeValueAsString. The
+        // contract is "non-critical: log + continue". A propagating
+        // exception here would kill the customer-create endpoint just
+        // because the recent-customers buffer can't serialise — that's
+        // unacceptable.
+        // Construct a fresh redisTemplate (no stubbing) so Mockito strict
+        // mode doesn't flag the @BeforeEach opsForList() stub as unused.
+        StringRedisTemplate freshTemplate = org.mockito.Mockito.mock(StringRedisTemplate.class);
+        ObjectMapper brokenMapper = new ObjectMapper() {
+            @Override
+            public String writeValueAsString(Object value) {
+                throw new TestJacksonException("boom");
+            }
+        };
+        RecentCustomerBuffer buf = new RecentCustomerBuffer(freshTemplate, brokenMapper);
+
+        // Must not throw. The mapper raises before any Redis call.
+        buf.add(dto(99));
+    }
+
+    /** Test-only subclass to surface JacksonException with a public ctor. */
+    static final class TestJacksonException extends tools.jackson.core.JacksonException {
+        TestJacksonException(String msg) { super(msg); }
+    }
+
+    @Test
+    void getRecent_swallowsRedisException_returnsEmptyList() {
+        when(listOps.range(anyString(), anyLong(), anyLong()))
+                .thenThrow(new org.springframework.data.redis.RedisConnectionFailureException(
+                        "redis down"));
+
+        assertThat(buffer.getRecent()).isEmpty();
+    }
+
+    @Test
+    void size_swallowsRedisException_returnsZero() {
+        when(listOps.size(anyString()))
+                .thenThrow(new org.springframework.data.redis.RedisConnectionFailureException(
+                        "redis down"));
 
         assertThat(buffer.size()).isZero();
     }

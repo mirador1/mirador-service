@@ -135,6 +135,111 @@ class KafkaConfigTest {
         assertThat(factory.getContainerProperties().isObservationEnabled()).isTrue();
     }
 
+    // ─── peer.service tag conventions (the 4 anonymous inner classes) ────────
+
+    @Test
+    void kafkaTemplate_observationConventionEmitsPeerServiceKafka() {
+        // Pinned : the anonymous KafkaTemplateObservationConvention added
+        // in kafkaTemplate() must add "peer.service=kafka" so Tempo renders
+        // Kafka as a named external node in the service map. A regression
+        // here would silently break the service-map graph (the producer
+        // span loses its peer hint and Tempo falls back to "unknown").
+        var template = newConfig().kafkaTemplate(
+                newConfig().producerFactory(), ObservationRegistry.create());
+        var convention = (org.springframework.kafka.support.micrometer.KafkaTemplateObservation
+                .DefaultKafkaTemplateObservationConvention) ReflectionTestUtils.getField(
+                template, "observationConvention");
+        assertThat(convention).isNotNull();
+
+        // Build a minimal ProducerRecord context — only the key/value tags
+        // we read in the assertions matter ; the convention is pure on the
+        // record's name + headers.
+        var record = new org.apache.kafka.clients.producer.ProducerRecord<>(
+                "customer.created", "key-1", (Object) "payload");
+        var ctx = new org.springframework.kafka.support.micrometer.KafkaRecordSenderContext(
+                record, "customer.created", () -> BROKERS);
+
+        var keyValues = convention.getLowCardinalityKeyValues(ctx);
+        assertThat(keyValues).extracting(io.micrometer.common.KeyValue::getKey)
+                .contains("peer.service");
+        assertThat(keyValues).extracting(io.micrometer.common.KeyValue::getValue)
+                .contains("kafka");
+    }
+
+    @Test
+    void kafkaListenerContainerFactory_observationConventionEmitsPeerServiceKafka() {
+        var factory = newConfig().kafkaListenerContainerFactory(
+                newConfig().kafkaTemplate(newConfig().producerFactory(), ObservationRegistry.create()),
+                ObservationRegistry.create()
+        );
+        var convention = (org.springframework.kafka.support.micrometer.KafkaListenerObservation
+                .DefaultKafkaListenerObservationConvention) factory.getContainerProperties()
+                .getObservationConvention();
+        assertThat(convention).isNotNull();
+
+        var record = new org.apache.kafka.clients.consumer.ConsumerRecord<>(
+                "customer.created", 0, 0L, "k", (Object) "v");
+        var ctx = new org.springframework.kafka.support.micrometer.KafkaRecordReceiverContext(
+                record, "consumer-id", () -> BROKERS);
+
+        var keyValues = convention.getLowCardinalityKeyValues(ctx);
+        assertThat(keyValues).extracting(io.micrometer.common.KeyValue::getKey)
+                .contains("peer.service");
+        assertThat(keyValues).extracting(io.micrometer.common.KeyValue::getValue)
+                .contains("kafka");
+    }
+
+    @Test
+    void replyingKafkaTemplate_observationConventionEmitsPeerServiceKafka() {
+        // The 3rd anonymous KafkaTemplateObservationConvention — used by
+        // the request-reply flow's ReplyingKafkaTemplate. Same peer.service
+        // tag must apply so the request leg of the request-reply pair
+        // shows up as a Kafka peer in Tempo.
+        KafkaConfig config = newConfig();
+        var container = config.replyListenerContainer("customer.reply", "reply-group");
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        var template = config.replyingKafkaTemplate(
+                (org.springframework.kafka.core.ProducerFactory) config.producerFactory(),
+                container,
+                ObservationRegistry.create());
+
+        var convention = (org.springframework.kafka.support.micrometer.KafkaTemplateObservation
+                .DefaultKafkaTemplateObservationConvention) ReflectionTestUtils.getField(
+                template, "observationConvention");
+        assertThat(convention).isNotNull();
+
+        var record = new org.apache.kafka.clients.producer.ProducerRecord<>(
+                "customer.request", "key", (Object) "request-payload");
+        var ctx = new org.springframework.kafka.support.micrometer.KafkaRecordSenderContext(
+                record, "customer.request", () -> BROKERS);
+
+        var keyValues = convention.getLowCardinalityKeyValues(ctx);
+        assertThat(keyValues).extracting(io.micrometer.common.KeyValue::getKey)
+                .contains("peer.service");
+        assertThat(keyValues).extracting(io.micrometer.common.KeyValue::getValue)
+                .contains("kafka");
+    }
+
+    @Test
+    void replyListenerContainer_observationConventionEmitsPeerServiceKafka() {
+        // The 4th anonymous class — same pattern, but on the reply topic
+        // ConcurrentMessageListenerContainer's container properties.
+        var container = newConfig().replyListenerContainer("customer.reply", "reply-group");
+        var convention = (org.springframework.kafka.support.micrometer.KafkaListenerObservation
+                .DefaultKafkaListenerObservationConvention) container.getContainerProperties()
+                .getObservationConvention();
+        assertThat(convention).isNotNull();
+
+        var record = new org.apache.kafka.clients.consumer.ConsumerRecord<>(
+                "customer.reply", 0, 0L, "k", (Object) "v");
+        var ctx = new org.springframework.kafka.support.micrometer.KafkaRecordReceiverContext(
+                record, "reply-consumer", () -> BROKERS);
+
+        var keyValues = convention.getLowCardinalityKeyValues(ctx);
+        assertThat(keyValues).extracting(io.micrometer.common.KeyValue::getValue)
+                .contains("kafka");
+    }
+
     @Test
     void replyListenerContainer_usesLatestOffsetReset() {
         // Pinned: the reply topic uses AUTO_OFFSET_RESET=latest because

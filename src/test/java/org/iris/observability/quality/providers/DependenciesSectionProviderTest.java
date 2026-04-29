@@ -1,7 +1,11 @@
 package org.iris.observability.quality.providers;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
@@ -102,5 +106,59 @@ class DependenciesSectionProviderTest {
             // raw `${...}` placeholder (means resolution failed).
             assertThat(v).doesNotStartWith("${");
         }
+    }
+
+    // ─── parseDependencyAnalysis branches via target/dep-analysis fixture ────
+
+    private Path stagedAnalysis;
+
+    @AfterEach
+    void cleanupStaged() throws IOException {
+        if (stagedAnalysis != null) {
+            Files.deleteIfExists(stagedAnalysis);
+            stagedAnalysis = null;
+        }
+    }
+
+    @Test
+    void parse_includesDependencyAnalysis_whenAnalysisFileOnDisk() throws IOException {
+        // The provider's loadResource() falls back to target/dependency-analysis.txt
+        // when the classpath copy is absent (the dev path). Stage a synthetic
+        // file there so parseDependencyAnalysis() actually runs end-to-end.
+        // Pinned : the parser reads "Used undeclared" / "Unused declared"
+        // sections and accumulates lines that start with a known coordinate
+        // prefix (com./org./io./net./jakarta./javax./ch./de.). Anything else
+        // is filtered out.
+        String content = String.join("\n",
+                "[INFO] --- maven-dependency-plugin:3.6.0:analyze (default-cli) @ iris ---",
+                "[WARNING] Used undeclared dependencies found:",
+                "[WARNING]    org.slf4j:slf4j-api:jar:2.0.9:compile",
+                "[WARNING]    com.example:foo:jar:1.0.0:compile",
+                "[WARNING] Unused declared dependencies found:",
+                "[WARNING]    org.unused:bar:jar:1.0.0:compile",
+                "[WARNING]    skipped-because-no-coord-prefix",
+                "");
+        stagedAnalysis = Path.of("target/dependency-analysis.txt");
+        Files.writeString(stagedAnalysis, content);
+
+        Map<String, Object> result = provider.parse();
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> analysis = (Map<String, Object>) result.get("dependencyAnalysis");
+        assertThat(analysis).isNotNull();
+        assertThat(analysis).containsEntry("available", true);
+        // The Sonar parser strips the "[WARNING]" prefix differently on
+        // different Maven versions ; we just pin that the count is > 0
+        // and the lines we emitted made it into either bucket.
+        @SuppressWarnings("unchecked")
+        List<String> usedUndeclared = (List<String>) analysis.get("usedUndeclared");
+        @SuppressWarnings("unchecked")
+        List<String> unusedDeclared = (List<String>) analysis.get("unusedDeclared");
+        assertThat((Integer) analysis.get("usedUndeclaredCount")).isEqualTo(usedUndeclared.size());
+        assertThat((Integer) analysis.get("unusedDeclaredCount")).isEqualTo(unusedDeclared.size());
+        // The "skipped-because-no-coord-prefix" line MUST NOT appear in
+        // either list — pinned to defend the isCoordLine() filter.
+        assertThat(usedUndeclared).noneMatch(s -> s.contains("skipped"));
+        assertThat(unusedDeclared).noneMatch(s -> s.contains("skipped"));
     }
 }

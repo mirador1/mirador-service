@@ -1,0 +1,10 @@
+- 'dependencies':
+  - "BOOT-INF/lib/spring-boot-3.0.0.jar"
+  - "BOOT-INF/lib/spring-core-6.0.0.jar"
+  - "BOOT-INF/lib/jackson-databind-2.16.0.jar"
+- 'spring-boot-loader':
+  - "org/springframework/boot/loader/Launcher.class"
+- 'snapshot-dependencies':
+- 'application':
+  - "BOOT-INF/classes/org/iris/IrisApplication.class"
+  - "BOOT-INF/classes/application.yml"

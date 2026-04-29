@@ -3,6 +3,11 @@ package org.iris.auth;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.time.Instant;
+import java.util.Map;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -74,5 +79,54 @@ class LoginAttemptServiceTest {
             service.recordFailure("flood");
         }
         assertThat(service.getRemainingAttempts("flood")).isZero();
+    }
+
+    // ─── isBlocked() — uncovered branches via reflection ─────────────────────
+
+    @Test
+    void isBlocked_existingAttemptWithoutLockout_returnsFalse() throws Exception {
+        // Pinned : an IP with a few failures (count > 0) but BELOW the
+        // MAX_ATTEMPTS threshold has lockedUntil=null. isBlocked must
+        // fall through both null-checks and return false. Without this
+        // path the lockout escalation logic would silently lock
+        // pre-threshold attackers if the contract drifted.
+        injectStaleAttempt("partial-fail-ip", 3, null);
+
+        assertThat(service.isBlocked("partial-fail-ip")).isFalse();
+    }
+
+    @Test
+    void isBlocked_lockoutExpired_autoRemovesRecord_andReturnsFalse() throws Exception {
+        // Pinned : when an IP's lockedUntil is in the past, isBlocked
+        // returns false AND removes the record from memory. Without
+        // the auto-expire, locked-out clients that abandon their
+        // request would leave records pinned forever — unbounded map
+        // growth / DoS amplification surface.
+        Instant pastLockout = Instant.now().minusSeconds(60);
+        injectStaleAttempt("expired-lockout-ip", 5, pastLockout);
+
+        assertThat(service.isBlocked("expired-lockout-ip")).isFalse();
+        // The map MUST be empty for that key after the call.
+        assertThat(attemptsMap()).doesNotContainKey("expired-lockout-ip");
+    }
+
+    /**
+     * Inserts a synthetic AttemptRecord into the private attempts map.
+     * Required because there's no public path to land an arbitrary
+     * lockedUntil — recordFailure() always uses Instant.now()+15min.
+     */
+    private void injectStaleAttempt(String ip, int count, Instant lockedUntil) throws Exception {
+        Class<?> recordClass = Class.forName("org.iris.auth.LoginAttemptService$AttemptRecord");
+        Constructor<?> ctor = recordClass.getDeclaredConstructor(int.class, Instant.class, Instant.class);
+        ctor.setAccessible(true);
+        Object record = ctor.newInstance(count, Instant.now(), lockedUntil);
+        attemptsMap().put(ip, record);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> attemptsMap() throws Exception {
+        Field f = LoginAttemptService.class.getDeclaredField("attempts");
+        f.setAccessible(true);
+        return (Map<String, Object>) f.get(service);
     }
 }

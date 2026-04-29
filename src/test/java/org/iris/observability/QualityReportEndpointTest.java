@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.core.env.Environment;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -230,5 +231,81 @@ class QualityReportEndpointTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> runtime = (Map<String, Object>) result.get("runtime");
         assertThat(runtime).containsEntry("available", true);
+    }
+
+    // ─── formatUptime branch coverage (via reflection — method is private) ───
+
+    @Test
+    void formatUptime_underAMinute_returnsSecondsOnly() throws Exception {
+        // Sub-minute uptime ("running for 42s"). The runtime test above
+        // already exercises this via the live JVM uptime, but we pin it
+        // explicitly so a refactor that reorders the branches doesn't
+        // regress it.
+        assertThat(invokeFormatUptime(0)).isEqualTo("0s");
+        assertThat(invokeFormatUptime(42)).isEqualTo("42s");
+        assertThat(invokeFormatUptime(59)).isEqualTo("59s");
+    }
+
+    @Test
+    void formatUptime_underAnHour_returnsMinutesAndSeconds() throws Exception {
+        // 60..3599 seconds → "Xm Ys" form. Pinned : the seconds remainder
+        // is shown alongside minutes ("5m 30s"), not stripped to "5m" —
+        // matters because the dashboard's "running for" label must fit
+        // both forms in the same column width.
+        assertThat(invokeFormatUptime(60)).isEqualTo("1m 0s");
+        assertThat(invokeFormatUptime(330)).isEqualTo("5m 30s");
+        assertThat(invokeFormatUptime(3599)).isEqualTo("59m 59s");
+    }
+
+    @Test
+    void formatUptime_overAnHour_returnsHoursAndMinutes_dropsSeconds() throws Exception {
+        // ≥ 3600 → "Xh Ym". Pinned : seconds are deliberately dropped at
+        // this range — minute precision is enough for "running for 8h 47m"
+        // and avoids a noisy live-updating display.
+        assertThat(invokeFormatUptime(3600)).isEqualTo("1h 0m");
+        assertThat(invokeFormatUptime(3660)).isEqualTo("1h 1m");
+        assertThat(invokeFormatUptime(31_727)).isEqualTo("8h 48m");
+        // 86400s = exactly 24h → "24h 0m" (we don't roll into days).
+        assertThat(invokeFormatUptime(86_400)).isEqualTo("24h 0m");
+    }
+
+    private String invokeFormatUptime(long seconds) throws Exception {
+        var method = QualityReportEndpoint.class.getDeclaredMethod("formatUptime", long.class);
+        method.setAccessible(true);
+        return (String) method.invoke(endpoint, seconds);
+    }
+
+    // ─── buildJarLayersSection (via BOOT-INF/layers.idx test fixture) ────────
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void runtimeSection_jarLayers_parsesBootInfLayersIdxFromClasspath() {
+        // src/test/resources/BOOT-INF/layers.idx is a synthetic Spring Boot
+        // layered-jar index — the resource lands on the classpath at test
+        // time and exercises the parser end-to-end. Pinned format :
+        //   "- 'layer-name':"  → starts a new layer (header)
+        //   "  - 'entry'"     → entry counter increment
+        // Snapshot-dependencies has zero entries → "entries": 0 on its row.
+        Map<String, Object> result = endpoint.report();
+        Map<String, Object> runtime = (Map<String, Object>) result.get("runtime");
+
+        List<Map<String, Object>> layers = (List<Map<String, Object>>) runtime.get("jarLayers");
+        assertThat(layers).isNotNull().isNotEmpty();
+
+        // Build a name → entries map from the layers list. AssertJ's
+        // generic inference on the cast returns List<?> in some compiler
+        // configs, so we accumulate manually to keep types explicit.
+        Map<String, Integer> entryCounts = new java.util.LinkedHashMap<>();
+        for (Map<String, Object> l : layers) {
+            entryCounts.put((String) l.get("name"), (Integer) l.get("entries"));
+        }
+
+        assertThat(entryCounts.keySet()).containsExactly(
+                "dependencies", "spring-boot-loader",
+                "snapshot-dependencies", "application");
+        assertThat(entryCounts).containsEntry("dependencies", 3);
+        assertThat(entryCounts).containsEntry("spring-boot-loader", 1);
+        assertThat(entryCounts).containsEntry("snapshot-dependencies", 0);
+        assertThat(entryCounts).containsEntry("application", 2);
     }
 }
